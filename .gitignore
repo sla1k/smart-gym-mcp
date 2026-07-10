@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts (PyInstaller)
+build/
+dist/
+
+# macOS
+.DS_Store
+
+# Local machine-specific settings
+.claude/settings.local.json
+
+# spec
+specs/
