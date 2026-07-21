@@ -24,5 +24,13 @@ uv run pytest
 uv run ruff check src tests && uv run ruff format src tests
 uv run mypy src
 uv run smartgym-mcp            # stdio server
+scripts/build.sh               # PyInstaller build + codesign (stable TCC identity) + install
 uv run mcp dev src/smartgym_mcp/server.py   # MCP Inspector
 ```
+Bash commands Claude can’t guess	Anything Claude can figure out by reading code
+Code style rules that differ from defaults	Standard language conventions Claude already knows
+Testing instructions and preferred test runners	Detailed API documentation (link to docs instead)
+Repository etiquette (branch naming, PR conventions)	Information that changes frequently
+Architectural decisions specific to your project	Long explanations or tutorials
+Developer environment quirks (required env vars)	File-by-file descriptions of the codebase
+Common gotchas or non-obvious behaviors
