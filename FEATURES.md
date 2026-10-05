@@ -26,9 +26,13 @@ wiring and `ZWORKOUT`/`ZHISTORY` session linkage.
 
 Archiving via direct DB write is verified impossible — archived state is server-side and owned
 by the app; archive in-app and it syncs down. Candidates:
-- `smartgym_delete_routine` — routine soft-delete (`ZDATEREMOVED` + dirty flag) verified to
-  push without being reverted; semantically distinct from archive (no "Archived Routines" entry).
-  Needs an iPhone-arrival confirmation before shipping.
+- `smartgym_delete_routine` — routine soft-delete (`ZDATEREMOVED` + dirty flag) was verified to
+  push under v7.10.1; **under v8 the add-only resync ignores known routines, so this no longer
+  propagates.** Viable v8 route: the tombstone pattern (`writes.insert_tombstone`) + user
+  deletes/archives it in-app.
+- Fully automatic tombstone retirement (replaying `routine/archive/`, `routinesIDs=<id>`) needs
+  the app's session credentials — blocked by the permission system on 2026-10-05; revisit only
+  with explicit user-granted access.
 - Revisit archive only if a sanctioned mechanism appears (e.g. an App Intent in a future app
   version).
 

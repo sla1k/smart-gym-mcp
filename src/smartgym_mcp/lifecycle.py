@@ -64,13 +64,21 @@ def launch(cfg: Config) -> None:
 
 
 @contextmanager
-def managed_write(cfg: Config) -> Iterator[tuple[sqlite3.Connection, AppLifecycleReport]]:
+def managed_write(
+    cfg: Config, *, relaunch: bool = True
+) -> Iterator[tuple[sqlite3.Connection, AppLifecycleReport]]:
     """The write session shared by every mutating tool.
 
     Gracefully quits SmartGym (unless the escape hatch is set), opens the
     backed-up RW transaction, and relaunches the app afterwards so the sync
     push fires. If the write fails after we quit the app, it is relaunched
     anyway — we never leave the user's app closed over a rolled-back write.
+
+    relaunch=False keeps the app closed after a successful write. Edits of
+    existing routines need this (SmartGym 8, verified 2026-10-05): a launch
+    re-imports recently modified server routines over local routine fields,
+    so unpublished edits must not meet a running app before
+    smartgym_publish_routines re-keys them.
 
     The yielded report is finalized (relaunched flag) when the block exits.
     """
@@ -85,5 +93,6 @@ def managed_write(cfg: Config) -> Iterator[tuple[sqlite3.Connection, AppLifecycl
         if was_running:
             launch(cfg)
         raise
-    launch(cfg)
-    report.relaunched = True
+    if relaunch:
+        launch(cfg)
+        report.relaunched = True

@@ -390,3 +390,139 @@ def test_plans_work_on_read_only_connection(temp_db_cfg: Config) -> None:
         assert routine.changes[0].field == "goal"
     finally:
         ro.close()
+
+
+# --------------------------------------------------------------------------- #
+# publish_routines (SmartGym 8: re-key + tombstone)
+# --------------------------------------------------------------------------- #
+SERVER_ID = 3_000_001  # below db.PLACEHOLDER_IDENTIFIER_RANGE, like a real server id
+
+
+def _mark_all_synced(cfg: Config) -> None:
+    conn = _connect(cfg)
+    try:
+        conn.execute("UPDATE ZROUTINE SET ZHASSYNCED = 1")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_pushed_routine(cfg: Config) -> int:
+    """Seed routine that looks already pushed (server id) and then edited."""
+    routine_pk, _ = _seed_routine(cfg)
+    conn = _connect(cfg)
+    try:
+        conn.execute(
+            "UPDATE ZROUTINE SET ZIDENTIFIER = ? WHERE Z_PK = ?", (SERVER_ID, routine_pk)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _mark_all_synced(cfg)
+    with db.open_rw_connection(cfg) as conn:
+        writes.apply_update_routine(conn, routine_pk, note="edited")
+    return routine_pk
+
+
+def test_publish_rekeys_and_leaves_tombstone(temp_db_cfg: Config) -> None:
+    routine_pk = _seed_pushed_routine(temp_db_cfg)
+    check = _connect(temp_db_cfg)
+    old_hash = check.execute(
+        "SELECT ZUNIQUEHASHID FROM ZROUTINE WHERE Z_PK = ?", (routine_pk,)
+    ).fetchone()[0]
+    exercises_before = check.execute(
+        "SELECT COUNT(*) FROM ZUNIQEXERCISE WHERE ZROUTINE = ? AND ZDATEREMOVED IS NULL",
+        (routine_pk,),
+    ).fetchone()[0]
+    check.close()
+
+    with db.open_rw_connection(temp_db_cfg) as conn:
+        plan = writes.apply_publish_routines(conn)
+
+    assert [e.routine.z_pk for e in plan.routines] == [routine_pk]
+    entry = plan.routines[0]
+    assert entry.pending and entry.previous_unique_hashid == old_hash
+    assert entry.previous_server_id == SERVER_ID
+    assert entry.new_unique_hashid not in (None, old_hash)
+
+    check = _connect(temp_db_cfg)
+    try:
+        routine = check.execute(
+            "SELECT ZUNIQUEHASHID, ZIDENTIFIER, ZHASSYNCED, ZNOTE FROM ZROUTINE WHERE Z_PK = ?",
+            (routine_pk,),
+        ).fetchone()
+        low, high = db.PLACEHOLDER_IDENTIFIER_RANGE
+        assert routine[0] == entry.new_unique_hashid
+        assert low <= routine[1] <= high
+        assert routine[2] == 0 and routine[3] == "edited"
+        assert (
+            check.execute(
+                "SELECT COUNT(*) FROM ZUNIQEXERCISE WHERE ZROUTINE = ? AND ZDATEREMOVED IS NULL",
+                (routine_pk,),
+            ).fetchone()[0]
+            == exercises_before
+        )
+
+        tomb = check.execute(
+            "SELECT ZNAME, ZNOTE, ZUNIQUEHASHID, ZIDENTIFIER, ZHASSYNCED, ZHIDDEN, ZDATEREMOVED "
+            "FROM ZROUTINE WHERE Z_PK = ?",
+            (entry.tombstone_z_pk,),
+        ).fetchone()
+        assert tuple(tomb) == (
+            f"{writes.TOMBSTONE_PREFIX}{SEED_NAME}",
+            writes.TOMBSTONE_NOTE,
+            old_hash,
+            SERVER_ID,
+            1,
+            0,
+            None,
+        )
+        assert (
+            check.execute(
+                "SELECT COUNT(*) FROM ZUNIQEXERCISE WHERE ZROUTINE = ?",
+                (entry.tombstone_z_pk,),
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        check.close()
+
+
+def test_publish_skips_tombstone_for_never_pushed_routine(temp_db_cfg: Config) -> None:
+    routine_pk, _ = _seed_routine(temp_db_cfg)  # still carries its placeholder identifier
+    with db.open_rw_connection(temp_db_cfg) as conn:
+        plan = writes.apply_publish_routines(conn, [routine_pk])
+    assert plan.routines[0].tombstone_z_pk is None
+    _assert_pending(temp_db_cfg, routine_pk)
+
+
+def test_publish_explicit_routine_even_when_flag_is_synced(temp_db_cfg: Config) -> None:
+    routine_pk = _seed_pushed_routine(temp_db_cfg)
+    _mark_all_synced(temp_db_cfg)
+    with db.open_rw_connection(temp_db_cfg) as conn:
+        plan = writes.apply_publish_routines(conn, [SEED_NAME])
+    assert plan.routines[0].routine.z_pk == routine_pk
+    assert not plan.routines[0].pending
+    _assert_pending(temp_db_cfg, routine_pk)
+
+
+def test_publish_rejects_when_nothing_pending(temp_db_cfg: Config) -> None:
+    _mark_all_synced(temp_db_cfg)
+    ro = db.open_ro_connection(temp_db_cfg.db_path)
+    try:
+        with pytest.raises(WriteValidationError, match="Nothing to publish"):
+            writes.plan_publish_routines(ro)
+    finally:
+        ro.close()
+
+
+def test_publish_plan_on_read_only_connection_writes_nothing(temp_db_cfg: Config) -> None:
+    routine_pk = _seed_pushed_routine(temp_db_cfg)
+    ro = db.open_ro_connection(temp_db_cfg.db_path)
+    try:
+        plan = writes.plan_publish_routines(ro)
+        assert [e.routine.z_pk for e in plan.routines] == [routine_pk]
+        assert plan.routines[0].new_unique_hashid is None
+        assert plan.routines[0].tombstone_z_pk is None
+    finally:
+        ro.close()
