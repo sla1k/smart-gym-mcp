@@ -102,9 +102,13 @@ def _now_local() -> datetime:
     return datetime.now().astimezone()
 
 
-def compare_views(expected: RoutineView, actual: RoutineView) -> list[str]:
+def compare_views(
+    expected: RoutineView, actual: RoutineView, *, ignore: frozenset[str] = frozenset()
+) -> list[str]:
     problems: list[str] = []
     for field in ("name", "days", "goal", "note"):
+        if field in ignore:
+            continue
         exp, act = getattr(expected, field), getattr(actual, field)
         if exp != act:
             problems.append(f"{field}: expected {exp!r}, got {act!r}")
@@ -394,9 +398,11 @@ class RoutineService:
                 mismatches.append(f"{spec.name!r} is missing after the create")
                 continue
             created.append(RoutineId(identifier=routine.identifier, name=routine.name))
+            # Without days in the payload the server picks its own default ("0001").
+            ignore = frozenset() if payload.get("days") else frozenset({"days"})
             mismatches += [
                 f"{spec.name}: {p}"
-                for p in compare_views(_payload_view(payload), view_of(routine))
+                for p in compare_views(_payload_view(payload), view_of(routine), ignore=ignore)
             ]
         if mismatches:
             raise WriteVerifyError(
