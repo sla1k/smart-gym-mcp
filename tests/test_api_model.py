@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from smartgym_mcp.model import ApiPayloadError, parse_routine, parse_routines_response
+from smartgym_mcp.model import (
+    ApiPayloadError,
+    parse_history_all,
+    parse_routine,
+    parse_routines_response,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "api" / "routine_single_synthetic.json"
 
@@ -84,3 +89,83 @@ def test_bad_numbers_raise_payload_error_naming_field(field: str, value: str) ->
     target[field] = value
     with pytest.raises(ApiPayloadError, match=field):
         parse_routine(raw)
+
+
+SYNTH = Path(__file__).parent / "fixtures" / "api" / "history_all_synthetic.json"
+
+
+def _account() -> dict:
+    return json.loads(SYNTH.read_text(encoding="utf-8"))
+
+
+def test_sections_map_from_list_group_and_order_active_exercises() -> None:
+    data = parse_history_all(_account())
+    routine = data.routines[0]
+    assert [(e.section, e.name) for e in routine.active_exercises()] == [
+        ("warmup", "Shoulder Circling"),
+        ("main", "Cable Chest Press"),
+        ("cooldown", "Cross Arm Stretch"),
+    ]
+    assert [e.name for e in routine.section("cooldown")] == ["Cross Arm Stretch"]
+
+
+def test_unknown_list_group_is_rejected_naming_the_value() -> None:
+    raw = _account()["routines"][0]
+    raw["exercises"][0]["listGroup"] = "7"
+    with pytest.raises(ApiPayloadError, match="listGroup.*7"):
+        parse_routine(raw)
+
+
+def test_logged_sets_are_separated_from_template_sets() -> None:
+    chest = next(
+        e for e in parse_history_all(_account()).routines[0].exercises if e.catalog_id == 207
+    )
+    assert [(s.identifier, s.reps, s.weight_kg) for s in chest.template_sets] == [
+        (50000011, 10.0, 42.5)
+    ]
+    assert chest.template_sets[0].date_added == "2026-09-11 08:34:19"
+    assert [s.identifier for s in chest.logged_sets] == [50000021, 50000022, 50000023]
+    assert chest.logged_sets[0].logged_at == "2026-09-14 08:10:00"
+
+
+def test_empty_string_dates_count_as_absent() -> None:
+    data = parse_history_all(_account())
+    circling = next(e for e in data.routines[0].exercises if e.catalog_id == 300)
+    assert len(circling.template_sets) == 1 and circling.logged_sets == []
+    gone = next(r for r in data.routines if r.name == "ZZ-Gone")
+    assert not gone.archived and gone.removed
+    assert next(r for r in data.routines if r.name == "ZZ-Old").archived
+
+
+def test_workouts_parse_numbers_and_skip_removed_histories() -> None:
+    data = parse_history_all(_account())
+    assert [w.identifier for w in data.workouts] == [7000001, 7000002]
+    first, second = data.workouts
+    assert (first.routine_identifier, first.duration_s, first.calories) == (3000001, 3600, 350)
+    assert (first.avg_hr, first.max_hr, first.end) == (120, 160, "2026-09-14 09:00:00")
+    assert first.set_ids == [50000021, 50000022]
+    assert (second.duration_s, second.calories, second.avg_hr, second.max_hr, second.end) == (
+        2700,
+        None,
+        132,
+        None,
+        None,
+    )
+
+
+def test_equipment_lists_parse() -> None:
+    (eq,) = parse_history_all(_account()).equipment_lists
+    assert (eq.identifier, eq.selected, eq.equipment_ids) == (200109, True, [1, 2, 38])
+    assert (eq.dumbbell_weights, eq.kettlebell_weights) == (None, "8,12")
+
+
+def test_has_more_is_refused_rather_than_truncated() -> None:
+    raw = _account()
+    raw["hasMore"] = True
+    with pytest.raises(ApiPayloadError, match="hasMore"):
+        parse_history_all(raw)
+
+
+def test_history_non_success_raises() -> None:
+    with pytest.raises(ApiPayloadError, match="INVALID_TOKEN"):
+        parse_history_all({"code": "INVALID_TOKEN"})
