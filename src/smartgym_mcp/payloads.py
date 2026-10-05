@@ -147,9 +147,6 @@ def new_routine_payload(
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     routine: dict[str, Any] = {
         "name": spec.name,
-        "days": spec.days,
-        "goal": spec.goal,
-        "note": spec.note,
         "number": number,
         "reference": 0,
         "hasSynced": 0,
@@ -158,6 +155,10 @@ def new_routine_payload(
         "dateCreated": _utc(midnight),
         "exercises": [],
     }
+    # The server 500s on JSON null here; the app omits unset optional fields.
+    for key, value in (("days", spec.days), ("goal", spec.goal), ("note", spec.note)):
+        if value and value.strip():
+            routine[key] = value
     for i, ((section, ex_spec), cat) in enumerate(zip(entries, exercises, strict=True)):
         routine["exercises"].append(
             exercise_payload(
