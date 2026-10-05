@@ -268,3 +268,44 @@ def test_account_id_not_logged_by_httpx_on_success(caplog: pytest.LogCaptureFixt
     client = _uid_client(lambda _r: httpx.Response(200, json={"code": "SUCCESS"}))
     client.get(f"history/all/{UID}/")
     assert UID not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "response",
+    [httpx.Response(200, text="<html>ok</html>"), httpx.Response(200, content=b"\xff\xfe{")],
+    ids=["html", "undecodable"],
+)
+def test_write_2xx_with_unreadable_body_reports_unknown_outcome(
+    response: httpx.Response,
+) -> None:
+    calls = {"n": 0}
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return response
+
+    with pytest.raises(WriteOutcomeUnknown, match="may or may not have landed"):
+        _client(handler).post("routine/update/", {"routineID": "7"})
+    assert calls["n"] == 1
+
+
+def test_reads_report_repeated_5xx_as_server_error_with_masked_id() -> None:
+    calls = {"n": 0}
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(503, text="busy")
+
+    client = ApiClient(
+        _UidCreds(),
+        app_version="8.0.3",
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _s: None,
+    )
+    with pytest.raises(ApiError) as exc:
+        client.get(f"history/all/{UID}/")
+    message = str(exc.value)
+    assert "SmartGym server error HTTP 503" in message and "3 attempts" in message
+    assert "unreachable" not in message and "network" not in message
+    assert UID not in message and "history/all/<user>/" in message
+    assert calls["n"] == 3
