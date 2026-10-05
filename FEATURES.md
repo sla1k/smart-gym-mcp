@@ -29,6 +29,15 @@ endpoint is captured (2026-10-05) but deliberately not exposed.
 
 ---
 
+## F8 — Custom exercises  ·  priority: medium
+
+The exercise catalog is the app bundle's `Exercises.json`, so only built-in exercises resolve
+by name. The account's own `customExercises` (returned by `history/all/`) are not resolvable by
+name yet — add them to `ExerciseCatalog` (and to the create / add-exercise payloads) once their
+wire shape in `routine/add/` / `routine/update/` is captured.
+
+---
+
 ## F3 — Equipment-aware next-weight suggestion  ·  priority: low
 
 `suggest_next_weight(exercise, current_weight)` snapping to the user's actual available
