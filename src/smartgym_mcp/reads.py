@@ -7,7 +7,6 @@ to (history → set ids), newest first.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
@@ -100,12 +99,8 @@ class EquipmentListResult(BaseModel):
     kettlebell_weights: str | None
 
 
-def _local_tz() -> tzinfo:
-    tz = datetime.now().astimezone().tzinfo
-    return tz if tz is not None else UTC
-
-
-def _local(server_time: str, tz: tzinfo) -> datetime:
+def _local(server_time: str, tz: tzinfo | None) -> datetime:
+    """UTC server time → `tz`; tz=None resolves the system zone per instant (DST-aware)."""
     parsed = datetime.strptime(server_time[:19], "%Y-%m-%d %H:%M:%S")
     return parsed.replace(tzinfo=UTC).astimezone(tz)
 
@@ -129,18 +124,29 @@ def list_routines(data: AccountData, *, include_archived: bool = False) -> Routi
 
 
 def _sessions(
-    ex: RoutineExercise, workout_day: dict[int, str], depth: int, tz: tzinfo
+    ex: RoutineExercise,
+    workout_of: dict[int, tuple[int, datetime]],
+    depth: int,
+    tz: tzinfo | None,
 ) -> list[SessionEntry]:
-    groups: dict[str, list[LoggedSet]] = defaultdict(list)
+    groups: dict[tuple[str, int | str], tuple[datetime, list[LoggedSet]]] = {}
     for s in ex.logged_sets:
-        day = workout_day.get(s.identifier) or _local(s.logged_at, tz).date().isoformat()
-        groups[day].append(s)
+        if s.identifier in workout_of:
+            wid, start = workout_of[s.identifier]
+            key: tuple[str, int | str] = ("workout", wid)
+        else:
+            start = _local(s.logged_at, tz)
+            key = ("day", start.date().isoformat())
+        started, members = groups.setdefault(key, (start, []))
+        members.append(s)
+        groups[key] = (min(started, start), members)
+    newest_first = sorted(groups.values(), key=lambda g: g[0], reverse=True)
     out: list[SessionEntry] = []
-    for day in sorted(groups, reverse=True)[: max(depth, 0)]:
-        ordered = sorted(groups[day], key=lambda s: (s.index, s.logged_at))
+    for started, members in newest_first[: max(depth, 0)]:
+        ordered = sorted(members, key=lambda s: (s.index, s.logged_at))
         out.append(
             SessionEntry(
-                date=day,
+                date=started.date().isoformat(),
                 sets=[
                     SetEntry(set_no=i + 1, reps=s.reps, weight_kg=s.weight_kg)
                     for i, s in enumerate(ordered)
@@ -153,15 +159,12 @@ def _sessions(
 def routine_detail(
     routine: Routine, data: AccountData, *, history_depth: int = 5, tz: tzinfo | None = None
 ) -> RoutineDetail:
-    zone = tz or _local_tz()
-    workout_day = {
-        sid: _local(w.start, zone).date().isoformat()
-        for w in data.workouts
-        for sid in w.set_ids
+    workout_of = {
+        sid: (w.identifier, _local(w.start, tz)) for w in data.workouts for sid in w.set_ids
     }
 
     def entry(e: RoutineExercise) -> ExerciseEntry:
-        sessions = _sessions(e, workout_day, history_depth, zone)
+        sessions = _sessions(e, workout_of, history_depth, tz)
         latest = sessions[0].sets if sessions else []
         top = max(latest, key=lambda s: (s.weight_kg, s.reps)) if latest else None
         return ExerciseEntry(
@@ -203,19 +206,18 @@ def workout_history(
     today: date | None = None,
     tz: tzinfo | None = None,
 ) -> WorkoutHistoryResult:
-    zone = tz or _local_tz()
     if date_from or date_to:
         start = date.fromisoformat(date_from) if date_from else date.min
         end = date.fromisoformat(date_to) if date_to else date.max
     else:
         if days not in ALLOWED_RANGE_DAYS:
             raise ValueError(f"days must be one of {ALLOWED_RANGE_DAYS}, got {days}")
-        end = today or datetime.now(zone).date()
+        end = today or datetime.now(tz).date()
         start = end - timedelta(days=days)
     names = {r.identifier: r.name for r in data.routines}
     picked: list[tuple[datetime, int]] = []
     for i, w in enumerate(data.workouts):
-        local = _local(w.start, zone)
+        local = _local(w.start, tz)
         if not start <= local.date() <= end:
             continue
         if routine is not None and w.routine_identifier != routine.identifier:
