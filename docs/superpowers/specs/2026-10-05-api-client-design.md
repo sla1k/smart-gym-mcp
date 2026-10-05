@@ -219,6 +219,18 @@ fields → add/remove/reorder → sections (add into warm-up / cool-down, move, 
 → reps/weights/rest → notes → `apply_routine` rewrite → archive → unarchive. Run after implementation and after every SmartGym update; `smartgym_health` warns
 when the installed app version differs from the last verified one.
 
+**Live pass 2026-10-05 on SmartGym 8.0.3 (installed binary, `ZZ-E2E`):** create with three
+sections / days + note / add mid-warm-up / move to cool-down / reorder main / sets + rest +
+note / note clear / remove / one `apply_routine` with 2 moves, 2 adds, set edits on 2
+exercises, a removal and an order change / archive / unarchive — every write "Applied …
+verified" on the server and confirmed on the iPhone. Server vs local DB: all 13 local routines
+listed, 61 server workouts ≥ 31 local, FB-A sections 5/10/5 as in the app. Found and fixed
+during the pass: one live history with `workout: null` broke the account parse (now skipped);
+`routine/add/` answers HTTP 500 to `"days": null` (unset fields are now omitted, as the app
+does); with no days the server stores its default `"0001"` ("Once per week"), so create
+verification skips days when none were given. The 500 on create was reported as "outcome
+unknown", re-read showed it had not landed, nothing was resent.
+
 ## 9. Migration
 
 1. Phase 0 spike → update §3/§4 with verified facts; pick credential sourcing.
