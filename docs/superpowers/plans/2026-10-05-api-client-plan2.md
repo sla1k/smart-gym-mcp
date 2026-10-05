@@ -21,13 +21,14 @@
 - Sections: `listGroup` 1 = warm-up, 0 = main, 2 = cool-down; `idx` runs globally warm-up → main → cool-down (spec §10.1).
 - Python `>=3.11`; mypy `strict = true` on `src`; ruff `line-length = 95`, rules `I, UP, B, SIM`. Commands: `uv run pytest`, `uv run ruff check src tests && uv run ruff format src tests`, `uv run mypy src`.
 - Commit messages: imperative, no AI/assistant attribution lines.
-- When a step says "append" to an existing test file, merge any import lines it shows into that file's top import block (ruff E402); `tests/fakes.py` is imported as `from fakes import FakeClient` (pytest puts `tests/` on the path).
+- When a step says "append" to an existing test file, merge any import lines it shows into that file's top import block (ruff E402); `tests/fakes.py` is imported as `from fakes import FakeClient` (pytest puts `tests/` on the path). ruff treats `fakes` as FIRST-party (`[tool.ruff] src = ["src", "tests"]`), so that line goes in the same import block as the `smartgym_mcp` imports, directly above them with no blank line in between — never in the `pytest` block (ruff I001).
 - The publish/tombstone workaround is committed (`1dca9f9`) and is what Task 10 removes; git history keeps it.
+- The API path (`service.py`, `api/store.py`) supersedes CLAUDE.md's DB-write rules (`lifecycle.managed_write`, `writes.mark_routine_pending`) until Task 10 rewrites CLAUDE.md; do not route API writes through `lifecycle` / `writes`.
 
 ## Review Focus
 
 1. A routine the server returns with sections out of `idx` order (the Return routines: everything `listGroup` 0, or a warm-up drill with a higher `idx` than a main exercise) → read and edited in section order, never shuffled across sections (Task 3 + Task 4 tests).
-2. An edit whose second or third request fails after the first succeeded → error names what was already sent and where the snapshot is; the same exception class (`WriteOutcomeUnknown` stays `WriteOutcomeUnknown`) reaches the caller (Task 8 test).
+2. An edit whose second or third request fails after the first succeeded → error names what was already sent, which request failed or has an unknown outcome, and where the snapshot is; on `WriteOutcomeUnknown` the service re-reads the routine once and reports whether the change landed, did not land, or landed partially (spec §7); the same exception class (`WriteOutcomeUnknown` stays `WriteOutcomeUnknown`) reaches the caller (Task 8 tests).
 3. The server accepts a write but stores something else (different rest, missing exercise, set values rounded) → `WriteVerifyError` naming each differing field instead of "Applied" (Task 8 test).
 4. Exercise added in the middle (end of warm-up) of a routine → existing exercises are renumbered in one follow-up order request with the new server id, not left with colliding `idx` (Task 4 + Task 5 + Task 8 tests).
 5. Missing, world-readable, or incomplete credentials file → every tool answers with the file path and the fix (`chmod 600`, capture script), and `smartgym_health` reports it instead of the server failing to start (Task 2 + Task 10 tests).
@@ -418,7 +419,8 @@ class FileCredentials:
             raise CredentialsError(f"{self._path} is not valid JSON. {_HINT}") from None
         if not isinstance(raw, dict):
             raise CredentialsError(f"{self._path} is not valid JSON. {_HINT}")
-        app = raw.get("app_headers") if isinstance(raw.get("app_headers"), dict) else {}
+        app_raw = raw.get("app_headers")
+        app: dict[str, object] = app_raw if isinstance(app_raw, dict) else {}
         missing = [k for k in ("authorization", "authID") if not raw.get(k)]
         missing += [f"app_headers.{h}" for h in REQUIRED_APP_HEADERS if not app.get(h)]
         if missing:
@@ -521,7 +523,7 @@ git commit -m "Add file credentials provider, app version probe and capture scri
 **Interfaces:**
 - Consumes: Plan 1 `model.py` (`ApiPayloadError`, `parse_routine`, `parse_routines_response`, coercion helpers).
 - Produces (later tasks rely on these exact names):
-  - `Section = Literal["warmup", "main", "cooldown"]`; `SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")`; `LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}`
+  - `Section = Literal["warmup", "main", "cooldown"]`; `SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")`; `LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}`; `SECTION_BY_LIST_GROUP: dict[int, Section]` (its inverse, public — the service reuses it)
   - `TemplateSet`: + `date_added: str | None` (server format `"YYYY-MM-DD HH:MM:SS"`)
   - `LoggedSet(BaseModel)`: `identifier: int`, `index: int`, `reps: float`, `weight_kg: float`, `logged_at: str`
   - `RoutineExercise`: + `section: Section`, `logged_sets: list[LoggedSet]`
@@ -724,7 +726,7 @@ from pydantic import BaseModel
 Section = Literal["warmup", "main", "cooldown"]
 SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")
 LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}
-_SECTION_BY_LIST_GROUP: dict[int, Section] = {g: s for s, g in LIST_GROUP_BY_SECTION.items()}
+SECTION_BY_LIST_GROUP: dict[int, Section] = {g: s for s, g in LIST_GROUP_BY_SECTION.items()}
 
 
 class ApiPayloadError(ValueError):
@@ -855,9 +857,9 @@ def _text(value: Any) -> str | None:
 
 def _section(raw: Mapping[str, Any]) -> Section:
     group = _int(raw, "listGroup")
-    if group not in _SECTION_BY_LIST_GROUP:
+    if group not in SECTION_BY_LIST_GROUP:
         raise ApiPayloadError(f"API field 'listGroup' = {group!r} is not a known section.")
-    return _SECTION_BY_LIST_GROUP[group]
+    return SECTION_BY_LIST_GROUP[group]
 
 
 def _parse_exercise(raw: Mapping[str, Any]) -> RoutineExercise:
@@ -984,6 +986,7 @@ def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
 __all__ = [
     "LIST_GROUP_BY_SECTION",
     "SECTIONS",
+    "SECTION_BY_LIST_GROUP",
     "AccountData",
     "ApiPayloadError",
     "EquipmentList",
@@ -1029,7 +1032,10 @@ git commit -m "Parse routine sections, logged sets, workouts and equipment from 
   - `ExerciseView(BaseModel)`: `catalog_id: int`, `section: Section`, `rest_seconds: int`, `note: str | None`, `sets: list[tuple[float, float]]` (reps, kg rounded to 3 decimals)
   - `RoutineView(BaseModel)`: `name: str`, `days / goal / note: str | None`, `exercises: list[ExerciseView]` (global order)
   - `view_of(routine: Routine) -> RoutineView`
-  - `ChangeSet`: + `expected: RoutineView` (what the routine must look like after a successful apply); + `order: list[str]` (the full final order, always set); `final_order: list[str] | None` is set only when the relative order of kept exercises changes OR an exercise is added before the last kept one (keys `"id:<identifier>"` / `"new:<index into added>"`)
+  - `ChangeSet`: + `expected: RoutineView` (what the routine must look like after a successful apply); + `order: list[str]` (the full final order, always set); `final_order: list[str] | None` (keys `"id:<identifier>"` / `"new:<index into added>"`) is set when the relative order of kept exercises changes, OR an exercise is added anywhere but after the last kept one, OR an exercise is added while the kept exercises' current `idx` are not exactly 0..n-1 (a gap from an earlier removal or inconsistent server indexes — the new `idx` would collide). Pure removals and order-keeping moves leave it `None` (the app itself leaves gaps on removal, S2).
+  - `_final_order(order: list[str], added: list[AddedExercise], active: list[RoutineExercise]) -> list[str] | None` — the single implementation of the rule above (`active` = `current.active_exercises()`); Task 6's `moves_as_readd` (same module) calls it too
+  - `round3(value: float) -> float` — the 3-decimal rounding used for every reps/kg comparison and view (public: Task 8 reuses it)
+  - `resolution_warnings(res: ExerciseResolution, sets: list[SetSpec] | None) -> list[str]` — the dry-run warnings for a newly resolved catalog exercise ("Fuzzy match: …", "… no sets given — defaulting to 1 set of 10 reps (bodyweight).") (Task 8's `create` reuses it)
   - `diff_routine(current: Routine, desired: DesiredRoutine, catalog: ExerciseCatalog) -> ChangeSet`
 
 - [ ] **Step 1: Replace `tests/test_diff.py` with the failing tests**
@@ -1298,6 +1304,28 @@ def test_section_order_wins_over_inconsistent_server_indexes() -> None:
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
     assert [e.identifier for e in routine.active_exercises()] == [10, 11, 12, 13, 14]
     assert diff_routine(routine, DesiredRoutine(**_same()), CATALOG).is_empty
+
+
+def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
+    plank = DesiredExercise(exercise="Plank")
+    cs = diff_routine(
+        _routine(),
+        DesiredRoutine(main=_ids(11, 13), cooldown=[DesiredExercise(exercise_id=14), plank]),
+        CATALOG,
+    )
+    assert [r.identifier for r in cs.removed] == [12]
+    assert cs.added[0].position == 4  # exercise 14 still has idx 4 on the server
+    assert cs.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+
+
+def test_append_to_routine_with_idx_gap_renumbers() -> None:
+    routine = _routine()
+    del routine.exercises[2]  # removed earlier without renumbering: idx 0, 1, 3, 4
+    plank = DesiredExercise(exercise="Plank")
+    cs = diff_routine(
+        routine, DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
+    )
+    assert cs.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1453,12 +1481,28 @@ class _Slot:
     resolution: ExerciseResolution | None
 
 
-def _r3(value: float) -> float:
+def round3(value: float) -> float:
     return round(float(value), 3)
 
 
 def _clean(value: str) -> str | None:
     return value.strip() or None
+
+
+def resolution_warnings(res: ExerciseResolution, sets: list[SetSpec] | None) -> list[str]:
+    """Dry-run warnings for a newly resolved catalog exercise."""
+    warnings: list[str] = []
+    if res.fuzzy:
+        warnings.append(
+            f"Fuzzy match: {res.input!r} → {res.resolved_name!r} "
+            f"(confidence {res.confidence})."
+        )
+    if not sets:
+        warnings.append(
+            f"{res.resolved_name!r}: no sets given — defaulting to 1 set of "
+            f"{DEFAULT_SET.reps:g} reps (bodyweight)."
+        )
+    return warnings
 
 
 def view_of(routine: Routine) -> RoutineView:
@@ -1473,7 +1517,7 @@ def view_of(routine: Routine) -> RoutineView:
                 section=e.section,
                 rest_seconds=e.rest_seconds,
                 note=e.note,
-                sets=[(_r3(s.reps), _r3(s.weight_kg)) for s in e.template_sets],
+                sets=[(round3(s.reps), round3(s.weight_kg)) for s in e.template_sets],
             )
             for e in routine.active_exercises()
         ],
@@ -1509,7 +1553,12 @@ def _set_edits(
             added.append(AddedSet(index=i, reps=s.reps, weight_kg=s.weight_kg))
             continue
         cur = current[i]
-        if (cur.index, _r3(cur.reps), _r3(cur.weight_kg)) != (i, _r3(s.reps), _r3(s.weight_kg)):
+        same = (cur.index, round3(cur.reps), round3(cur.weight_kg)) == (
+            i,
+            round3(s.reps),
+            round3(s.weight_kg),
+        )
+        if not same:
             updated.append(
                 UpdatedSet(identifier=cur.identifier, index=i, reps=s.reps, weight_kg=s.weight_kg)
             )
@@ -1555,14 +1604,14 @@ def _expected_existing(
 ) -> ExerciseView:
     rest = ex.rest_seconds
     note = ex.note
-    sets = [(_r3(s.reps), _r3(s.weight_kg)) for s in ex.template_sets]
+    sets = [(round3(s.reps), round3(s.weight_kg)) for s in ex.template_sets]
     if want is not None:
         if want.rest_seconds is not None:
             rest = want.rest_seconds
         if want.note is not None:
             note = _clean(want.note)
         if want.sets is not None:
-            sets = [(_r3(s.reps), _r3(s.weight_kg)) for s in want.sets]
+            sets = [(round3(s.reps), round3(s.weight_kg)) for s in want.sets]
     return ExerciseView(
         catalog_id=ex.catalog_id, section=section, rest_seconds=rest, note=note, sets=sets
     )
@@ -1624,18 +1673,29 @@ def _slots(
         except UnresolvedExercise as exc:
             problems.append(f"{label}: {exc}")
             continue
-        if res.fuzzy:
-            warnings.append(
-                f"Fuzzy match: {res.input!r} → {res.resolved_name!r} "
-                f"(confidence {res.confidence})."
-            )
-        if not want.sets:
-            warnings.append(
-                f"{res.resolved_name!r}: no sets given — defaulting to 1 set of "
-                f"{DEFAULT_SET.reps:g} reps (bodyweight)."
-            )
+        warnings.extend(resolution_warnings(res, want.sets))
         slots.append(_Slot(None, want, res))
     return slots
+
+
+def _final_order(
+    order: list[str], added: list[AddedExercise], active: list[RoutineExercise]
+) -> list[str] | None:
+    """`order` when the server must renumber `idx`, None when every kept exercise keeps it.
+
+    An append counts as "no renumbering" only when the kept exercises' current idx are
+    exactly 0..n-1; otherwise the new exercise's idx would collide with an existing one.
+    """
+    by_key = {f"id:{e.identifier}": e for e in active}
+    kept = [k for k in order if k in by_key]
+    kept_set = set(kept)
+    if kept != [k for k in by_key if k in kept_set]:
+        return order
+    if not added:
+        return None
+    contiguous = [by_key[k].index for k in kept] == list(range(len(kept)))
+    appended = all(a.position >= len(kept) for a in added)
+    return None if contiguous and appended else order
 
 
 def diff_routine(
@@ -1688,14 +1748,11 @@ def diff_routine(
                     section=section,
                     rest_seconds=new.rest_seconds,
                     note=new.note,
-                    sets=[(_r3(s.reps), _r3(s.weight_kg)) for s in sets],
+                    sets=[(round3(s.reps), round3(s.weight_kg)) for s in sets],
                 )
             )
 
-    kept = [k for k in order if k.startswith("id:")]
-    current_kept = [f"id:{e.identifier}" for e in active if f"id:{e.identifier}" in kept]
-    appended_only = all(a.position >= len(kept) for a in added)
-    final_order = None if kept == current_kept and appended_only else order
+    kept = set(order)
     removed = [
         RemovedExercise(identifier=e.identifier, name=e.name)
         for e in active
@@ -1704,7 +1761,7 @@ def diff_routine(
     fields = {c.field: c.new for c in routine_changes}
 
     def pick(field: str, old: str | None) -> str | None:
-        return fields[field] if field in fields else old
+        return fields.get(field, old)
 
     return ChangeSet(
         routine_identifier=current.identifier,
@@ -1714,7 +1771,7 @@ def diff_routine(
         removed=removed,
         updated=updated,
         order=order,
-        final_order=final_order,
+        final_order=_final_order(order, added, active),
         warnings=warnings,
         expected=RoutineView(
             name=pick("name", current.name) or current.name,
@@ -1740,6 +1797,8 @@ __all__ = [
     "RoutineView",
     "UpdatedSet",
     "diff_routine",
+    "resolution_warnings",
+    "round3",
     "view_of",
 ]
 ```
@@ -1747,7 +1806,7 @@ __all__ = [
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_diff.py -v && uv run pytest -q && uv run mypy src && uv run ruff check src tests && uv run ruff format src tests`
-Expected: 22 passed; full suite passes; mypy/ruff clean.
+Expected: 23 passed; full suite passes; mypy/ruff clean.
 
 - [ ] **Step 5: Commit**
 
@@ -2420,7 +2479,7 @@ The S7 captures (Task 1) decide the encoding. The code below implements the expe
 - Test: `tests/test_payloads.py`, `tests/test_diff.py` (extend)
 
 **Interfaces:**
-- Consumes: Task 1 fixtures `update_move_to_warmup`, `update_move_to_cooldown`, `update_reorder_warmup`, `update_add_to_warmup`, `update_remove_two`, `update_clear_note`; Task 4 `ChangeSet.order` / `final_order`; Task 5 `encode_change`, `order_form`.
+- Consumes: Task 1 fixtures `update_move_to_warmup`, `update_move_to_cooldown`, `update_reorder_warmup`, `update_add_to_warmup`, `update_add_to_cooldown`, `update_remove_two`, `update_clear_note` (each `{"method", "path", "query", "form", "response"}`); Task 4 `ChangeSet` (`order`, `final_order`, `expected`, `added`, `removed`, `updated`, `warnings`), `AddedExercise`, `RemovedExercise`, `ExerciseUpdate.new_section`, and the module-private rule helper `_final_order(order: list[str], added: list[AddedExercise], active: list[RoutineExercise]) -> list[str] | None` in `diff.py` (returns `order` when `idx` must be renumbered — kept order changed, or an add that is not a pure append onto kept `idx` 0..n-1 — else `None`); Task 5 `encode_change(cs, current, catalog, *, timezone, now, mint) -> EncodedChange`, `order_form(cs, current, added_ids, *, timezone)`, `LIST_GROUP_BY_SECTION`; Task 5's test helpers in `tests/test_payloads.py`: `_encode`, `_norm`, `_fixture_form`, `_counter`, `TZ`, `NOW`.
 - Produces:
   - `payloads.SECTION_MOVE_IN_PLACE: bool` — `True` when S7 showed an in-place move, else `False`
   - `diff.moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet` — turns every section move into remove + re-add (same catalog exercise, rest, note, template sets) with a warning per moved exercise
@@ -2509,7 +2568,79 @@ def test_rest_and_move_merge_into_one_entry() -> None:
     assert _norm(enc.structure or {})["updateExercises"] == [
         {"exerciseID": 2, "pause": "45", "listGroup": "1"}
     ]
+
+
+# Routine layout right before Task 1 Step 3 edit 4 (add at end of warm-up) and edit 5
+# (add at end of cool-down): the new exercise's global idx is what the app sends.
+ADD_TO_WARMUP_LAYOUT = [
+    (1, "warmup"), (2, "warmup"), (3, "main"), (4, "main"), (5, "cooldown"), (6, "cooldown")
+]
+ADD_TO_COOLDOWN_LAYOUT = [
+    (1, "warmup"), (2, "warmup"), (7, "warmup"), (3, "main"), (4, "main"),
+    (5, "cooldown"), (6, "cooldown"),
+]
+ADDED_KEYS = (
+    "id", "genericID", "name", "idx", "index", "pause", "listGroup", "routineID", "type",
+    "category", "isCustom", "isSingleWeight", "requiresBands", "isStretch", "stretch",
+    "twoSides", "firstImage", "secondImage",
+)
+
+
+def _check_capture_add(
+    fixture: str, section: str, layout: list[tuple[int, str]]
+) -> ChangeSet:
+    app = _fixture_form(fixture)
+    (app_ex,) = app["exercises"]  # type: ignore[misc]
+    cat = CatalogExercise(
+        id=int(app_ex["id"]), name=str(app_ex["name"]), type=int(app_ex["type"]),
+        category=int(app_ex["category"]), sub_categories=str(app_ex.get("subCategories", "")),
+        two_sides=int(app_ex["twoSides"]), stretch=int(app_ex["stretch"]),
+        equipment_ids=("38",) if app_ex["requiresBands"] else (),
+        images=tuple(  # type: ignore[arg-type]
+            str(app_ex.get(f"{n}Image", ""))
+            for n in ("first", "second", "third", "fourth", "fifth", "sixth")
+        ),
+    )
+    current = _capture_routine(app, layout)
+    new = DesiredExercise(
+        exercise=cat.name,
+        rest_seconds=int(app_ex["pause"]),
+        note=app_ex.get("note"),
+        sets=[SetSpec(reps=1)] * len(app_ex["sets"]),  # the app's default new set has 0 reps
+    )
+    keep = [DesiredExercise(exercise_id=i) for i, sec in layout if sec == section]
+    cs = diff_routine(
+        current, DesiredRoutine(**{section: [*keep, new]}), ExerciseCatalog([(cat.id, cat.name)])
+    )
+    enc = encode_change(cs, current, {cat.id: cat}, timezone=TZ, now=NOW, mint=_counter())
+    ours = _norm(enc.structure or {})
+    (our_ex,) = ours["exercises"]  # type: ignore[misc]
+    # Our order (if any) goes in a follow-up request that carries the new server id.
+    assert {k: v for k, v in ours.items() if k != "exercises"} == {
+        k: v for k, v in app.items() if k not in ("exercises", "exercisesOrder")
+    }
+    assert set(app_ex) - set(our_ex) == {"identifier"}
+    assert set(our_ex) - set(app_ex) <= {"subCategories", "mode"}
+    for key in ADDED_KEYS:
+        assert our_ex[key] == app_ex[key], key
+    assert len(our_ex["sets"]) == len(app_ex["sets"])
+    assert set(our_ex["sets"][0]) == set(app_ex["sets"][0])
+    return cs
+
+
+def test_add_to_end_of_warmup_matches_capture() -> None:
+    cs = _check_capture_add("update_add_to_warmup", "warmup", ADD_TO_WARMUP_LAYOUT)
+    assert cs.added[0].position == 2
+    assert cs.final_order == ["id:1", "id:2", "new:0", "id:3", "id:4", "id:5", "id:6"]
+
+
+def test_add_to_end_of_cooldown_matches_capture() -> None:
+    cs = _check_capture_add("update_add_to_cooldown", "cooldown", ADD_TO_COOLDOWN_LAYOUT)
+    assert cs.added[0].position == 7
+    assert cs.final_order is None
 ```
+
+Merge `ChangeSet` into the file's existing `from smartgym_mcp.diff import …` line.
 
 Append to `tests/test_diff.py`:
 
@@ -2537,12 +2668,12 @@ def test_moves_as_readd_is_identity_without_moves() -> None:
     assert moves_as_readd(cs, _routine()) == cs
 ```
 
-The S7 layouts in the first three tests mirror Task 1 Step 3's scenario (warm-up: Shoulder Circling, Bridge; main: Push Up, Squat, Plank; cool-down: Cross Arm Stretch). If the user's capture used a different layout, adjust the `layout` lists to it — the assertions stay the same.
+The S7 layouts in the move / reorder tests and `ADD_TO_WARMUP_LAYOUT` / `ADD_TO_COOLDOWN_LAYOUT` mirror Task 1 Step 3's scenario (start — warm-up: Shoulder Circling, Bridge; main: Push Up, Squat, Plank; cool-down: Cross Arm Stretch; then edits 1–3 move Push Up to warm-up, Bridge to cool-down, swap warm-up). If the user's capture used a different layout, adjust the layout lists to it — the assertions stay the same. If `update_add_to_warmup` shows the app sending `exercisesOrder` in the same request as the added exercise, record that in spec §10.3 and ledger it; the follow-up order request stays (only it can carry the new exercise's server id).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_payloads.py tests/test_diff.py -v`
-Expected: FAIL — `tests/test_diff.py`: `ImportError: cannot import name 'moves_as_readd'`; `tests/test_payloads.py`: the two move goldens and `test_rest_and_move_merge_into_one_entry` fail because `updateExercises` has no `listGroup`.
+Expected: FAIL — `tests/test_diff.py`: `ImportError: cannot import name 'moves_as_readd'`; `tests/test_payloads.py`: the two move goldens and `test_rest_and_move_merge_into_one_entry` fail because `updateExercises` has no `listGroup`. (The reorder / remove-two / clear-note / add goldens exercise Task 5 code and may already pass — they pin the S7 shapes.)
 
 - [ ] **Step 3: Implement the in-place move encoding**
 
@@ -2562,12 +2693,19 @@ def _update_entry(u: ExerciseUpdate) -> dict[str, Any] | None:
         if c.field == "rest_seconds":
             entry["pause"] = c.new
     if u.new_section is not None:
+        if not SECTION_MOVE_IN_PLACE:
+            raise ValueError(
+                "Section moves must be expressed with diff.moves_as_readd: the server has no "
+                "in-place move (spec §10.4)."
+            )
         entry["listGroup"] = str(LIST_GROUP_BY_SECTION[u.new_section])
     if not entry:
         return None
     entry["exerciseID"] = u.identifier
     return entry
 ```
+
+`listGroup` is emitted only when `SECTION_MOVE_IN_PLACE` is True; with the fallback the service has already turned every move into remove + re-add, so a remaining move is a bug and raises instead of sending an unverified shape.
 
 Add `"SECTION_MOVE_IN_PLACE"` to `__all__`.
 
@@ -2603,11 +2741,6 @@ def moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet:
                 sets=[SetSpec.model_construct(reps=r, weight_kg=w) for r, w in view.sets],
             )
         )
-    kept = [k for k in order if k.startswith("id:")]
-    current_kept = [
-        f"id:{e.identifier}" for e in current.active_exercises() if f"id:{e.identifier}" in kept
-    ]
-    appended_only = all(a.position >= len(kept) for a in added)
     warnings = cs.warnings + [
         f"{u.name!r} moves by remove + re-add (no in-place section move); its recent "
         "sessions in this routine restart."
@@ -2619,18 +2752,18 @@ def moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet:
             "removed": removed,
             "updated": updated,
             "order": order,
-            "final_order": None if kept == current_kept and appended_only else order,
+            "final_order": _final_order(order, added, current.active_exercises()),
             "warnings": warnings,
         }
     )
 ```
 
-If Task 1 recorded "no in-place move", set `SECTION_MOVE_IN_PLACE = False` and delete the two move goldens (`test_move_main_to_warmup_matches_capture`, `test_move_warmup_to_cooldown_matches_capture`), ledgering why.
+If Task 1 recorded "no in-place move", set `SECTION_MOVE_IN_PLACE = False` and delete the two move goldens (`test_move_main_to_warmup_matches_capture`, `test_move_warmup_to_cooldown_matches_capture`) AND `test_rest_and_move_merge_into_one_entry` (it asserts the in-place shape), ledgering why.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_payloads.py tests/test_diff.py -v && uv run pytest -q && uv run mypy src && uv run ruff check src tests && uv run ruff format src tests`
-Expected: all pass; mypy/ruff clean. A golden that still differs means the capture shows a different shape: encode exactly the fixture's keys (it is the authority), update spec §10.3 if needed, ledger the ruling.
+Expected: `tests/test_payloads.py` 30 passed (Task 5's 22 + 8 new: 5 S7 goldens, the rest+move merge, 2 add goldens), `tests/test_diff.py` 25 passed (23 + 2); with the fallback (3 tests deleted) `tests/test_payloads.py` 27; full suite passes; mypy/ruff clean. A golden that still differs means the capture shows a different shape: encode exactly the fixture's keys (it is the authority), update spec §10.3 if needed, ledger the ruling.
 
 - [ ] **Step 6: Commit**
 
@@ -2747,8 +2880,8 @@ import json
 from pathlib import Path
 
 import pytest
-from fakes import FakeClient
 
+from fakes import FakeClient
 from smartgym_mcp.api.store import AccountStore, AmbiguousRoutine, RoutineNotFound
 from smartgym_mcp.model import ApiPayloadError
 
@@ -3078,7 +3211,7 @@ git commit -m "Add account store, routine snapshots and server error codes"
 - Test: `tests/test_service.py`, `tests/test_builders.py`
 
 **Interfaces:**
-- Consumes: `api.client.ApiCalls`, `ApiError` (+ subclasses) (Task 7 / Plan 1); `api.store.AccountStore` (Task 7); `snapshots.save_snapshot` (Task 7); `diff.diff_routine`, `moves_as_readd`, `view_of`, `DesiredRoutine`, `DesiredExercise`, `ChangeSet`, `RoutineView`, `ExerciseView`, `DiffError`, `DEFAULT_SET` (Tasks 4, 6); `payloads.encode_change`, `order_form`, `new_routine_payload`, `add_routines_form`, `archive_form`, `unarchive_form`, `routine_entries`, `mint_unique_hashid`, `Mint`, `SECTION_MOVE_IN_PLACE` (Tasks 5, 6); `model.parse_routine`, `ApiPayloadError`, `LIST_GROUP_BY_SECTION`, `Routine`, `Section` (Task 3); `matching.ExerciseCatalog`, `UnresolvedExercise`; `models.RoutineSpec`, `ExerciseResolution`, `SetSpec`; `catalog.CatalogExercise`; `tests/fakes.FakeClient`.
+- Consumes: `api.client.ApiCalls`, `ApiError`, `WriteOutcomeUnknown` (+ other subclasses; all take `(message, *, code=None)`) (Task 7 / Plan 1); `api.store.AccountStore`, `RoutineNotFound(ValueError)` (Task 7); `snapshots.save_snapshot` (Task 7); `diff.diff_routine`, `moves_as_readd`, `view_of`, `DesiredRoutine`, `DesiredExercise`, `ChangeSet`, `RoutineView`, `ExerciseView`, `DiffError`, `DEFAULT_SET` (Tasks 4, 6); `diff.round3(value: float) -> float` (3-decimal rounding used by every view) and `diff.resolution_warnings(res: ExerciseResolution, sets: list[SetSpec] | None) -> list[str]` (fuzzy-match + default-set dry-run warnings) (Task 4); `payloads.encode_change`, `order_form`, `new_routine_payload`, `add_routines_form`, `archive_form`, `unarchive_form`, `routine_entries`, `mint_unique_hashid`, `Mint`, `SECTION_MOVE_IN_PLACE` (Tasks 5, 6); `model.parse_routine`, `ApiPayloadError`, `SECTION_BY_LIST_GROUP: dict[int, Section]` (listGroup → section), `Routine`, `Section` (Task 3); `matching.ExerciseCatalog`, `UnresolvedExercise`; `models.RoutineSpec`, `ExerciseResolution`, `SetSpec`; `catalog.CatalogExercise`; `tests/fakes.FakeClient`.
 - Produces:
   - `service.WriteVerifyError(RuntimeError)`
   - `service.RoutineId(BaseModel)`: `identifier: int`, `name: str`
@@ -3088,7 +3221,7 @@ git commit -m "Add account store, routine snapshots and server error codes"
   - `service.ArchiveResult(BaseModel)`: `dry_run: bool`, `archived: bool`, `routines: list[RoutineId]`, `skipped: list[RoutineId]`, `notice: str`
   - `service.compare_views(expected: RoutineView, actual: RoutineView) -> list[str]`
   - `service.RoutineService(client, store, catalog, bundle: Mapping[int, CatalogExercise], *, backup_dir: Path, timezone: str, now: Callable[[], datetime] = <local now>, mint: Mint = mint_unique_hashid, move_in_place: bool = SECTION_MOVE_IN_PLACE)` with
-    - `edit(ref: str | int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool) -> EditResult`
+    - `edit(ref: str | int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool) -> EditResult` — a failing send re-raises the same exception class with "Already sent: …", "Failed: <path>" or "Outcome unknown: <path>", and the snapshot path; on `WriteOutcomeUnknown` it first re-reads the routine once and appends whether the change landed, did not land, or landed partially (spec §7); a failing verification read re-raises its class with the sent requests and the snapshot path
     - `edit_exercise(exercise_id: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool) -> EditResult` (routine found by exercise)
     - `create(specs: Sequence[RoutineSpec], *, dry_run: bool) -> CreateResult`
     - `set_archived(refs: Sequence[str | int], *, archived: bool, dry_run: bool) -> ArchiveResult`
@@ -3209,8 +3342,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fakes import FakeClient
 
+from fakes import FakeClient
 from smartgym_mcp.api.client import WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
@@ -3323,7 +3456,27 @@ def test_failure_after_first_request_keeps_class_and_reports_progress(tmp_path: 
         _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
     message = str(exc.value)
     assert "Already sent: routine/update/" in message and "Snapshot" in message
+    assert "Outcome unknown: routine/updateExercise/" in message
     assert [path for path, _ in client.sent] == ["routine/update/", "routine/updateExercise/"]
+
+
+@pytest.mark.parametrize(
+    ("pause_after", "verdict"),
+    [("90", "the change landed."), ("60", "the change did not land.")],
+)
+def test_unknown_outcome_rereads_and_reports_whether_it_landed(
+    tmp_path: Path, pause_after: str, verdict: str
+) -> None:
+    after = _raw_routine(WARM, {**CHEST, "pause": pause_after})
+    client = FakeClient(
+        {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)},
+        posts=[WriteOutcomeUnknown("timeout")],
+    )
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        _service(client, tmp_path).edit("ZZ-Svc", _rest(90), dry_run=False)
+    message = str(exc.value)
+    assert "Already sent: nothing" in message
+    assert "Outcome unknown: routine/update/" in message and verdict in message
 
 
 def test_mid_routine_add_sends_order_with_new_server_id(tmp_path: Path) -> None:
@@ -3419,9 +3572,17 @@ section(s) it touches and leaves the others as None (kept).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from .diff import DesiredExercise, DesiredRoutine, DiffError
 from .model import Routine, Section
 from .models import SetSpec
+
+
+def _desired(lists: Mapping[Section, list[DesiredExercise]]) -> DesiredRoutine:
+    return DesiredRoutine(
+        warmup=lists.get("warmup"), main=lists.get("main"), cooldown=lists.get("cooldown")
+    )
 
 
 def _ids(routine: Routine, section: Section) -> list[DesiredExercise]:
@@ -3457,7 +3618,7 @@ def add_exercise(
     sets: list[SetSpec] | None,
 ) -> DesiredRoutine:
     new = DesiredExercise(exercise=exercise, rest_seconds=rest_seconds, note=note, sets=sets)
-    return DesiredRoutine(**{section: _insert(_ids(routine, section), new, position)})
+    return _desired({section: _insert(_ids(routine, section), new, position)})
 
 
 def move_exercise(
@@ -3468,13 +3629,13 @@ def move_exercise(
     lists = {section: _insert(target, DesiredExercise(exercise_id=exercise_id), position)}
     if source != section:
         lists[source] = [d for d in _ids(routine, source) if d.exercise_id != exercise_id]
-    return DesiredRoutine(**lists)
+    return _desired(lists)
 
 
 def remove_exercise(routine: Routine, exercise_id: int) -> DesiredRoutine:
     section = _section_of(routine, exercise_id)
     kept = [d for d in _ids(routine, section) if d.exercise_id != exercise_id]
-    return DesiredRoutine(**{section: kept})
+    return _desired({section: kept})
 
 
 def update_exercise(
@@ -3494,7 +3655,7 @@ def update_exercise(
         else d
         for d in _ids(routine, section)
     ]
-    return DesiredRoutine(**{section: items})
+    return _desired({section: items})
 
 
 def reorder(
@@ -3521,7 +3682,7 @@ def reorder(
         lists[section] = [DesiredExercise(exercise_id=i) for i in ids]
     if problems:
         raise DiffError("Rejected — nothing was changed:\n- " + "\n- ".join(problems))
-    return DesiredRoutine(**lists)
+    return _desired(lists)
 
 
 def update_routine(
@@ -3550,7 +3711,9 @@ __all__ = [
 Every edit: resolve → fetch the routine fresh → plan (diff) → dry run returns
 the plan → snapshot → send (structure, order, exercise edits) → re-fetch →
 verify against the plan's expected view. Writes are never re-sent; a failure
-part-way names what was already sent and where the snapshot is.
+part-way names what was already sent, which request failed or has an unknown
+outcome, and where the snapshot is. After an unknown outcome the routine is
+re-read once to report whether the change landed (spec §7).
 """
 
 from __future__ import annotations
@@ -3562,8 +3725,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .api.client import ApiCalls, ApiError
-from .api.store import AccountStore
+from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
+from .api.store import AccountStore, RoutineNotFound
 from .catalog import CatalogExercise
 from .diff import (
     DEFAULT_SET,
@@ -3574,10 +3737,12 @@ from .diff import (
     RoutineView,
     diff_routine,
     moves_as_readd,
+    resolution_warnings,
+    round3,
     view_of,
 )
 from .matching import ExerciseCatalog, UnresolvedExercise
-from .model import LIST_GROUP_BY_SECTION, ApiPayloadError, Routine, Section, parse_routine
+from .model import SECTION_BY_LIST_GROUP, ApiPayloadError, Routine, parse_routine
 from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
     SECTION_MOVE_IN_PLACE,
@@ -3593,7 +3758,6 @@ from .payloads import (
 )
 from .snapshots import save_snapshot
 
-_SECTION_BY_GROUP: dict[int, Section] = {g: s for s, g in LIST_GROUP_BY_SECTION.items()}
 _DRY = "Dry run — nothing sent. Re-run with dry_run=false to apply."
 _APPLIED = (
     "Applied on the SmartGym server and verified; your iPhone and Mac show it after their "
@@ -3691,17 +3855,24 @@ def _payload_view(payload: Mapping[str, Any]) -> RoutineView:
         exercises=[
             ExerciseView(
                 catalog_id=int(e["id"]),
-                section=_SECTION_BY_GROUP[int(e["listGroup"])],
+                section=SECTION_BY_LIST_GROUP[int(e["listGroup"])],
                 rest_seconds=int(e["pause"]),
                 note=e.get("note") or None,
                 sets=[
-                    (round(float(s["secondValue"]), 3), round(float(s["thirdValue"]), 3))
+                    (round3(float(s["secondValue"])), round3(float(s["thirdValue"])))
                     for s in e["sets"]
                 ],
             )
             for e in payload["exercises"]
         ],
     )
+
+
+def _with_context(exc: Exception, suffix: str) -> Exception:
+    """The same exception class with `suffix` appended — callers match on the class."""
+    if isinstance(exc, ApiError):
+        return type(exc)(f"{exc}{suffix}", code=exc.code)
+    return type(exc)(f"{exc}{suffix}")
 
 
 class RoutineService:
@@ -3772,30 +3943,47 @@ class RoutineService:
             )
         snapshot = save_snapshot(self._backup_dir, raw, now=now)
         sent: list[str] = []
+        in_flight: list[str] = []
+
+        def send(label: str, path: str, form: dict[str, str]) -> dict[str, Any]:
+            in_flight.append(label)
+            response = self._client.post(path, form)
+            in_flight.clear()
+            sent.append(label)
+            return response
+
         try:
             added_ids: list[int] = []
             if enc.structure is not None:
-                response = self._client.post("routine/update/", enc.structure)
-                sent.append("routine/update/")
+                response = send("routine/update/", "routine/update/", enc.structure)
                 added_ids = _added_server_ids(response, enc.added_hashids)
             order = order_form(cs, current, added_ids, timezone=self._tz)
             if order is not None:
-                self._client.post("routine/update/", order)
-                sent.append("routine/update/ (order)")
+                send("routine/update/ (order)", "routine/update/", order)
             if enc.exercise_edits is not None:
-                self._client.post("routine/updateExercise/", enc.exercise_edits)
-                sent.append("routine/updateExercise/")
+                send("routine/updateExercise/", "routine/updateExercise/", enc.exercise_edits)
         except (ApiError, ApiPayloadError) as exc:
             self._store.invalidate()
-            progress = (
-                f" Already sent: {', '.join(sent) or 'nothing'}. Snapshot of the routine "
-                f"before this edit: {snapshot}. Re-read the routine before retrying."
+            progress = f" Already sent: {', '.join(sent) or 'nothing'}."
+            if isinstance(exc, WriteOutcomeUnknown):
+                progress += f" Outcome unknown: {in_flight[0]}."
+                progress += f" {self._landed(current, cs.expected)}"
+            elif in_flight:
+                progress += f" Failed: {in_flight[0]}."
+            progress += (
+                f" Snapshot of the routine before this edit: {snapshot}. Re-read the routine "
+                "before retrying."
             )
-            if isinstance(exc, ApiError):
-                raise type(exc)(f"{exc}{progress}", code=exc.code) from None
-            raise ApiPayloadError(f"{exc}{progress}") from None
+            raise _with_context(exc, progress) from None
         self._store.invalidate()
-        after = view_of(parse_routine(self._store.routine_raw(current.identifier)))
+        try:
+            after = view_of(parse_routine(self._store.routine_raw(current.identifier)))
+        except (ApiError, ApiPayloadError, RoutineNotFound) as exc:
+            raise _with_context(
+                exc,
+                f" All requests were sent ({', '.join(sent)}) but re-reading the routine to "
+                f"verify them failed. Snapshot of the routine before this edit: {snapshot}.",
+            ) from None
         problems = compare_views(cs.expected, after)
         if problems:
             raise WriteVerifyError(
@@ -3806,6 +3994,21 @@ class RoutineService:
         return EditResult(
             dry_run=False, routine=handle, changes=cs, requests=sent, snapshot=str(snapshot),
             notice=_APPLIED,
+        )
+
+    def _landed(self, current: Routine, expected: RoutineView) -> str:
+        try:
+            after = view_of(parse_routine(self._store.routine_raw(current.identifier)))
+        except (ApiError, ApiPayloadError, RoutineNotFound):
+            return "Re-reading the routine failed, so whether the change landed is unknown."
+        if after == expected:
+            return "Re-read: the change landed."
+        if after == view_of(current):
+            return "Re-read: the change did not land."
+        return (
+            "Re-read: the change landed only partially — the routine differs from the plan in: "
+            + "; ".join(compare_views(expected, after))
+            + "."
         )
 
     # ----------------------------------------------------------------- create
@@ -3840,16 +4043,7 @@ class RoutineService:
                         "exercise catalog."
                     )
                     continue
-                if res.fuzzy:
-                    warnings.append(
-                        f"Fuzzy match: {res.input!r} → {res.resolved_name!r} "
-                        f"(confidence {res.confidence})."
-                    )
-                if not ex.sets:
-                    warnings.append(
-                        f"{res.resolved_name!r}: no sets given — defaulting to 1 set of "
-                        f"{DEFAULT_SET.reps:g} reps (bodyweight)."
-                    )
+                warnings.extend(resolution_warnings(res, ex.sets))
                 resolutions.append(res)
                 cats.append(cat)
             plans.append(
@@ -3939,7 +4133,7 @@ __all__ = [
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_builders.py tests/test_service.py -v && uv run pytest -q && uv run mypy src && uv run ruff check src tests && uv run ruff format src tests`
-Expected: 10 + 11 passed; full suite passes; mypy/ruff clean.
+Expected: 10 + 13 passed (`test_service.py`: 12 functions, one parametrized ×2); full suite passes; mypy/ruff clean.
 
 - [ ] **Step 7: Commit**
 
@@ -4430,7 +4624,7 @@ git commit -m "Add read views with sections, sessions, history and equipment"
 - Delete: `src/smartgym_mcp/db.py`, `lifecycle.py`, `writes.py`, `queries.py`; `tests/test_create_program.py`, `test_db_readonly.py`, `test_pk_and_hashid.py`, `test_read_tools.py`, `test_write_safety.py`, `test_write_tools.py`
 - Modify: `tests/conftest.py` (drop live-DB fixtures), `tests/test_bundle_catalog.py` (`.z_pk` → `.catalog_id`)
 - Create: `tests/test_matching.py`, `tests/test_server.py`
-- Modify: `smartgym-mcp.spec` (bundle certifi CA data), `README.md`, `DESIGN.md`, `FEATURES.md`, `CLAUDE.md`
+- Modify: `smartgym-mcp.spec` (bundle certifi CA data), `README.md`, `DESIGN.md`, `FEATURES.md`, `CLAUDE.md`, `docs/superpowers/specs/2026-10-05-api-client-design.md` (§5 invariant 3, §10.3 wording)
 
 **Interfaces:**
 - Consumes: everything from Tasks 2–9.
@@ -4494,7 +4688,6 @@ from types import SimpleNamespace
 from typing import Any
 
 from fakes import FakeClient
-
 from smartgym_mcp import server
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.config import load_config
@@ -4565,7 +4758,7 @@ Expected: FAIL — `AttributeError: 'ExerciseResolution' object has no attribute
 - [ ] **Step 3: Rename `z_pk` → `catalog_id` and drop the DB catalog loader**
 
 Run `grep -rn "z_pk" src tests` and change every hit that belongs to `ExerciseResolution` / `ExerciseCatalog` (the DB-bound files are deleted in Step 5, so ignore hits in them):
-- `models.py`: `class ExerciseResolution` field `z_pk: int` → `catalog_id: int`.
+- `models.py`: `class ExerciseResolution` field `z_pk: int` → `catalog_id: int`; `class ExerciseSpec` field `exercise` description "Catalog exercise name (fuzzy-matched) or a numeric z_pk" → "Catalog exercise name (fuzzy-matched) or a numeric catalog id".
 - `matching.py`: module docstring → "Deterministic exercise-name resolution against the app-bundle catalog. Numeric → catalog id; else exact case-insensitive name; else normalized token-set fuzzy match with threshold 0.85. Anything below threshold fails with top candidates — nothing silently wrong is ever resolved. No LLM."; delete `import sqlite3` and the `load` classmethod; `_Entry.z_pk` → `catalog_id`; `self._by_pk` → `self._by_id`; every `z_pk=` keyword → `catalog_id=`; messages `z_pk={s}` → `id={s}` and `(z_pk={e.z_pk}, …)` → `(id={e.catalog_id}, …)`; `from_bundle` docstring → "Catalog from the app bundle."; `resolve` docstring "(name or numeric catalog id)".
 - `diff.py`: `catalog_id=slot.resolution.z_pk` → `catalog_id=slot.resolution.catalog_id`.
 - `service.py`: `self._bundle.get(res.z_pk)` → `self._bundle.get(res.catalog_id)`.
@@ -5089,6 +5282,10 @@ In `smartgym-mcp.spec` add `from PyInstaller.utils.hooks import collect_data_fil
 - Replace "Architecture invariants" with: 1. Tools in `server.py` are thin — no HTTP or payload code in tool bodies. 2. Every write = fetch fresh → plan (`diff.py`) → dry run returns the plan → snapshot → send → re-fetch → verify (`service.py`). 3. Every edit of an existing routine goes through `diff_routine`; single-field tools are `builders.py` wrappers. 4. Only template sets are changed; logged history is never touched. 5. Credentials only via `api/auth.py`; never logged or returned. 6. Before trusting a new kind of server write, capture the app doing it and add a golden fixture (`tests/fixtures/api/`).
 - Add "## Decision log (2026-10-06, API client)": DB write path + publish/tombstone retired; credentials = user-captured 0600 file (`phrase` unchecked by the server, app headers required); sections modelled as three lists (user choice A); routine delete stays out (archive only).
 
+`docs/superpowers/specs/2026-10-05-api-client-design.md`:
+- §5 invariant 3 → "Every edit of an existing routine goes through `diff.py` → one diff per call, sent as at most three requests in this order: `routine/update/` (structure: routine fields, rest, section moves, added and removed exercises), `routine/update/` (order, only when `idx` must be renumbered), `routine/updateExercise/` (exercise notes and template sets)."
+- §10.3, first bullet → "`ChangeSet` records a section move as a per-exercise `FieldChange("section", old, new)`. `final_order` (and the wire `idx`) is the global order warm-up → main → cool-down, sent as a follow-up `exercisesOrder` request renumbered 0..n-1 whenever the kept exercises' relative order changes, an exercise is added anywhere but after the last kept one, or an exercise is added while the kept `idx` are not exactly 0..n-1 (so a new `idx` never collides). Pure removals and order-keeping moves leave gaps, as the app itself does (S2)."
+
 `FEATURES.md` F7: replace the body with "Decision 2026-10-05: archive only (`smartgym_archive_routines`). The server's `routine/delete/` endpoint is captured (2026-10-05) but deliberately not exposed."
 
 `CLAUDE.md` working rules: replace the DB-specific rules with — follow DESIGN.md invariants (thin tools, every write through `service.RoutineService`, every edit through `diff_routine`); live checks only on `ZZ-` routines with the user confirming on the iPhone; snapshots land in `~/.smartgym-mcp/backups/<ts>/`; before trusting a new kind of server write, capture the app doing it first; tests never touch the network or the account (fixtures + `tests/fakes.FakeClient`). Commands: drop the DB-only notes.
@@ -5096,7 +5293,7 @@ In `smartgym-mcp.spec` add `from PyInstaller.utils.hooks import collect_data_fil
 - [ ] **Step 10: Commit**
 
 ```bash
-git add -A src tests smartgym-mcp.spec README.md DESIGN.md FEATURES.md CLAUDE.md
+git add -A src tests smartgym-mcp.spec README.md DESIGN.md FEATURES.md CLAUDE.md docs/superpowers/specs/2026-10-05-api-client-design.md
 git commit -m "Serve all tools from the SmartGym API and retire the DB write path"
 ```
 
