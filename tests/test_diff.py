@@ -9,6 +9,7 @@ from smartgym_mcp.diff import (
     DesiredRoutine,
     DiffError,
     diff_routine,
+    moves_as_readd,
     view_of,
 )
 from smartgym_mcp.matching import ExerciseCatalog
@@ -344,3 +345,36 @@ def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
     (upd,) = cs.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
     assert cs.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
+
+
+def test_moves_as_readd_turns_a_move_into_remove_plus_add() -> None:
+    cs = diff_routine(_routine(), DesiredRoutine(warmup=_ids(10, 13)), CATALOG)
+    fallback = moves_as_readd(cs, _routine())
+    assert [r.identifier for r in fallback.removed] == [13]
+    (added,) = fallback.added
+    assert (added.catalog_id, added.section, added.position, added.note) == (
+        194,
+        "warmup",
+        1,
+        "Slow",
+    )
+    assert [(s.reps, s.weight_kg) for s in added.sets] == [(15, 0)]
+    assert fallback.updated == []
+    assert fallback.final_order == ["id:10", "new:0", "id:11", "id:12", "id:14"]
+    assert any("re-add" in w for w in fallback.warnings)
+    assert fallback.expected == cs.expected
+
+
+def test_moves_as_readd_keeps_other_edits_of_the_moved_exercise() -> None:
+    moved = DesiredExercise(exercise_id=13, rest_seconds=90, sets=[SetSpec(reps=20)])
+    cs = diff_routine(_routine(), DesiredRoutine(cooldown=[*_ids(14), moved]), CATALOG)
+    fallback = moves_as_readd(cs, _routine())
+    (added,) = fallback.added
+    assert (added.section, added.position, added.rest_seconds) == ("cooldown", 4, 90)
+    assert [(s.reps, s.weight_kg) for s in added.sets] == [(20, 0)]
+    assert fallback.updated == []
+
+
+def test_moves_as_readd_is_identity_without_moves() -> None:
+    cs = diff_routine(_routine(), DesiredRoutine(main=_ids(13, 11, 12)), CATALOG)
+    assert moves_as_readd(cs, _routine()) == cs
