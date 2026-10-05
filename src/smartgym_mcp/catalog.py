@@ -79,3 +79,28 @@ def load_bundle_exercises(cfg: Config) -> list[CatalogExercise]:
         )
         for e in raw
     ]
+
+
+@dataclass(frozen=True)
+class CatalogEquipment:
+    """One bundle equipment entry; `id` matches the ids in equipment lists."""
+
+    id: int
+    name: str
+    category: int
+
+
+def load_bundle_equipment(cfg: Config) -> list[CatalogEquipment]:
+    raw = json.loads(read_catalog(cfg, "equipment"))["equipments"]
+    out: list[CatalogEquipment] = []
+    for e in raw:
+        name = e.get("name")
+        label = name.get("en") if isinstance(name, dict) else name
+        out.append(
+            CatalogEquipment(
+                id=int(e["identifier"]),
+                name=str(label or e["identifier"]),
+                category=int(e.get("category") or 0),
+            )
+        )
+    return out

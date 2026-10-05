@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from smartgym_mcp.catalog import load_bundle_exercises
+from smartgym_mcp.catalog import load_bundle_equipment, load_bundle_exercises
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.matching import ExerciseCatalog, UnresolvedExercise
 
@@ -78,3 +78,26 @@ def test_from_bundle_resolves_to_catalog_id(bundle_cfg: Config) -> None:
     assert catalog.resolve("363").resolved_name == "Resistance Band Pull Apart"
     with pytest.raises(UnresolvedExercise):
         catalog.resolve("Zercher squat")
+
+
+def test_load_bundle_equipment_uses_english_names(bundle_cfg: Config) -> None:
+    resources = bundle_cfg.app_bundle / "Contents" / "Resources"
+    (resources / "Equipments.json").write_text(
+        json.dumps(
+            {
+                "equipments": [
+                    {
+                        "identifier": "1",
+                        "category": "1",
+                        "name": {"en": "Barbell", "de": "Langhantel"},
+                    },
+                    {"identifier": "38", "category": "3", "name": "Resistance Band"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert [(e.id, e.name, e.category) for e in load_bundle_equipment(bundle_cfg)] == [
+        (1, "Barbell", 1),
+        (38, "Resistance Band", 3),
+    ]
