@@ -21,3 +21,5 @@ dist/
 
 # spec
 specs/
+scripts/spike/spike-flows.jsonl
+scripts/spike/*_form.json
