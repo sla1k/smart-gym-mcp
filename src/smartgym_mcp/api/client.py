@@ -29,6 +29,23 @@ class CredentialProvider(Protocol):
     def user_id(self) -> str: ...
 
 
+class ApiCalls(Protocol):
+    """What the store and the service need from a client (ApiClient or a test fake)."""
+
+    @property
+    def user_id(self) -> str: ...
+
+    def get(
+        self,
+        path: str,
+        params: Mapping[str, str] | None = None,
+        *,
+        require_success: bool = True,
+    ) -> dict[str, Any]: ...
+
+    def post(self, path: str, form: Mapping[str, str]) -> dict[str, Any]: ...
+
+
 class ApiError(RuntimeError):
     def __init__(self, message: str, *, code: str | None = None) -> None:
         super().__init__(message)
@@ -71,6 +88,10 @@ class ApiClient:
 
     def close(self) -> None:
         self._http.close()
+
+    @property
+    def user_id(self) -> str:
+        return self._credentials.user_id
 
     def _common(self) -> dict[str, str]:
         return {
@@ -128,14 +149,31 @@ class ApiClient:
         return self._decode(path, resp, require_success=True)
 
     @staticmethod
-    def _decode(path: str, resp: httpx.Response, require_success: bool) -> dict[str, Any]:
+    def _server_code(resp: httpx.Response) -> str | None:
+        try:
+            body = resp.json()
+        except ValueError:
+            return None
+        code = body.get("code") if isinstance(body, dict) else None
+        return str(code) if code is not None else None
+
+    @classmethod
+    def _decode(cls, path: str, resp: httpx.Response, require_success: bool) -> dict[str, Any]:
         if resp.status_code in (401, 403):
+            code = cls._server_code(resp)
             raise AuthError(
-                f"SmartGym rejected the credentials (HTTP {resp.status_code}) on {path}. "
-                "Refresh the SmartGym credentials and retry."
+                f"SmartGym rejected the credentials (HTTP {resp.status_code}"
+                f"{', ' + code if code else ''}) on {path}. "
+                "Re-run scripts/capture_credentials.py and retry.",
+                code=code,
             )
         if not 200 <= resp.status_code < 300:
-            raise ApiError(f"SmartGym answered HTTP {resp.status_code} on {path}.")
+            code = cls._server_code(resp)
+            raise ApiError(
+                f"SmartGym answered HTTP {resp.status_code}{' ' + code if code else ''} "
+                f"on {path}.",
+                code=code,
+            )
         try:
             body = resp.json()
         except ValueError:
@@ -144,12 +182,16 @@ class ApiClient:
             raise ApiError(f"SmartGym returned an unexpected JSON shape on {path}.")
         code = body.get("code")
         if require_success and code != "SUCCESS":
-            raise ApiError(f"SmartGym answered {code!r} on {path}.", code=str(code))
+            raise ApiError(
+                f"SmartGym answered {code!r} on {path}.",
+                code=str(code) if code is not None else None,
+            )
         return body
 
 
 __all__ = [
     "BASE_URL",
+    "ApiCalls",
     "ApiClient",
     "ApiError",
     "AuthError",
