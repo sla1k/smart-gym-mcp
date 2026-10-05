@@ -1,0 +1,62 @@
+{
+  "code": "SUCCESS",
+  "lastModified": "2026-10-01 16:25:09",
+  "hasMore": false,
+  "routines": [
+    {
+      "identifier": "3000001",
+      "uniqueHashID": "26091100000001",
+      "days": "0001",
+      "reference": "0",
+      "number": "18",
+      "goal": "",
+      "dateCreated": "2026-09-11 08:34:19",
+      "name": "ZZ-FB — Test",
+      "note": "Routine note",
+      "dateRemoved": null,
+      "dateArchived": null,
+      "userID": "1",
+      "migratedSets": "1",
+      "source": "cloud",
+      "exercises": [
+        {
+          "id": "363", "name": "Resistance Band Pull Apart", "type": "0", "isCustom": "0",
+          "identifier": "40000001", "uniqueHashID": "26091100000011", "idx": "1",
+          "pause": "10", "note": null, "dateRemoved": null, "mode": "0", "routineID": "3000001",
+          "listGroup": "0",
+          "sets": [
+            {"identifier": "50000002", "uniqueHashID": "26091100000102", "firstValue": "1",
+             "secondValue": "15", "thirdValue": "0", "type": "0", "index": "1",
+             "dateRemoved": null, "dateLogged": null},
+            {"identifier": "50000001", "uniqueHashID": "26091100000101", "firstValue": "1",
+             "secondValue": "19", "thirdValue": "0", "type": "0", "index": "0",
+             "dateRemoved": null, "dateLogged": null},
+            {"identifier": "50000003", "uniqueHashID": "26091100000103", "firstValue": "1",
+             "secondValue": "20", "thirdValue": "0", "type": "0", "index": "0",
+             "dateRemoved": null, "dateLogged": "2026-09-14 10:00:00"},
+            {"identifier": "50000004", "uniqueHashID": "26091100000104", "firstValue": "1",
+             "secondValue": "8", "thirdValue": "0", "type": "0", "index": "2",
+             "dateRemoved": "2026-09-12 00:00:00", "dateLogged": null}
+          ]
+        },
+        {
+          "id": "207", "name": "Cable Chest Press", "type": "0", "isCustom": "0",
+          "identifier": "40000002", "uniqueHashID": "26091100000012", "idx": "0",
+          "pause": "75", "note": "", "dateRemoved": null, "mode": "0", "routineID": "3000001",
+          "listGroup": "0",
+          "sets": [
+            {"identifier": "50000011", "uniqueHashID": "26091100000111", "firstValue": "1",
+             "secondValue": "10", "thirdValue": "42.5", "type": "0", "index": "0",
+             "dateRemoved": null, "dateLogged": null}
+          ]
+        },
+        {
+          "id": "140", "name": "Bridge", "type": "1", "isCustom": "0",
+          "identifier": "40000003", "uniqueHashID": "26091100000013", "idx": "2",
+          "pause": "10", "note": "2 sec hold", "dateRemoved": "2026-09-20 00:00:00",
+          "mode": "0", "routineID": "3000001", "listGroup": "0", "sets": []
+        }
+      ]
+    }
+  ]
+}
