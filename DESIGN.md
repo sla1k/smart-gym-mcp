@@ -59,8 +59,9 @@ DB-era facts kept for history; the API facts (Phase 0, S7) live in the API-clien
   reconciliation observations): exercise ADDs need a `ZEXERCISESTATEQUEUE` row (`ZSTATE=1`,
   `writes.enqueue_exercise_added`) or the app deletes them ~5 s after relaunch; field edits,
   reorders, and removals need only the dirty flag; **`ZHIDDEN=1` is reverted by the push**
-  (archived state is server-side, `routine/archive/` only → no archive tool); routine
-  soft-delete propagates.
+  (archived state is server-side, `routine/archive/` only → no archive tool *on the DB path*;
+  superseded 2026-10-05: the API path's `smartgym_archive_routines` sends `routine/archive/`
+  itself); routine soft-delete propagates.
 
 ## Architecture invariants
 Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-client-design.md).
@@ -88,7 +89,9 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   observation (throwaway `ZZ-` routine + iPhone check) before trusting it. The rule has now
   paid off twice: it caught the add-exercise reconciliation deletion (fixed via
   `ZEXERCISESTATEQUEUE`) and the archive revert (tool removed) — spec 02 Part A.
-- **Archive (2026-07-10):** implemented, live-verified self-defeating (push resets `ZHIDDEN`),
+- **Archive (2026-07-10) — superseded 2026-10-05 by the API path's archive tool
+  (`smartgym_archive_routines` / `smartgym_unarchive_routine` → `routine/archive/` /
+  `routine/unarchive/`):** implemented, live-verified self-defeating (push resets `ZHIDDEN`),
   removed from the tool surface. Rejected again: token-based `routine/archive/` call (ToS-gray).
   Users archive in-app; a `smartgym_delete_routine` (soft-delete propagates) is backlog F7.
 

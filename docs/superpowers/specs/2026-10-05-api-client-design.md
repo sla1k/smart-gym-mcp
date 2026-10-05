@@ -154,7 +154,6 @@ diff.py          (current Routine, desired Routine) → ChangeSet — pure, no I
 matching.py      ExerciseCatalog.resolve (kept)
 catalog.py       bundle catalog reader (kept)
 snapshots.py     saves the fetched routine JSON before every write
-db.py/queries.py read-only, ONLY for S4 gaps (otherwise removed)
 ```
 Removed: `lifecycle.py`, `writes.py`, DB write helpers, re-key/tombstone, the publish tool.
 
@@ -189,7 +188,7 @@ Write:
 | `smartgym_move_exercise(exercise_id, section, position?)` — `position` within the target section, default last | `routine/update/` (S7) |
 | `smartgym_remove_exercise(exercise_id)` | `routine/update/` |
 | `smartgym_reorder_routine(routine, warmup?, main?, cooldown?)` — each a list of exercise ids that must equal that section's current members (reorder only; moving = `move_exercise`) | `routine/update/` |
-| `smartgym_update_exercise(exercise_id, rest_seconds?, note?, sets?)` — `sets` = full template list `[{reps, weight_kg}]` | `routine/update/` |
+| `smartgym_update_exercise(exercise_id, rest_seconds?, note?, sets?)` — `sets` = full template list `[{reps, weight_kg}]` | `routine/update/` (rest) and `routine/updateExercise/` (note, template sets) |
 | `smartgym_apply_routine(routine, desired)` — desired fields + three ordered lists `warmup` / `main` / `cooldown` (existing by id, new by name) with rest / note / sets | one `routine/update/` |
 | `smartgym_archive_routines(routines[])` / `smartgym_unarchive_routine(routine)` | `routine/archive/` / `routine/unarchive/` |
 
