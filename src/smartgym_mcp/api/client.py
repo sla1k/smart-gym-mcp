@@ -119,6 +119,7 @@ class ApiClient:
         shown = self._safe_path(path)
         query = {**(params or {}), **self._common()}
         last: Exception | None = None
+        last_status: int | None = None
         for attempt in range(self._max_read_attempts):
             if attempt:
                 self._sleep(0.5 * 2 ** (attempt - 1))
@@ -127,13 +128,21 @@ class ApiClient:
                     path, params=query, headers=dict(self._credentials.auth_headers())
                 )
             except httpx.RequestError as exc:
-                last = exc
+                last, last_status = exc, None
                 logger.info("GET %s network error (attempt %d)", shown, attempt + 1)
                 continue
             if resp.status_code >= 500:
-                last = ApiError(f"SmartGym server error HTTP {resp.status_code} on {shown}.")
+                last, last_status = None, resp.status_code
+                logger.info(
+                    "GET %s HTTP %d (attempt %d)", shown, resp.status_code, attempt + 1
+                )
                 continue
             return self._decode(shown, resp, require_success)
+        if last_status is not None:
+            raise ApiError(
+                f"SmartGym server error HTTP {last_status} on {shown} after "
+                f"{self._max_read_attempts} attempts."
+            )
         raise ApiError(
             f"SmartGym unreachable (network error) for {shown} after "
             f"{self._max_read_attempts} attempts: {type(last).__name__}."
@@ -157,6 +166,15 @@ class ApiClient:
                 f"SmartGym answered HTTP {resp.status_code} during write to {shown}; the "
                 "change may or may not have landed — re-fetch before retrying."
             )
+        if 200 <= resp.status_code < 300:
+            try:
+                resp.json()
+            except ValueError:
+                raise WriteOutcomeUnknown(
+                    f"SmartGym answered HTTP {resp.status_code} with an unreadable (non-JSON) "
+                    f"body during write to {shown}; the change may or may not have landed — "
+                    "re-fetch before retrying."
+                ) from None
         return self._decode(shown, resp, require_success=True)
 
     @staticmethod
