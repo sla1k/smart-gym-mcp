@@ -70,6 +70,24 @@ def test_workout_history_newest_first_with_routine_names() -> None:
     )
 
 
+def test_sets_of_a_workoutless_history_fall_back_to_their_logged_day() -> None:
+    raw = json.loads(
+        (Path(__file__).parent / "fixtures" / "api" / "history_all_synthetic.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    raw["histories"][1]["workout"] = None
+    data = parse_history_all(raw)
+    assert [w.identifier for w in data.workouts] == [7000001]
+    detail = routine_detail(data.routines[0], data, history_depth=5, tz=UTC)
+    (chest,) = detail.main
+    assert [s.date for s in chest.sessions] == ["2026-09-21", "2026-09-14"]
+    assert [(s.reps, s.weight_kg) for s in chest.sessions[0].sets] == [(10.0, 42.5)]
+    assert [
+        s.identifier for s in workout_history(data, days=30, today=TODAY, tz=UTC).sessions
+    ] == [7000001]
+
+
 def test_workout_history_date_range_routine_filter_and_paging() -> None:
     ranged = workout_history(DATA, date_from="2026-09-20", date_to="2026-09-30", tz=UTC)
     assert [s.identifier for s in ranged.sessions] == [7000002]
