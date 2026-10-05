@@ -103,6 +103,7 @@ class ExerciseSpec(BaseModel):
     note: str | None = None
     sets: list[SetSpec] | None = Field(
         default=None,
+        min_length=1,
         description="Template sets; omitted = one default set (flagged in dry-run)",
     )
 
@@ -112,7 +113,13 @@ class RoutineSpec(BaseModel):
     days: str | None = None
     goal: str | None = None
     note: str | None = None
+    warmup: list[ExerciseSpec] = Field(
+        default_factory=list, description="Warm-up section, in order (optional)"
+    )
     exercises: list[ExerciseSpec] = Field(min_length=1)
+    cooldown: list[ExerciseSpec] = Field(
+        default_factory=list, description="Cool-down section, in order (optional)"
+    )
 
 
 class ExerciseResolution(BaseModel):
