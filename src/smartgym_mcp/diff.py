@@ -416,7 +416,7 @@ def diff_routine(
             assert slot.want is not None and slot.resolution is not None
             sets = slot.want.sets or [DEFAULT_SET]
             new = AddedExercise(
-                catalog_id=slot.resolution.z_pk,
+                catalog_id=slot.resolution.catalog_id,
                 name=slot.resolution.resolved_name,
                 section=section,
                 position=len(order),

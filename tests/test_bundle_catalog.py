@@ -74,7 +74,7 @@ def test_load_bundle_exercises_coerces_fields(bundle_cfg: Config) -> None:
 
 def test_from_bundle_resolves_to_catalog_id(bundle_cfg: Config) -> None:
     catalog = ExerciseCatalog.from_bundle(load_bundle_exercises(bundle_cfg))
-    assert catalog.resolve("push up").z_pk == 194
+    assert catalog.resolve("push up").catalog_id == 194
     assert catalog.resolve("363").resolved_name == "Resistance Band Pull Apart"
     with pytest.raises(UnresolvedExercise):
         catalog.resolve("Zercher squat")

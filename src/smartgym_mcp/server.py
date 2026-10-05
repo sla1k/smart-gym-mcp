@@ -1,48 +1,41 @@
-"""FastMCP app: lifespan-held read-only connection + a health smoke tool.
+"""FastMCP app over the SmartGym API (API-client spec §5, §6).
 
-Read tools (spec 01) read the shared RO connection from the lifespan context.
-Write tools (spec 02) will open an on-demand RW connection via
-``db.open_rw_connection(ctx.request_context.lifespan_context.cfg)``.
+Tools are thin: parse input → store / service / reads. Credentials and the API
+client are built on first use, so a missing credentials file becomes a clear
+tool error (and a smartgym_health report) instead of a server that won't start.
 """
 
 from __future__ import annotations
 
 import logging
-import sqlite3
 import sys
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from . import __version__, catalog, db, lifecycle, queries, writes
-from .config import Config, load_config, validate_db_exists
-from .models import (
-    AddExerciseResult,
-    CreateProgramResult,
-    EquipmentListResult,
-    PublishRoutinesResult,
-    RemoveExerciseResult,
-    ReorderRoutineResult,
-    RoutineDetail,
-    RoutineListResult,
-    RoutineSpec,
-    SetSpec,
-    UpdateExerciseResult,
-    UpdateRoutineResult,
-    WorkoutHistoryResult,
-)
+from . import __version__, builders, catalog, reads
+from .api.auth import CredentialsError, FileCredentials
+from .api.client import ApiClient, ApiError
+from .api.store import AccountStore
+from .config import VERIFIED_APP_VERSION, Config, load_config
+from .diff import DesiredExercise, DesiredRoutine
+from .matching import ExerciseCatalog
+from .model import Section
+from .models import RoutineSpec, SetSpec
+from .payloads import local_timezone_name
+from .service import ArchiveResult, CreateResult, EditResult, RoutineService
 
 logger = logging.getLogger("smartgym_mcp")
 
 
 def _read_only(title: str) -> ToolAnnotations:
-    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=False)
+    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=True)
 
 
 def _destructive(title: str) -> ToolAnnotations:
@@ -51,103 +44,158 @@ def _destructive(title: str) -> ToolAnnotations:
         readOnlyHint=False,
         destructiveHint=True,
         idempotentHint=False,
-        openWorldHint=False,
+        openWorldHint=True,
     )
 
 
-_DRY_RUN_NOTICE = "Dry run — nothing written. Re-run with dry_run=false to apply."
-_APPLIED_NOTICE = (
-    "Applied on this Mac and marked pending; SmartGym was left CLOSED on purpose. "
-    "Call smartgym_publish_routines once you are done editing — it relaunches the app "
-    "and sends the edits to your other devices. Opening SmartGym before publishing "
-    "can revert unpublished routine fields."
-)
+@dataclass
+class Services:
+    client: ApiClient
+    store: AccountStore
+    service: RoutineService
+    equipment: list[catalog.CatalogEquipment]
 
 
-class HealthStatus(BaseModel):
-    ok: bool
-    db_path: str
-    journal_mode: str
-    active_routines: int
-    version: str
+def build_services(cfg: Config) -> Services:
+    credentials = FileCredentials(cfg.credentials_path)
+    client = ApiClient(
+        credentials, app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION
+    )
+    store = AccountStore(client)
+    exercises = catalog.load_bundle_exercises(cfg)
+    service = RoutineService(
+        client,
+        store,
+        ExerciseCatalog.from_bundle(exercises),
+        {e.id: e for e in exercises},
+        backup_dir=cfg.backup_dir,
+        timezone=local_timezone_name(),
+    )
+    return Services(
+        client=client,
+        store=store,
+        service=service,
+        equipment=catalog.load_bundle_equipment(cfg),
+    )
 
 
 @dataclass
 class AppContext:
     cfg: Config
-    ro: sqlite3.Connection  # long-lived, autocommit, WAL-visible
-    # Serializes access to the single shared RO connection — FastMCP may dispatch
-    # sync tools on a worker-thread pool, and one sqlite3 connection is not safe
-    # for concurrent cursor use even with check_same_thread=False.
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    factory: Callable[[Config], Services] = build_services
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _services: Services | None = field(default=None, init=False, repr=False)
+
+    def services(self) -> Services:
+        """Built on first use; a failed build is not cached, so the next call retries."""
+        with self._lock:
+            if self._services is None:
+                self._services = self.factory(self.cfg)
+            return self._services
+
+    def close(self) -> None:
+        with self._lock:
+            if self._services is not None:
+                self._services.client.close()
+                self._services = None
 
 
 @asynccontextmanager
 async def lifespan(_server: FastMCP) -> AsyncIterator[AppContext]:
-    cfg = load_config()
-    validate_db_exists(cfg)
-    ro = db.open_ro_connection(cfg.db_path)
-    logger.info("smartgym_mcp up; db=%s", cfg.db_path)
+    app = AppContext(cfg=load_config())
+    logger.info("smartgym_mcp up; credentials=%s", app.cfg.credentials_path)
     try:
-        yield AppContext(cfg=cfg, ro=ro)
+        yield app
     finally:
-        ro.close()
+        app.close()
 
 
 mcp = FastMCP("smartgym_mcp", lifespan=lifespan)
 
 
+def _app(ctx: Context) -> AppContext:
+    app: AppContext = ctx.request_context.lifespan_context
+    return app
+
+
+class HealthStatus(BaseModel):
+    ok: bool
+    routines: int | None
+    app_version: str | None
+    verified_app_version: str
+    warning: str | None
+    problem: str | None
+    version: str
+
+
 @mcp.tool(annotations=_read_only("Health check"))
 def smartgym_health(ctx: Context) -> HealthStatus:
-    """Liveness probe: confirms the DB is reachable and WAL-live.
+    """Check the credentials file, the SmartGym server, and the installed app version.
 
-    Returns the DB path, SQLite journal mode, active routine count, and server
-    version. Exercises the whole foundation (lifespan, RO connection, WAL read)
-    through the real MCP transport.
+    ok=true means the server answered with your account data. `problem` explains
+    what to fix otherwise (e.g. create the credentials file). `warning` appears when
+    the installed SmartGym version differs from the one the MCP was verified against.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    with app.lock:
-        journal = app.ro.execute("PRAGMA journal_mode").fetchone()[0]
-        active = app.ro.execute(
-            "SELECT COUNT(*) FROM ZROUTINE WHERE ZDATEREMOVED IS NULL"
-        ).fetchone()[0]
-    # WAL is the contract that guarantees fresh reads; anything else is unhealthy.
+    app = _app(ctx)
+    installed = catalog.installed_app_version(app.cfg)
+    warning = None
+    if installed and installed != VERIFIED_APP_VERSION:
+        warning = (
+            f"SmartGym {installed} is installed; the MCP was verified against "
+            f"{VERIFIED_APP_VERSION}. Re-run the live check on a ZZ- routine before "
+            "trusting edits."
+        )
+    try:
+        data = app.services().store.data()
+    except (CredentialsError, ApiError, ValueError, KeyError, OSError) as exc:
+        return HealthStatus(
+            ok=False,
+            routines=None,
+            app_version=installed,
+            verified_app_version=VERIFIED_APP_VERSION,
+            warning=warning,
+            problem=str(exc),
+            version=__version__,
+        )
     return HealthStatus(
-        ok=str(journal).lower() == "wal",
-        db_path=str(app.cfg.db_path),
-        journal_mode=journal,
-        active_routines=active,
+        ok=True,
+        routines=sum(1 for r in data.routines if not r.removed and not r.archived),
+        app_version=installed,
+        verified_app_version=VERIFIED_APP_VERSION,
+        warning=warning,
+        problem=None,
         version=__version__,
     )
 
 
 @mcp.tool(annotations=_read_only("List routines"))
-def smartgym_list_routines(ctx: Context, include_hidden: bool = False) -> RoutineListResult:
-    """List workout routines with id, name, scheduled days, sync flag, and exercise count.
+def smartgym_list_routines(
+    ctx: Context, include_archived: bool = False
+) -> reads.RoutineListResult:
+    """List routines: id, name, days, and exercise counts per section (warm-up/main/cool-down).
 
-    By default only active (non-hidden) routines are returned; set include_hidden=true
-    to also list archived ones. Use the returned z_pk to disambiguate routines elsewhere.
-    has_synced=false means the routine has edits not yet on the SmartGym backend —
-    new routines push on the next app launch; edits of existing ones need
-    smartgym_publish_routines.
+    Archived routines are listed only with include_archived=true. Use the id (or the
+    name) in the other tools.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    with app.lock:
-        return queries.list_routines(app.ro, include_hidden)
+    data = _app(ctx).services().store.data()
+    return reads.list_routines(data, include_archived=include_archived)
 
 
 @mcp.tool(annotations=_read_only("Get routine detail"))
-def smartgym_get_routine(ctx: Context, routine: str, history_depth: int = 5) -> RoutineDetail:
-    """Get a routine's exercises in order with rest time, note, and recent logged sets.
+def smartgym_get_routine(
+    ctx: Context, routine: str, history_depth: Annotated[int, Field(ge=0)] = 5
+) -> reads.RoutineDetail:
+    """Get a routine split into warmup, main and cooldown sections.
 
-    `routine` is a routine name (case-insensitive, partial allowed) OR a z_pk. Each
-    exercise includes up to `history_depth` recent sessions as per-set arrays
-    (reps + weight_kg; 0.0 weight means bodyweight/untracked) plus the latest session's
-    top set and total volume. Ambiguous names raise an error listing candidate z_pks.
+    `routine` is a name (case-insensitive, partial allowed) or id. Each exercise shows
+    its exercise_id (what the edit tools take), rest, note, planned template sets, and
+    up to `history_depth` recent sessions (reps + weight_kg; 0.0 = bodyweight) with the
+    latest session's top set and total volume.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    with app.lock:
-        return queries.get_routine(app.ro, routine, history_depth)
+    store = _app(ctx).services().store
+    return reads.routine_detail(
+        store.resolve(routine), store.data(), history_depth=history_depth
+    )
 
 
 @mcp.tool(annotations=_read_only("Get workout history"))
@@ -157,244 +205,49 @@ def smartgym_get_workout_history(
     date_from: str | None = None,
     date_to: str | None = None,
     routine: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> WorkoutHistoryResult:
-    """List past workout sessions (deduped, paginated) with duration, calories, and HR.
+    limit: Annotated[int, Field(ge=1)] = 20,
+    offset: Annotated[int, Field(ge=0)] = 0,
+) -> reads.WorkoutHistoryResult:
+    """List past workouts (newest first) with duration, calories and heart rate.
 
-    Defaults to the last 7 days (or 14/30 via `days`). Pass explicit `date_from`/`date_to`
-    (YYYY-MM-DD, inclusive) to override the preset. Optional `routine` filter (name or z_pk).
-    Warm-up/main/cooldown entries sharing one workout are collapsed to a single session.
-    Returns pagination metadata (total, has_more, next_offset).
+    Defaults to the last 7 days (or 14/30 via `days`); explicit `date_from` / `date_to`
+    (YYYY-MM-DD, inclusive, local time) override it. Optional `routine` filter (name or
+    id). Paginated: total, has_more, next_offset.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    with app.lock:
-        return queries.get_workout_history(
-            app.ro,
-            days=days,
-            date_from=date_from,
-            date_to=date_to,
-            routine=routine,
-            limit=limit,
-            offset=offset,
-        )
+    store = _app(ctx).services().store
+    return reads.workout_history(
+        store.data(),
+        days=days,
+        date_from=date_from,
+        date_to=date_to,
+        routine=store.resolve(routine) if routine else None,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @mcp.tool(annotations=_read_only("Get equipment"))
-def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> EquipmentListResult:
-    """List equipment with available weight increments. owned_only filters to selected gear."""
-    app: AppContext = ctx.request_context.lifespan_context
-    with app.lock:
-        return queries.get_equipment(app.ro, owned_only)
+def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> reads.EquipmentListResult:
+    """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
+    services = _app(ctx).services()
+    return reads.equipment(services.store.data(), services.equipment, owned_only=owned_only)
 
 
-@mcp.tool(
-    annotations=ToolAnnotations(
-        title="Create program",
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=False,
-        openWorldHint=False,
-    )
-)
+@mcp.tool(annotations=_destructive("Create program"))
 def smartgym_create_program(
     ctx: Context, routines: list[RoutineSpec], dry_run: bool = True
-) -> CreateProgramResult:
-    """Create one or more workout routines (a full program) in SmartGym, synced to all devices.
+) -> CreateResult:
+    """Create one or more routines (a program) on the SmartGym server — all devices get them.
 
-    Each routine: name (must not collide with an active routine), optional days/goal/note,
-    and ordered exercises — catalog name (fuzzy-matched, deterministic) or z_pk, with optional
-    rest_seconds, note, and template sets (reps + weight_kg; omitted = one default 1x10 set).
-    Validation is all-or-nothing: any unresolved exercise or name collision rejects the whole
-    program. Additive-only — existing routines are never touched (archive separately).
-
-    dry_run=true (default) returns the resolution plan and writes NOTHING. With dry_run=false
-    the server backs up the DB, gracefully quits SmartGym if running, inserts everything in one
-    transaction, then relaunches the app — its sync engine pushes the new routines to the
-    SmartGym backend (and thus your other devices) within ~30 seconds.
+    Each routine: name (must not match an existing routine), optional days/goal/note, and
+    three ordered sections — `warmup` (optional), `exercises` (= main, required),
+    `cooldown` (optional). Exercises are catalog names (fuzzy-matched, deterministic) or
+    catalog ids, with optional rest_seconds, note and template sets (reps + weight_kg;
+    omitted = one 1x10 set, flagged). Validation is all-or-nothing.
+    dry_run=true (default) returns the plan and sends NOTHING; dry_run=false creates the
+    routines and verifies them on the server.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_program(app.ro, routines)
-        return CreateProgramResult(
-            dry_run=True,
-            plan=plan,
-            created=[],
-            app=None,
-            backup_dir=None,
-            notice="Dry run — nothing written. Re-run with dry_run=false to apply.",
-        )
-
-    with lifecycle.managed_write(app.cfg) as (conn, report):
-        plan, created = writes.apply_program(conn, routines)
-    return CreateProgramResult(
-        dry_run=False,
-        plan=plan,
-        created=created,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=(
-            f"Created {len(created)} routine(s). SmartGym relaunched — the sync push "
-            "fires within ~30 s; verify on your other device."
-        ),
-    )
-
-
-@mcp.tool(annotations=_destructive("Add exercise to routine"))
-def smartgym_add_exercise(
-    ctx: Context,
-    routine: str,
-    exercise: str,
-    index: int | None = None,
-    rest_seconds: int | None = None,
-    note: str | None = None,
-    sets: list[SetSpec] | None = None,
-    dry_run: bool = True,
-) -> AddExerciseResult:
-    """Add one exercise to an existing routine (publish to sync it).
-
-    `routine` is a name (case-insensitive) or z_pk; `exercise` a catalog name
-    (fuzzy-matched, deterministic) or z_pk. Default index appends at the end;
-    an explicit index inserts at that position and shifts later exercises down.
-    Optional template sets (reps + weight_kg); omitted = one default 1x10 set,
-    flagged in the plan. dry_run=true (default) returns the plan and writes
-    NOTHING; with dry_run=false the server backs up the DB, quits SmartGym,
-    and writes, leaving the app closed — then call smartgym_publish_routines.
-    """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_add_exercise(app.ro, routine, exercise, index=index, sets=sets)
-        return AddExerciseResult(
-            dry_run=True,
-            plan=plan,
-            created_ue_pk=None,
-            app=None,
-            backup_dir=None,
-            notice=_DRY_RUN_NOTICE,
-        )
-    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
-        plan, ue_pk = writes.apply_add_exercise(
-            conn,
-            routine,
-            exercise,
-            index=index,
-            rest_seconds=rest_seconds,
-            note=note,
-            sets=sets,
-        )
-    return AddExerciseResult(
-        dry_run=False,
-        plan=plan,
-        created_ue_pk=ue_pk,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=_APPLIED_NOTICE,
-    )
-
-
-@mcp.tool(annotations=_destructive("Update exercise"))
-def smartgym_update_exercise(
-    ctx: Context,
-    ue_pk: int,
-    note: str | None = None,
-    rest_seconds: int | None = None,
-    index: int | None = None,
-    dry_run: bool = True,
-) -> UpdateExerciseResult:
-    """Edit an exercise's note, rest time, or position within its routine.
-
-    `ue_pk` identifies the exercise row (from smartgym_get_routine). Only the
-    fields you pass are changed; `note` OVERWRITES the whole field (pass an
-    empty string to clear it). At least one field is required. dry_run=true
-    (default) returns the old→new plan and writes NOTHING; dry_run=false
-    applies via backup + app quit (left closed) — then smartgym_publish_routines.
-    """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_update_exercise(
-                app.ro, ue_pk, note=note, rest_seconds=rest_seconds, index=index
-            )
-        return UpdateExerciseResult(
-            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
-        )
-    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
-        plan = writes.apply_update_exercise(
-            conn, ue_pk, note=note, rest_seconds=rest_seconds, index=index
-        )
-    return UpdateExerciseResult(
-        dry_run=False,
-        plan=plan,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=_APPLIED_NOTICE,
-    )
-
-
-@mcp.tool(annotations=_destructive("Reorder routine"))
-def smartgym_reorder_routine(
-    ctx: Context,
-    routine: str,
-    ordered_ue_pks: list[int],
-    dry_run: bool = True,
-) -> ReorderRoutineResult:
-    """Rewrite a routine's exercise order to match `ordered_ue_pks` exactly.
-
-    The list must contain every active exercise of the routine exactly once
-    (ue_pks from smartgym_get_routine) — any duplicate, missing, or foreign
-    ue_pk rejects the whole call. dry_run=true (default) returns the old→new
-    order and writes NOTHING; dry_run=false applies via backup + app quit
-    (left closed) — then smartgym_publish_routines.
-    """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_reorder_routine(app.ro, routine, ordered_ue_pks)
-        return ReorderRoutineResult(
-            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
-        )
-    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
-        plan = writes.apply_reorder_routine(conn, routine, ordered_ue_pks)
-    return ReorderRoutineResult(
-        dry_run=False,
-        plan=plan,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=_APPLIED_NOTICE,
-    )
-
-
-@mcp.tool(annotations=_destructive("Remove exercise from routine"))
-def smartgym_remove_exercise(
-    ctx: Context, ue_pk: int, dry_run: bool = True
-) -> RemoveExerciseResult:
-    """Remove an exercise from its routine (soft-delete; logged history is kept).
-
-    Soft-deletes the exercise row and its unlogged template sets — logged sets
-    stay untouched, so past workouts keep their history. `ue_pk` comes from
-    smartgym_get_routine. dry_run=true (default) returns the plan (incl. how
-    many template sets go) and writes NOTHING; dry_run=false applies via
-    backup + app quit (left closed) — then smartgym_publish_routines.
-    """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_remove_exercise(app.ro, ue_pk)
-        return RemoveExerciseResult(
-            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
-        )
-    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
-        plan = writes.apply_remove_exercise(conn, ue_pk)
-    return RemoveExerciseResult(
-        dry_run=False,
-        plan=plan,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=_APPLIED_NOTICE,
-    )
+    return _app(ctx).services().service.create(routines, dry_run=dry_run)
 
 
 @mcp.tool(annotations=_destructive("Update routine"))
@@ -406,91 +259,196 @@ def smartgym_update_routine(
     goal: str | None = None,
     note: str | None = None,
     dry_run: bool = True,
-) -> UpdateRoutineResult:
-    """Edit a routine's name, scheduled days, goal, or note.
+) -> EditResult:
+    """Edit a routine's name, days, goal or note (only the fields you pass; "" clears).
 
-    Only the fields you pass are changed; each OVERWRITES the whole field
-    (empty string clears days/goal/note; the name must stay non-empty and not
-    collide with another active routine). At least one field is required.
-    dry_run=true (default) returns the old→new plan and writes NOTHING;
-    dry_run=false applies via backup + app quit (left closed) — then
-    smartgym_publish_routines.
+    dry_run=true (default) shows old → new and sends NOTHING; dry_run=false snapshots the
+    routine, sends the edit, and verifies it on the server.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_update_routine(
-                app.ro, routine, name=name, days=days, goal=goal, note=note
-            )
-        return UpdateRoutineResult(
-            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
-        )
-    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
-        plan = writes.apply_update_routine(
-            conn, routine, name=name, days=days, goal=goal, note=note
-        )
-    return UpdateRoutineResult(
-        dry_run=False,
-        plan=plan,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=_APPLIED_NOTICE,
-    )
+    desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
+    return _app(ctx).services().service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
-@mcp.tool(annotations=_destructive("Publish edited routines"))
-def smartgym_publish_routines(
-    ctx: Context, routines: list[str] | None = None, dry_run: bool = True
-) -> PublishRoutinesResult:
-    """Push edited routines to your other devices (required since SmartGym 8).
+@mcp.tool(annotations=_destructive("Add exercise"))
+def smartgym_add_exercise(
+    ctx: Context,
+    routine: str,
+    exercise: str,
+    section: Section = "main",
+    position: int | None = None,
+    rest_seconds: int | None = None,
+    note: str | None = None,
+    sets: list[SetSpec] | None = None,
+    dry_run: bool = True,
+) -> EditResult:
+    """Add a catalog exercise to a routine section (warmup / main / cooldown).
 
-    SmartGym 8 only re-sends routines via its "add" endpoint, which ignores
-    content for routines the server already knows, so edits made by the other
-    write tools stay on this Mac until published. Publishing gives each routine
-    a fresh sync identity: the relaunch uploads its full current content as a
-    new server routine, and a local "OLD — <name>" tombstone keeps the previous
-    server copy. Archive each tombstone in the SmartGym Mac app to retire the
-    stale copy on every device.
-
-    `routines` = names or z_pks; omitted = every pending routine (has_synced=false).
-    Pass names explicitly if an edited routine already shows as synced. Batch
-    your edits first — each publish leaves one tombstone per routine.
-    dry_run=true (default) lists what would be published and writes NOTHING.
+    `position` counts within the section (0 = first; omitted = last). Optional rest,
+    note and template sets (omitted = one 1x10 set, flagged). dry_run=true (default)
+    sends NOTHING.
     """
-    app: AppContext = ctx.request_context.lifespan_context
-    if dry_run:
-        with app.lock:
-            plan = writes.plan_publish_routines(app.ro, routines)
-        return PublishRoutinesResult(
-            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
+    return (
+        _app(ctx)
+        .services()
+        .service.edit(
+            routine,
+            lambda r: builders.add_exercise(
+                r,
+                exercise,
+                section=section,
+                position=position,
+                rest_seconds=rest_seconds,
+                note=note,
+                sets=sets,
+            ),
+            dry_run=dry_run,
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
-        plan = writes.apply_publish_routines(conn, routines)
-    tombstones = [e.routine.name for e in plan.routines if e.tombstone_z_pk is not None]
-    notice = (
-        f"Published {len(plan.routines)} routine(s); SmartGym relaunched and uploads them "
-        "within ~30 s."
-    )
-    if tombstones:
-        notice += (
-            " In the SmartGym Mac app, archive the tombstone(s) "
-            + ", ".join(f"'{writes.TOMBSTONE_PREFIX}{n}'" for n in tombstones)
-            + " to remove the outdated copies from your other devices (archive from the "
-            "routines list; opened, an empty tombstone shows in edit mode — just cancel)."
-        )
-    return PublishRoutinesResult(
-        dry_run=False,
-        plan=plan,
-        app=report,
-        backup_dir=str(app.cfg.backup_dir),
-        notice=notice,
     )
 
 
-# NOTE: smartgym_archive_routine is deliberately NOT implemented. Verified live
-# (2026-07-10): setting ZHIDDEN=1 + pending push is reverted by the app — archived
-# state is server-side, writable only via the app's own routine/archive/ endpoint
-# (spec 02 archive observation). Archive routines in-app; the change syncs down.
+@mcp.tool(annotations=_destructive("Move exercise"))
+def smartgym_move_exercise(
+    ctx: Context,
+    exercise_id: int,
+    section: Section,
+    position: int | None = None,
+    dry_run: bool = True,
+) -> EditResult:
+    """Move an exercise to another section (or to another position in its section).
+
+    `exercise_id` comes from smartgym_get_routine; `position` counts within the target
+    section (omitted = last). dry_run=true (default) sends NOTHING.
+    """
+    return (
+        _app(ctx)
+        .services()
+        .service.edit_exercise(
+            exercise_id,
+            lambda r: builders.move_exercise(
+                r, exercise_id, section=section, position=position
+            ),
+            dry_run=dry_run,
+        )
+    )
+
+
+@mcp.tool(annotations=_destructive("Remove exercise"))
+def smartgym_remove_exercise(
+    ctx: Context, exercise_id: int, dry_run: bool = True
+) -> EditResult:
+    """Remove an exercise from its routine (logged history is kept).
+
+    `exercise_id` comes from smartgym_get_routine. dry_run=true (default) sends NOTHING.
+    """
+    return (
+        _app(ctx)
+        .services()
+        .service.edit_exercise(
+            exercise_id, lambda r: builders.remove_exercise(r, exercise_id), dry_run=dry_run
+        )
+    )
+
+
+@mcp.tool(annotations=_destructive("Reorder routine"))
+def smartgym_reorder_routine(
+    ctx: Context,
+    routine: str,
+    warmup: list[int] | None = None,
+    main: list[int] | None = None,
+    cooldown: list[int] | None = None,
+    dry_run: bool = True,
+) -> EditResult:
+    """Reorder exercises inside sections.
+
+    Each list you pass must hold exactly that section's current exercise_ids, in the new
+    order; omitted sections stay as they are. To change an exercise's section use
+    smartgym_move_exercise. dry_run=true (default) sends NOTHING.
+    """
+    return (
+        _app(ctx)
+        .services()
+        .service.edit(
+            routine,
+            lambda r: builders.reorder(r, warmup=warmup, main=main, cooldown=cooldown),
+            dry_run=dry_run,
+        )
+    )
+
+
+@mcp.tool(annotations=_destructive("Update exercise"))
+def smartgym_update_exercise(
+    ctx: Context,
+    exercise_id: int,
+    rest_seconds: int | None = None,
+    note: str | None = None,
+    sets: list[SetSpec] | None = None,
+    dry_run: bool = True,
+) -> EditResult:
+    """Change an exercise's rest time, note ("" clears) or template sets.
+
+    `sets` is the FULL planned list [{reps, weight_kg}] — sets beyond it are removed,
+    extra ones added. Logged history is never touched. dry_run=true (default) sends
+    NOTHING.
+    """
+    return (
+        _app(ctx)
+        .services()
+        .service.edit_exercise(
+            exercise_id,
+            lambda r: builders.update_exercise(
+                r, exercise_id, rest_seconds=rest_seconds, note=note, sets=sets
+            ),
+            dry_run=dry_run,
+        )
+    )
+
+
+@mcp.tool(annotations=_destructive("Apply routine"))
+def smartgym_apply_routine(
+    ctx: Context,
+    routine: str,
+    name: str | None = None,
+    days: str | None = None,
+    goal: str | None = None,
+    note: str | None = None,
+    warmup: list[DesiredExercise] | None = None,
+    main: list[DesiredExercise] | None = None,
+    cooldown: list[DesiredExercise] | None = None,
+    dry_run: bool = True,
+) -> EditResult:
+    """Rewrite a routine in one go (e.g. "week 2 of FB-A").
+
+    Each section you pass is the complete ordered list for that section: existing
+    exercises by exercise_id (optionally with new rest/note/sets), new ones by catalog
+    name. An existing exercise listed under another section moves there; one you leave
+    out of a passed section is removed. Omitted sections stay as they are.
+    dry_run=true (default) shows the full plan and sends NOTHING.
+    """
+    desired = DesiredRoutine(
+        name=name, days=days, goal=goal, note=note, warmup=warmup, main=main, cooldown=cooldown
+    )
+    return _app(ctx).services().service.edit(routine, lambda _r: desired, dry_run=dry_run)
+
+
+@mcp.tool(annotations=_destructive("Archive routines"))
+def smartgym_archive_routines(
+    ctx: Context, routines: list[str], dry_run: bool = True
+) -> ArchiveResult:
+    """Archive routines (names or ids) on every device.
+
+    Reversible with smartgym_unarchive_routine. dry_run=true (default) sends NOTHING.
+    """
+    return _app(ctx).services().service.set_archived(routines, archived=True, dry_run=dry_run)
+
+
+@mcp.tool(annotations=_destructive("Unarchive routine"))
+def smartgym_unarchive_routine(
+    ctx: Context, routine: str, dry_run: bool = True
+) -> ArchiveResult:
+    """Bring an archived routine back to the active list. dry_run=true sends NOTHING."""
+    return (
+        _app(ctx).services().service.set_archived([routine], archived=False, dry_run=dry_run)
+    )
 
 
 @mcp.resource("smartgym://catalog/exercises", mime_type="application/json")
