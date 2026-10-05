@@ -7,7 +7,7 @@ Pure resolution (`load_config`) is separated from the filesystem check
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_DB_PATH = (
@@ -15,6 +15,9 @@ DEFAULT_DB_PATH = (
 )
 DEFAULT_APP_BUNDLE = "/Applications/SmartGym.app"
 DEFAULT_BACKUP_DIR = "~/.smartgym-mcp/backups"
+DEFAULT_CREDENTIALS = "~/.smartgym-mcp/credentials.json"
+# SmartGym version whose wire format the API client was verified against (spec §4).
+VERIFIED_APP_VERSION = "8.0.3"
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -25,6 +28,7 @@ class Config:
     app_bundle: Path
     backup_dir: Path
     allow_write_while_running: bool
+    credentials_path: Path = field(default_factory=lambda: _resolve(DEFAULT_CREDENTIALS))
 
 
 def _resolve(value: str) -> Path:
@@ -41,6 +45,7 @@ def load_config() -> Config:
         .strip()
         .lower()
         in _TRUTHY,
+        credentials_path=_resolve(os.environ.get("SMARTGYM_CREDENTIALS", DEFAULT_CREDENTIALS)),
     )
 
 
