@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
@@ -186,3 +187,77 @@ def test_missing_code_stays_none() -> None:
 
 def test_user_id_is_exposed() -> None:
     assert _client(lambda _r: httpx.Response(200, json={})).user_id == "1"
+
+
+UID = "987654321"
+
+
+class _UidCreds(FakeCreds):
+    @property
+    def user_id(self) -> str:
+        return UID
+
+
+def _uid_client(handler: Callable[[httpx.Request], httpx.Response]) -> ApiClient:
+    return ApiClient(
+        _UidCreds(),
+        app_version="8.0.3",
+        transport=httpx.MockTransport(handler),
+        clock=lambda: datetime(2026, 10, 5, 11, 30, 0, tzinfo=UTC),
+        sleep=lambda _s: None,
+        max_read_attempts=2,
+    )
+
+
+@pytest.mark.parametrize(
+    ("response", "exc_type"),
+    [
+        (httpx.Response(500, text="boom"), ApiError),
+        (httpx.Response(401, json={"code": "INVALID_TOKEN"}), AuthError),
+        (httpx.Response(200, json={"code": "NOPE"}), ApiError),
+        (httpx.Response(200, text="<html>"), ApiError),
+        (httpx.Response(200, json=[1]), ApiError),
+        (httpx.Response(404, json={"code": "NOT_FOUND"}), ApiError),
+    ],
+)
+def test_account_id_never_in_get_error_messages(
+    response: httpx.Response, exc_type: type[ApiError]
+) -> None:
+    seen: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.url.path)
+        return response
+
+    with pytest.raises(exc_type) as exc:
+        _uid_client(handler).get(f"history/all/{UID}/")
+    assert UID not in str(exc.value)
+    assert seen[0] == f"/v1.1/history/all/{UID}/"  # the request itself keeps the real path
+
+
+def test_account_id_never_in_post_errors() -> None:
+    client = _uid_client(lambda _r: httpx.Response(500, text="boom"))
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        client.post(f"routine/update/{UID}/", {"routines": "[]"})
+    assert UID not in str(exc.value)
+
+
+def test_account_id_never_in_network_error_message_or_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=req)
+
+    caplog.set_level(logging.DEBUG, logger="smartgym_mcp.api")
+    with pytest.raises(ApiError) as exc:
+        _uid_client(handler).get(f"history/all/{UID}/")
+    assert UID not in str(exc.value)
+    assert caplog.records
+    assert UID not in caplog.text
+
+
+def test_only_whole_id_segments_are_masked() -> None:
+    client = _uid_client(lambda _r: httpx.Response(404, json={"code": "NOT_FOUND"}))
+    with pytest.raises(ApiError) as exc:
+        client.get(f"routine/single/{UID}1/")
+    assert f"{UID}1" in str(exc.value)

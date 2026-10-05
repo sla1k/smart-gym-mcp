@@ -93,6 +93,11 @@ class ApiClient:
     def user_id(self) -> str:
         return self._credentials.user_id
 
+    def _safe_path(self, path: str) -> str:
+        """Path for messages and logs: the account id never appears in them."""
+        uid = self._credentials.user_id
+        return "/".join("<user>" if seg == uid else seg for seg in path.split("/"))
+
     def _common(self) -> dict[str, str]:
         return {
             "appVersion": self._app_version,
@@ -107,6 +112,7 @@ class ApiClient:
         *,
         require_success: bool = True,
     ) -> dict[str, Any]:
+        shown = self._safe_path(path)
         query = {**(params or {}), **self._common()}
         last: Exception | None = None
         for attempt in range(self._max_read_attempts):
@@ -118,18 +124,19 @@ class ApiClient:
                 )
             except httpx.RequestError as exc:
                 last = exc
-                logger.info("GET %s network error (attempt %d)", path, attempt + 1)
+                logger.info("GET %s network error (attempt %d)", shown, attempt + 1)
                 continue
             if resp.status_code >= 500:
-                last = ApiError(f"SmartGym server error HTTP {resp.status_code} on {path}.")
+                last = ApiError(f"SmartGym server error HTTP {resp.status_code} on {shown}.")
                 continue
-            return self._decode(path, resp, require_success)
+            return self._decode(shown, resp, require_success)
         raise ApiError(
-            f"SmartGym unreachable (network error) for {path} after "
+            f"SmartGym unreachable (network error) for {shown} after "
             f"{self._max_read_attempts} attempts: {type(last).__name__}."
         )
 
     def post(self, path: str, form: Mapping[str, str]) -> dict[str, Any]:
+        shown = self._safe_path(path)
         fields = {**form, **self._common()}
         files = {k: (None, v.encode("utf-8")) for k, v in fields.items()}
         try:
@@ -138,15 +145,15 @@ class ApiClient:
             )
         except httpx.RequestError as exc:
             raise WriteOutcomeUnknown(
-                f"Network error during write to {path} ({type(exc).__name__}); the change "
+                f"Network error during write to {shown} ({type(exc).__name__}); the change "
                 "may or may not have landed — re-fetch before retrying."
             ) from None
         if resp.status_code >= 500:
             raise WriteOutcomeUnknown(
-                f"SmartGym answered HTTP {resp.status_code} during write to {path}; the "
+                f"SmartGym answered HTTP {resp.status_code} during write to {shown}; the "
                 "change may or may not have landed — re-fetch before retrying."
             )
-        return self._decode(path, resp, require_success=True)
+        return self._decode(shown, resp, require_success=True)
 
     @staticmethod
     def _server_code(resp: httpx.Response) -> str | None:
@@ -158,12 +165,14 @@ class ApiClient:
         return str(code) if code is not None else None
 
     @classmethod
-    def _decode(cls, path: str, resp: httpx.Response, require_success: bool) -> dict[str, Any]:
+    def _decode(
+        cls, shown: str, resp: httpx.Response, require_success: bool
+    ) -> dict[str, Any]:
         if resp.status_code in (401, 403):
             code = cls._server_code(resp)
             raise AuthError(
                 f"SmartGym rejected the credentials (HTTP {resp.status_code}"
-                f"{', ' + code if code else ''}) on {path}. "
+                f"{', ' + code if code else ''}) on {shown}. "
                 "Re-run scripts/capture_credentials.py and retry.",
                 code=code,
             )
@@ -171,19 +180,19 @@ class ApiClient:
             code = cls._server_code(resp)
             raise ApiError(
                 f"SmartGym answered HTTP {resp.status_code}{' ' + code if code else ''} "
-                f"on {path}.",
+                f"on {shown}.",
                 code=code,
             )
         try:
             body = resp.json()
         except ValueError:
-            raise ApiError(f"SmartGym returned a non-JSON response on {path}.") from None
+            raise ApiError(f"SmartGym returned a non-JSON response on {shown}.") from None
         if not isinstance(body, dict):
-            raise ApiError(f"SmartGym returned an unexpected JSON shape on {path}.")
+            raise ApiError(f"SmartGym returned an unexpected JSON shape on {shown}.")
         code = body.get("code")
         if require_success and code != "SUCCESS":
             raise ApiError(
-                f"SmartGym answered {code!r} on {path}.",
+                f"SmartGym answered {code!r} on {shown}.",
                 code=str(code) if code is not None else None,
             )
         return body
