@@ -194,12 +194,18 @@ def generate_uniquehashid(conn: sqlite3.Connection, when: datetime) -> int:
     )
 
 
+# Placeholder ZIDENTIFIERs are drawn from this range; server-assigned ROUTINE
+# ids are far below it (~3.7M as of 2026-10), so a routine whose identifier is
+# still in range has never been pushed.
+PLACEHOLDER_IDENTIFIER_RANGE = (10_000_000, 999_999_999)
+
+
 def generate_identifier(conn: sqlite3.Connection) -> int:
     """Mint a placeholder ZIDENTIFIER. The backend assigns the real one on push
     and the app overwrites ours (spec 03 §A); uniqueness just guarantees a
     pre-push row can never shadow an existing one."""
     return _mint_unique_int(
-        conn, "ZIDENTIFIER", lambda: random.randint(10_000_000, 999_999_999)
+        conn, "ZIDENTIFIER", lambda: random.randint(*PLACEHOLDER_IDENTIFIER_RANGE)
     )
 
 

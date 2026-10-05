@@ -26,6 +26,7 @@ from .models import (
     AddExerciseResult,
     CreateProgramResult,
     EquipmentListResult,
+    PublishRoutinesResult,
     RemoveExerciseResult,
     ReorderRoutineResult,
     RoutineDetail,
@@ -56,8 +57,10 @@ def _destructive(title: str) -> ToolAnnotations:
 
 _DRY_RUN_NOTICE = "Dry run — nothing written. Re-run with dry_run=false to apply."
 _APPLIED_NOTICE = (
-    "Applied. SmartGym relaunched — the sync push fires within ~30 s; "
-    "verify on your other device."
+    "Applied on this Mac and marked pending; SmartGym was left CLOSED on purpose. "
+    "Call smartgym_publish_routines once you are done editing — it relaunches the app "
+    "and sends the edits to your other devices. Opening SmartGym before publishing "
+    "can revert unpublished routine fields."
 )
 
 
@@ -124,8 +127,9 @@ def smartgym_list_routines(ctx: Context, include_hidden: bool = False) -> Routin
 
     By default only active (non-hidden) routines are returned; set include_hidden=true
     to also list archived ones. Use the returned z_pk to disambiguate routines elsewhere.
-    has_synced=false means the routine is still pending a push to the SmartGym backend
-    (the app pushes it within ~30 s of its next launch).
+    has_synced=false means the routine has edits not yet on the SmartGym backend —
+    new routines push on the next app launch; edits of existing ones need
+    smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     with app.lock:
@@ -249,7 +253,7 @@ def smartgym_add_exercise(
     sets: list[SetSpec] | None = None,
     dry_run: bool = True,
 ) -> AddExerciseResult:
-    """Add one exercise to an existing routine, synced to all devices.
+    """Add one exercise to an existing routine (publish to sync it).
 
     `routine` is a name (case-insensitive) or z_pk; `exercise` a catalog name
     (fuzzy-matched, deterministic) or z_pk. Default index appends at the end;
@@ -257,7 +261,7 @@ def smartgym_add_exercise(
     Optional template sets (reps + weight_kg); omitted = one default 1x10 set,
     flagged in the plan. dry_run=true (default) returns the plan and writes
     NOTHING; with dry_run=false the server backs up the DB, quits SmartGym,
-    writes, and relaunches it so the change pushes to your other devices.
+    and writes, leaving the app closed — then call smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     if dry_run:
@@ -271,7 +275,7 @@ def smartgym_add_exercise(
             backup_dir=None,
             notice=_DRY_RUN_NOTICE,
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
+    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
         plan, ue_pk = writes.apply_add_exercise(
             conn,
             routine,
@@ -306,7 +310,7 @@ def smartgym_update_exercise(
     fields you pass are changed; `note` OVERWRITES the whole field (pass an
     empty string to clear it). At least one field is required. dry_run=true
     (default) returns the old→new plan and writes NOTHING; dry_run=false
-    applies via backup + app quit/relaunch so the change syncs.
+    applies via backup + app quit (left closed) — then smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     if dry_run:
@@ -317,7 +321,7 @@ def smartgym_update_exercise(
         return UpdateExerciseResult(
             dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
+    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
         plan = writes.apply_update_exercise(
             conn, ue_pk, note=note, rest_seconds=rest_seconds, index=index
         )
@@ -342,8 +346,8 @@ def smartgym_reorder_routine(
     The list must contain every active exercise of the routine exactly once
     (ue_pks from smartgym_get_routine) — any duplicate, missing, or foreign
     ue_pk rejects the whole call. dry_run=true (default) returns the old→new
-    order and writes NOTHING; dry_run=false applies via backup + app
-    quit/relaunch so the change syncs.
+    order and writes NOTHING; dry_run=false applies via backup + app quit
+    (left closed) — then smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     if dry_run:
@@ -352,7 +356,7 @@ def smartgym_reorder_routine(
         return ReorderRoutineResult(
             dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
+    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
         plan = writes.apply_reorder_routine(conn, routine, ordered_ue_pks)
     return ReorderRoutineResult(
         dry_run=False,
@@ -373,7 +377,7 @@ def smartgym_remove_exercise(
     stay untouched, so past workouts keep their history. `ue_pk` comes from
     smartgym_get_routine. dry_run=true (default) returns the plan (incl. how
     many template sets go) and writes NOTHING; dry_run=false applies via
-    backup + app quit/relaunch so the change syncs.
+    backup + app quit (left closed) — then smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     if dry_run:
@@ -382,7 +386,7 @@ def smartgym_remove_exercise(
         return RemoveExerciseResult(
             dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
+    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
         plan = writes.apply_remove_exercise(conn, ue_pk)
     return RemoveExerciseResult(
         dry_run=False,
@@ -409,7 +413,8 @@ def smartgym_update_routine(
     (empty string clears days/goal/note; the name must stay non-empty and not
     collide with another active routine). At least one field is required.
     dry_run=true (default) returns the old→new plan and writes NOTHING;
-    dry_run=false applies via backup + app quit/relaunch so the change syncs.
+    dry_run=false applies via backup + app quit (left closed) — then
+    smartgym_publish_routines.
     """
     app: AppContext = ctx.request_context.lifespan_context
     if dry_run:
@@ -420,7 +425,7 @@ def smartgym_update_routine(
         return UpdateRoutineResult(
             dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
         )
-    with lifecycle.managed_write(app.cfg) as (conn, report):
+    with lifecycle.managed_write(app.cfg, relaunch=False) as (conn, report):
         plan = writes.apply_update_routine(
             conn, routine, name=name, days=days, goal=goal, note=note
         )
@@ -430,6 +435,55 @@ def smartgym_update_routine(
         app=report,
         backup_dir=str(app.cfg.backup_dir),
         notice=_APPLIED_NOTICE,
+    )
+
+
+@mcp.tool(annotations=_destructive("Publish edited routines"))
+def smartgym_publish_routines(
+    ctx: Context, routines: list[str] | None = None, dry_run: bool = True
+) -> PublishRoutinesResult:
+    """Push edited routines to your other devices (required since SmartGym 8).
+
+    SmartGym 8 only re-sends routines via its "add" endpoint, which ignores
+    content for routines the server already knows, so edits made by the other
+    write tools stay on this Mac until published. Publishing gives each routine
+    a fresh sync identity: the relaunch uploads its full current content as a
+    new server routine, and a local "OLD — <name>" tombstone keeps the previous
+    server copy. Archive each tombstone in the SmartGym Mac app to retire the
+    stale copy on every device.
+
+    `routines` = names or z_pks; omitted = every pending routine (has_synced=false).
+    Pass names explicitly if an edited routine already shows as synced. Batch
+    your edits first — each publish leaves one tombstone per routine.
+    dry_run=true (default) lists what would be published and writes NOTHING.
+    """
+    app: AppContext = ctx.request_context.lifespan_context
+    if dry_run:
+        with app.lock:
+            plan = writes.plan_publish_routines(app.ro, routines)
+        return PublishRoutinesResult(
+            dry_run=True, plan=plan, app=None, backup_dir=None, notice=_DRY_RUN_NOTICE
+        )
+    with lifecycle.managed_write(app.cfg) as (conn, report):
+        plan = writes.apply_publish_routines(conn, routines)
+    tombstones = [e.routine.name for e in plan.routines if e.tombstone_z_pk is not None]
+    notice = (
+        f"Published {len(plan.routines)} routine(s); SmartGym relaunched and uploads them "
+        "within ~30 s."
+    )
+    if tombstones:
+        notice += (
+            " In the SmartGym Mac app, archive the tombstone(s) "
+            + ", ".join(f"'{writes.TOMBSTONE_PREFIX}{n}'" for n in tombstones)
+            + " to remove the outdated copies from your other devices (archive from the "
+            "routines list; opened, an empty tombstone shows in edit mode — just cancel)."
+        )
+    return PublishRoutinesResult(
+        dry_run=False,
+        plan=plan,
+        app=report,
+        backup_dir=str(app.cfg.backup_dir),
+        notice=notice,
     )
 
 

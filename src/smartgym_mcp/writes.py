@@ -24,6 +24,7 @@ Insert recipe verified live by the Phase 0 spike (2026-07-10, app v7.10.1):
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -34,6 +35,8 @@ from .models import (
     CreatedRoutine,
     ExerciseResolution,
     FieldChange,
+    PublishEntry,
+    PublishRoutinesPlan,
     RemoveExercisePlan,
     ReorderEntry,
     ReorderRoutinePlan,
@@ -761,6 +764,127 @@ def apply_update_routine(
     return plan
 
 
+# --------------------------------------------------------------------------- #
+# publish_routines — SmartGym 8 push path for EXISTING routines
+# --------------------------------------------------------------------------- #
+# Verified live 2026-10-05 (app v8.0.3, MITM capture): the launch resync
+# (ResyncRoutinesManager) now sends every pending routine to `routine/add/`
+# only, and the server dedupes that endpoint by the routine's ZUNIQUEHASHID —
+# for a known hash it answers SUCCESS with the existing ids and DISCARDS the
+# content. `routine/update/` is reachable only from the in-app editor (and
+# carries an editor-tracked diff, not stored state). So the dirty flag alone no
+# longer moves edits off the Mac. A fresh routine hash makes the server store
+# the full current tree as a new routine and the app remaps the local row to
+# it; the previous server copy stays behind and must be archived in-app.
+def _publish_entry(conn: sqlite3.Connection, routine_pk: int) -> PublishEntry:
+    row = conn.execute(
+        "SELECT ZNAME, ZHASSYNCED, ZUNIQUEHASHID, ZIDENTIFIER FROM ZROUTINE WHERE Z_PK = ?",
+        (routine_pk,),
+    ).fetchone()
+    return PublishEntry(
+        routine=RoutineRef(z_pk=routine_pk, name=str(row[0])),
+        pending=row[1] == 0,
+        previous_unique_hashid=int(row[2]),
+        previous_server_id=int(row[3]) if row[3] is not None else None,
+        new_unique_hashid=None,
+        tombstone_z_pk=None,
+    )
+
+
+def plan_publish_routines(
+    conn: sqlite3.Connection, routines: Sequence[str | int] | None = None
+) -> PublishRoutinesPlan:
+    """Select the routines to publish: the explicit list, or every active
+    pending routine (ZHASSYNCED = 0). Pass routines explicitly when the app has
+    already flipped an edited routine's flag back to synced without pushing it."""
+    if routines:
+        pks = list(dict.fromkeys(_routine_ref(conn, r).z_pk for r in routines))
+    else:
+        pks = [
+            int(r[0])
+            for r in conn.execute(
+                "SELECT Z_PK FROM ZROUTINE WHERE ZHASSYNCED = 0 AND ZDATEREMOVED IS NULL "
+                "AND ZHIDDEN = 0 AND COALESCE(ZISTEMP, 0) = 0 ORDER BY Z_PK"
+            )
+        ]
+    if not pks:
+        raise WriteValidationError(
+            "Nothing to publish — no routine is pending. Pass `routines` explicitly "
+            "to republish specific routines."
+        )
+    return PublishRoutinesPlan(routines=[_publish_entry(conn, pk) for pk in pks])
+
+
+TOMBSTONE_PREFIX = "OLD — "
+TOMBSTONE_NOTE = (
+    "Outdated server copy left by smartgym_publish_routines. Archive this routine to "
+    "remove the old version from your other devices."
+)
+
+
+def insert_tombstone(conn: sqlite3.Connection, entry: PublishEntry) -> int | None:
+    """Insert an exercise-less, synced ZROUTINE row that keeps the routine's
+    PREVIOUS server identity (hash + server id). Archiving it in the app sends
+    the app's own routine/archive/ for that id, retiring the stale server copy
+    on every device. Skipped when the routine never reached the server.
+
+    It stays out of the resync (ZHASSYNCED = 1), so the app's clearEmptyRoutines
+    (pending routines only) leaves it alone."""
+    low, high = db.PLACEHOLDER_IDENTIFIER_RANGE
+    server_id = entry.previous_server_id
+    if server_id is None or low <= server_id <= high:
+        return None
+    cols = [
+        str(r[1])
+        for r in conn.execute("PRAGMA table_info(ZROUTINE)")
+        if r[1] not in ("Z_PK", "Z_ENT", "Z_OPT")
+    ]
+    tomb_pk, tomb_ent = db.next_pk(conn, "Routine")
+    overrides = {
+        "ZNAME": f"{TOMBSTONE_PREFIX}{entry.routine.name}",
+        "ZNOTE": TOMBSTONE_NOTE,
+        "ZUNIQUEHASHID": entry.previous_unique_hashid,
+        "ZIDENTIFIER": server_id,
+        "ZHASSYNCED": 1,
+        "ZHIDDEN": 0,
+        "ZDATEREMOVED": None,
+    }
+    select = ", ".join("?" if c in overrides else c for c in cols)
+    conn.execute(
+        f"INSERT INTO ZROUTINE (Z_PK, Z_ENT, Z_OPT, {', '.join(cols)}) "
+        f"SELECT ?, ?, 1, {select} FROM ZROUTINE WHERE Z_PK = ?",
+        (
+            tomb_pk,
+            tomb_ent,
+            *(overrides[c] for c in cols if c in overrides),
+            entry.routine.z_pk,
+        ),
+    )
+    return tomb_pk
+
+
+def apply_publish_routines(
+    conn: sqlite3.Connection, routines: Sequence[str | int] | None = None
+) -> PublishRoutinesPlan:
+    """Re-key each selected routine (new ZUNIQUEHASHID) and mark it pending, so
+    the relaunch pushes its full current content via routine/add/; leave a
+    tombstone for the stale server copy."""
+    plan = plan_publish_routines(conn, routines)
+    ctx = build_write_context(conn)
+    for entry in plan.routines:
+        entry.tombstone_z_pk = insert_tombstone(conn, entry)
+        new_hash = db.generate_uniquehashid(conn, ctx.now)
+        # Fresh placeholder id too: the tombstone now owns the old server id,
+        # and the push assigns the new one.
+        conn.execute(
+            "UPDATE ZROUTINE SET ZUNIQUEHASHID = ?, ZIDENTIFIER = ? WHERE Z_PK = ?",
+            (new_hash, db.generate_identifier(conn), entry.routine.z_pk),
+        )
+        mark_routine_pending(conn, entry.routine.z_pk, ctx.now_cd)
+        entry.new_unique_hashid = new_hash
+    return plan
+
+
 # NOTE — archive_routine was implemented and then REMOVED after live verification
 # (2026-07-10): ZHIDDEN=1 + mark_routine_pending is self-defeating — the app's
 # routine/update/ push applies the server's authoritative response back, which
@@ -774,6 +898,7 @@ __all__ = [
     "WriteValidationError",
     "apply_add_exercise",
     "apply_program",
+    "apply_publish_routines",
     "apply_remove_exercise",
     "apply_reorder_routine",
     "apply_update_exercise",
@@ -784,9 +909,11 @@ __all__ = [
     "insert_routine",
     "insert_routine_tree",
     "insert_set",
+    "insert_tombstone",
     "mark_routine_pending",
     "plan_add_exercise",
     "plan_program",
+    "plan_publish_routines",
     "plan_remove_exercise",
     "plan_reorder_routine",
     "plan_update_exercise",

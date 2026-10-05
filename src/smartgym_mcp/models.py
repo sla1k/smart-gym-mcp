@@ -238,3 +238,27 @@ class UpdateRoutinePlan(BaseModel):
 
 class UpdateRoutineResult(WriteToolResult):
     plan: UpdateRoutinePlan
+
+
+class PublishEntry(BaseModel):
+    routine: RoutineRef
+    pending: bool = Field(description="ZHASSYNCED was 0 (edited since the last push)")
+    previous_unique_hashid: int
+    previous_server_id: int | None = Field(
+        description="ZIDENTIFIER before publishing — the server copy that becomes stale "
+        "if the routine already existed on your other devices"
+    )
+    new_unique_hashid: int | None = Field(description="Set only when applied")
+    tombstone_z_pk: int | None = Field(
+        description="Local 'OLD — <name>' row carrying previous_server_id. Archive it in the "
+        "Mac app to retire the stale server copy everywhere. None when the routine was "
+        "never on the server (or on dry run)."
+    )
+
+
+class PublishRoutinesPlan(BaseModel):
+    routines: list[PublishEntry]
+
+
+class PublishRoutinesResult(WriteToolResult):
+    plan: PublishRoutinesPlan

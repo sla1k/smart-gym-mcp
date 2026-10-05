@@ -27,11 +27,17 @@ syncs everywhere via SmartGym's own engine.
 **Read** — health check, list routines, routine details, workout history, your equipment.
 
 **Write** — create complete training programs, add / update / remove / reorder exercises,
-rename and edit routines. Every write is verified to sync across devices.
+rename and edit routines, then publish the edits to your other devices.
 
 **Safely** — the server backs up the database before every write, only writes while the app
-is closed (it quits and relaunches SmartGym itself, which triggers sync), and refuses anything
-it can't do safely. Reads are strictly read-only.
+is closed (it quits SmartGym itself), and refuses anything it can't do safely. Reads are
+strictly read-only.
+
+**Syncing edits (SmartGym 8+)** — SmartGym 8 no longer uploads changes to existing routines
+made outside the app, so edits stay on the Mac (with SmartGym left closed) until you call
+`smartgym_publish_routines`. Publishing uploads each edited routine as a fresh copy and leaves
+an `OLD — <name>` routine on the Mac; archive that one in the SmartGym Mac app and the outdated
+copy disappears from your iPhone too. New programs sync on their own.
 
 ## Quick start
 

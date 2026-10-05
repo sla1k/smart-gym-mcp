@@ -12,7 +12,7 @@ from dataclasses import replace
 
 import pytest
 
-from smartgym_mcp import db
+from smartgym_mcp import db, lifecycle
 
 
 @pytest.fixture(autouse=True)
@@ -108,3 +108,25 @@ def test_rw_checkpoint_truncates_wal(temp_db_cfg):
     wal = temp_db_cfg.db_path.parent / (temp_db_cfg.db_path.name + "-wal")
     # TRUNCATE checkpoint resets the WAL to (near) empty after commit.
     assert not wal.exists() or wal.stat().st_size == 0
+
+
+def test_managed_write_relaunch_flag(temp_db_cfg, monkeypatch):
+    """Edit tools pass relaunch=False: the app must stay closed after a
+    successful write; a failed write still restores the running app."""
+    launches: list[object] = []
+    monkeypatch.setattr(lifecycle, "ensure_quit", lambda: True)
+    monkeypatch.setattr(db, "smartgym_is_running", lambda *a, **k: False)
+    monkeypatch.setattr(lifecycle, "launch", lambda cfg: launches.append(cfg))
+    cfg = replace(temp_db_cfg, allow_write_while_running=False)
+
+    with lifecycle.managed_write(cfg, relaunch=False) as (_conn, report):
+        pass
+    assert launches == [] and report.quit and not report.relaunched
+
+    with lifecycle.managed_write(cfg) as (_conn, report):
+        pass
+    assert len(launches) == 1 and report.relaunched
+
+    with pytest.raises(RuntimeError), lifecycle.managed_write(cfg, relaunch=False):
+        raise RuntimeError("boom")
+    assert len(launches) == 2
