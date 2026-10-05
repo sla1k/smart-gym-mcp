@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from .catalog import CatalogExercise
 from .models import ExerciseResolution
 
 FUZZY_THRESHOLD = 0.85
@@ -70,6 +72,11 @@ class ExerciseCatalog:
                 )
             ]
         )
+
+    @classmethod
+    def from_bundle(cls, exercises: Sequence[CatalogExercise]) -> ExerciseCatalog:
+        """Catalog from the app bundle; resolutions carry the catalog id in `z_pk`."""
+        return cls([(e.id, e.name) for e in exercises])
 
     def resolve(self, ref: str) -> ExerciseResolution:
         """Resolve one exercise reference (name or numeric z_pk).
