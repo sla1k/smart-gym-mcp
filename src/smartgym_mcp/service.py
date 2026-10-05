@@ -152,9 +152,23 @@ def _with_context(exc: Exception, suffix: str) -> Exception:
     return type(exc)(f"{exc}{suffix}")
 
 
-def _progress(exc: ApiError, sent: Sequence[str], in_flight: str) -> str:
+def _progress(
+    exc: ApiError, sent: Sequence[str], in_flight: str, not_sent: Sequence[str] = ()
+) -> str:
     verdict = "Outcome unknown" if isinstance(exc, WriteOutcomeUnknown) else "Failed"
-    return f" Already sent: {', '.join(sent) or 'nothing'}. {verdict}: {in_flight}."
+    message = f" Already sent: {', '.join(sent) or 'nothing'}. {verdict}: {in_flight}."
+    if not_sent:
+        message += f" Not sent: {', '.join(not_sent)}."
+    return message
+
+
+def _active_names(routines: Sequence[Routine], *, besides: int | None = None) -> set[str]:
+    """Lower-cased names of active routines — archived and removed ones may be reused."""
+    return {
+        r.name.strip().lower()
+        for r in routines
+        if not r.removed and not r.archived and r.identifier != besides
+    }
 
 
 class RoutineService:
@@ -200,6 +214,11 @@ class RoutineService:
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
         cs = diff_routine(current, build(current), self._catalog)
+        renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
+        if renamed is not None and renamed.strip().lower() in _active_names(
+            self._store.data().routines, besides=current.identifier
+        ):
+            raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         if not self._move_in_place:
             cs = moves_as_readd(cs, current)
         if cs.is_empty:
@@ -235,12 +254,12 @@ class RoutineService:
             )
         snapshot = save_snapshot(self._backup_dir, raw, now=now)
         sent: list[str] = []
-        for path, form in requests:
+        for i, (path, form) in enumerate(requests):
             try:
                 self._client.post(path, form)
             except ApiError as exc:
                 self._store.invalidate()
-                message = _progress(exc, sent, path)
+                message = _progress(exc, sent, path, planned[i + 1 :])
                 if isinstance(exc, WriteOutcomeUnknown):
                     message += f" {self._landed(current, cs.expected)}"
                 message += (
@@ -294,7 +313,7 @@ class RoutineService:
         if not dry_run:
             self._store.invalidate()
         data = self._store.data()
-        taken = {r.name.strip().lower() for r in data.routines if not r.removed}
+        taken = _active_names(data.routines)
         problems: list[str] = []
         plans: list[CreatePlan] = []
         resolved: list[list[CatalogExercise]] = []
@@ -302,9 +321,7 @@ class RoutineService:
         for spec in specs:
             key = spec.name.strip().lower()
             if key in taken:
-                problems.append(
-                    f"Routine {spec.name!r} already exists (archive or rename it)."
-                )
+                problems.append(f"Routine {spec.name!r} already exists — rename it.")
             if key in seen:
                 problems.append(f"Routine {spec.name!r} appears twice in this program.")
             seen.add(key)
@@ -360,7 +377,15 @@ class RoutineService:
                 exc, message + " Re-read the routines before retrying."
             ) from None
         self._store.invalidate()
-        by_hash = {r.unique_hashid: r for r in self._store.data().routines}
+        try:
+            by_hash = {r.unique_hashid: r for r in self._store.data().routines}
+        except (ApiError, ApiPayloadError) as exc:
+            raise _with_context(
+                exc,
+                " routine/add/ was sent and accepted, but re-reading to verify failed. Sent: "
+                + ", ".join(repr(spec.name) for spec in specs)
+                + ". Re-read the routines before retrying.",
+            ) from None
         created: list[RoutineId] = []
         mismatches: list[str] = []
         for spec, payload in zip(specs, payloads, strict=True):
@@ -427,15 +452,15 @@ class RoutineService:
                 notice=_DRY if dry_run else "Nothing to change.",
             )
         path = "routine/archive/" if archived else "routine/unarchive/"
+        labels = [f"{path} ({t.name})" for t in todo]
         sent: list[str] = []
-        for t in todo:
-            label = f"{path} ({t.name})"
+        for i, (t, label) in enumerate(zip(todo, labels, strict=True)):
             form = archive_form(t.identifier) if archived else unarchive_form(t.identifier)
             try:
                 self._client.post(path, form)
             except ApiError as exc:
                 self._store.invalidate()
-                message = _progress(exc, sent, label)
+                message = _progress(exc, sent, label, labels[i + 1 :])
                 if isinstance(exc, WriteOutcomeUnknown):
                     message += f" {self._archive_state(todo, archived)}"
                 raise _with_context(
@@ -443,7 +468,14 @@ class RoutineService:
                 ) from None
             sent.append(label)
         self._store.invalidate()
-        state = {r.identifier: r.archived for r in self._store.data().routines}
+        try:
+            state = {r.identifier: r.archived for r in self._store.data().routines}
+        except (ApiError, ApiPayloadError) as exc:
+            raise _with_context(
+                exc,
+                f" {path} was sent and accepted, but re-reading to verify failed. Sent: "
+                f"{', '.join(sent)}. Re-read the routines before retrying.",
+            ) from None
         wrong = [t.name for t in todo if state.get(t.identifier) != archived]
         if wrong:
             raise WriteVerifyError(

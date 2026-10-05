@@ -1,4 +1,7 @@
-"""Offline stand-in for api.client.ApiClient: scripted responses, recorded posts."""
+"""Offline stand-in for api.client.ApiClient: scripted responses, recorded posts.
+
+A scripted GET response may be an Exception, which that call raises instead.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +13,8 @@ from typing import Any
 class FakeClient:
     def __init__(
         self,
-        gets: Mapping[str, dict[str, Any] | list[dict[str, Any]]] | None = None,
+        gets: Mapping[str, dict[str, Any] | Exception | list[dict[str, Any] | Exception]]
+        | None = None,
         posts: list[dict[str, Any] | Exception] | None = None,
         user_id: str = "1",
     ) -> None:
@@ -33,6 +37,8 @@ class FakeClient:
         self.get_calls.append(path)
         queue = self._gets[path]
         body = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(body, Exception):
+            raise body
         return copy.deepcopy(body)
 
     def post(self, path: str, form: Mapping[str, str]) -> dict[str, Any]:
