@@ -1,0 +1,33 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681558",
+    "appVersion": "8.0.3",
+    "days": "2,3",
+    "timezone": "Europe/Madrid",
+    "goal": "S7 capture",
+    "exercises": "[{\"id\":533,\"genericID\":533,\"name\":\"Cross Arm Stretch\",\"idx\":4,\"index\":4,\"pause\":30,\"type\":2,\"category\":9,\"subCategories\":\"5,12\",\"twoSides\":1,\"stretch\":1,\"isStretch\":true,\"isCustom\":0,\"requiresBands\":false,\"isSingleWeight\":0,\"listGroup\":2,\"mode\":0,\"totalSets\":1,\"totalRealSets\":1,\"firstImage\":\"0533-1\",\"secondImage\":\"\",\"thirdImage\":\"\",\"fourthImage\":\"\",\"fifthImage\":\"\",\"sixthImage\":\"\",\"uniqueHashID\":26100545661660,\"dateAdded\":\"2026-10-05T19:29:07\",\"routineID\":3681558,\"sets\":[{\"index\":0,\"type\":0,\"firstValue\":1,\"secondValue\":12,\"thirdValue\":0,\"uniqueHashID\":26100588041946,\"dateAdded\":\"2026-10-05T19:29:07\"}]}]",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681558",
+    "exercises": [
+      {
+        "original_id": 26100545661660,
+        "server_id": 34052451,
+        "routineID": "3681558",
+        "sets": [
+          {
+            "server_id": "149111923",
+            "original_id": "26100588041946",
+            "uniqueExerciseID": "34052451",
+            "routineID": "3681558"
+          }
+        ]
+      }
+    ]
+  }
+}

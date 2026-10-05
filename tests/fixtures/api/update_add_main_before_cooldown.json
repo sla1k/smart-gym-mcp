@@ -1,0 +1,34 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681558",
+    "appVersion": "8.0.3",
+    "days": "2,3",
+    "timezone": "Europe/Madrid",
+    "goal": "S7 capture",
+    "exercises": "[{\"id\":194,\"genericID\":194,\"name\":\"Push Up\",\"idx\":2,\"index\":2,\"pause\":30,\"type\":1,\"category\":11,\"subCategories\":\"9,12\",\"twoSides\":0,\"stretch\":0,\"isStretch\":false,\"isCustom\":0,\"requiresBands\":false,\"isSingleWeight\":0,\"listGroup\":0,\"mode\":0,\"totalSets\":1,\"totalRealSets\":1,\"firstImage\":\"0194-1\",\"secondImage\":\"0194-2\",\"thirdImage\":\"\",\"fourthImage\":\"\",\"fifthImage\":\"\",\"sixthImage\":\"\",\"uniqueHashID\":26100528072125,\"dateAdded\":\"2026-10-05T19:27:57\",\"routineID\":3681558,\"sets\":[{\"index\":0,\"type\":0,\"firstValue\":1,\"secondValue\":12,\"thirdValue\":0,\"uniqueHashID\":26100540987292,\"dateAdded\":\"2026-10-05T19:27:57\"}]}]",
+    "exercisesOrder": "34052112:0,34052411:1,34052309:3",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681558",
+    "exercises": [
+      {
+        "original_id": 26100528072125,
+        "server_id": 34052444,
+        "routineID": "3681558",
+        "sets": [
+          {
+            "server_id": "149111881",
+            "original_id": "26100540987292",
+            "uniqueExerciseID": "34052444",
+            "routineID": "3681558"
+          }
+        ]
+      }
+    ]
+  }
+}

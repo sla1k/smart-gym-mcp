@@ -1,7 +1,7 @@
 # API client (server-first rebuild) — design
 
 > Status: **design approved 2026-10-05; Phase 0 passed (S1 token lifetime open); §10 routine
-> sections added 2026-10-05 (S7 capture pending).** Supersedes the DB-write path of
+> sections added 2026-10-05; S7 passed (in-place section move).** Supersedes the DB-write path of
 > specs 02/03. Until then the shipped DB tools + `smartgym_publish_routines`
 > (re-key + tombstone, spec 02 Part A §8.0) remain the working fallback.
 
@@ -130,6 +130,7 @@ user. Findings are recorded back into §3 as verified facts.
 | S4 | **pass, no gaps** | Full `history/all/<id>/` returns routines, histories (workout duration/calories/HR + logged sets), equipment lists, custom exercises; exercise/workout history screens make no other calls. Paging via `hasMore` + `lastModified`. |
 | S5 | **pass** | Idle Mac app refreshed via incremental `history/all`, pushed nothing. |
 | S6 | **pass** | `payloads.new_routine_payload` shape (no `identifier`/`routineID`) → SUCCESS; iPhone and Mac show `ZZ-S6` correctly. |
+| S7 | **pass** (in-place move) | Mac app cannot edit sections → hand-built probes on `ZZ-S7`: move to warm-up / cool-down via `listGroup` in `updateExercises`, reorder, add mid-routine and at end, set/clear note, remove two; each read back via `routine/single`; iPhone shows Warm Up / Cool Down headers (needs ≥ 1 main exercise). Details §10.3. |
 
 **Decision: build** (API-only, no local-DB read fallback). Open before Plan 2 is final:
 `Authorization` lifetime, and credential sourcing (user-provided 0600 file vs reading the
@@ -236,8 +237,8 @@ when the installed app version differs from the last verified one.
   all exercises in `listGroup` 0: the old create path copied the most common `ZLISTGROUP`
   instead of treating it as a section, and Plan 1's `payloads.py` hardcodes `listGroup: 0`.
 - `routine/add/` and the "add exercise" form of `routine/update/` carry the full exercise JSON
-  including `listGroup` (S2/S6 fixtures). How the app moves an EXISTING exercise between
-  sections is not captured yet → S7.
+  including `listGroup` (S2/S6 fixtures). Moving an EXISTING exercise between sections is an
+  in-place `listGroup` change (S7, §10.3).
 
 ### 10.2 Model and interface (user choice: three lists, "A")
 
@@ -263,8 +264,27 @@ when the installed app version differs from the last verified one.
   renumbered 0..n-1 whenever anything moves or is added/removed.
 - Create: `listGroup` from the section, `idx`/`index` global in section order (known shape).
 - Add into a section: full exercise JSON with `listGroup` (known shape).
-- Move / reorder: wire shape from S7 (expected: `listGroup` inside `updateExercises` plus a
-  global `exercisesOrder`; recorded as verified only after the capture and an iPhone check).
+- Move (S7, verified 2026-10-05, iPhone + Mac): **in place** —
+  `updateExercises=[{"listGroup":"<1|0|2>","exerciseID":<id>}]` (string `listGroup`, int id;
+  merges with `pause` in the same entry), plus `exercisesOrder` only when the global order
+  changes. Fixtures `update_move_to_warmup`, `update_move_to_cooldown`. §10.4 is not needed.
+- Reorder inside a section: `exercisesOrder` alone (`update_reorder_warmup`).
+- Add into a section mid-routine: the new exercise's JSON carries its `listGroup` and global
+  `idx`; the app sends `exercisesOrder` for the kept exercises in the **same** request
+  (captured app add, `update_add_to_warmup`, `update_add_main_before_cooldown`). A separate
+  follow-up order request with the new server id is also accepted. Appending after
+  contiguous `idx` 0..n-1 needs no order (`update_add_to_cooldown`).
+- `removeExercises` takes a comma list (`"id1,id2"`, `update_remove_two`); kept `idx` are not
+  renumbered (gaps stay, as the app leaves them). Removed exercises disappear from
+  `routine/single`.
+- Clearing an exercise note: `routine/updateExercise/` with `"note": ""` (server stores `""`;
+  `update_set_note`, `update_clear_note`).
+- Display: the iPhone shows collapsible "Warm Up" / "Cool Down" headers and the Mac separate
+  cards **only when the routine has at least one main exercise**; with no main exercise both
+  show one flat list (data unchanged). Smart Trainer routines additionally carry a
+  `smartTrainerWorkout` block — not required for sections.
+- Probe method: the Mac app has no section editor, so S7 used hand-built requests
+  (`scripts/spike/send.py --save=`) on `ZZ-S7`, read back with `routine/single` after each.
 
 ### 10.4 Fallback if S7 shows no in-place move
 

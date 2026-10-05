@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681558",
+    "appVersion": "8.0.3",
+    "days": "2,3",
+    "timezone": "Europe/Madrid",
+    "goal": "S7 capture",
+    "removeExercises": "34052112,34052309",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681558"
+  }
+}
