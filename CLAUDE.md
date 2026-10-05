@@ -3,20 +3,20 @@
 Project knowledge lives in shared docs — read them, don't rediscover:
 - [`DESIGN.md`](DESIGN.md) — **start here**: status table, verified facts (settled — do not
   re-derive or re-litigate them), architecture invariants, decision log
-- [`specs/`](specs/) — source of truth per area; `specs/02-write-and-sync.md` Part E has the
-  module layering and the composition table for unimplemented tools
+- [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md)
+  — source of truth for the API client (module layering §5, tool surface §6, sections §10);
+  `specs/` holds the superseded DB-era specs
 - [`FEATURES.md`](FEATURES.md) — backlog
 
 ## Working rules for this repo
-- Follow the architecture invariants in DESIGN.md exactly — especially: thin tools, everything
-  mutating inside `lifecycle.managed_write`, and `writes.mark_routine_pending` on every
-  mutation of an existing routine.
-- The DB is the user's **live personal training data**. Never test live applies on real
-  routines — only on `ZZ-`prefixed throwaways, with the user in the loop for cross-device
-  (iPhone) confirmation. Backups land in `~/.smartgym-mcp/backups/<ts>/`.
-- Before trusting a NEW kind of mutation syncs, run the Phase-0-style observation from the
-  decision log (DESIGN.md) instead of assuming the dirty flag covers it.
-- Tests must never touch the real DB — use the `temp_db_cfg` fixture (temp copy).
+- Follow the architecture invariants in DESIGN.md exactly — especially: thin tools, every write
+  through `service.RoutineService`, every edit of an existing routine through `diff_routine`.
+- The SmartGym account is the user's **live personal training data**. Live checks only on
+  `ZZ-`prefixed throwaway routines, with the user confirming on the iPhone. Snapshots land in
+  `~/.smartgym-mcp/backups/<ts>/`.
+- Before trusting a NEW kind of server write, capture the app doing it first (golden fixture in
+  `tests/fixtures/api/`) instead of assuming the wire shape.
+- Tests never touch the network or the account — use the fixtures and `tests/fakes.FakeClient`.
 
 ## Commands
 ```sh

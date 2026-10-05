@@ -162,7 +162,10 @@ Invariants:
 1. Tools are thin: parse input → plan (pure) → apply via the client.
 2. Every write = **fetch fresh → plan → (dry run returns the plan) → snapshot → send →
    re-fetch → verify** against the plan; a mismatch is an error naming the differing fields.
-3. Every edit of an existing routine goes through `diff.py` → one `routine/update/` per call.
+3. Every edit of an existing routine goes through `diff.py` → one diff per call, sent as at most
+   two requests in this order: `routine/update/` (routine fields, rest, section moves, added and
+   removed exercises, and `exercisesOrder` for the kept exercises whenever `idx` must be
+   renumbered) and `routine/updateExercise/` (exercise notes and template sets).
 4. Only template sets (`dateLogged` null) are ever changed.
 
 ## 6. Tool surface
@@ -259,9 +262,14 @@ when the installed app version differs from the last verified one.
 
 ### 10.3 Change calculation and wire
 
-- `ChangeSet` records a section move as a per-exercise `FieldChange("section", old, new)`;
-  `final_order` (and the wire `idx`) is the global order warm-up → main → cool-down,
-  renumbered 0..n-1 whenever anything moves or is added/removed.
+- `ChangeSet` records a section move as a per-exercise `FieldChange("section", old, new)`.
+  `final_order` is the global order warm-up → main → cool-down. It is sent as
+  `exercisesOrder` (kept exercises, final global index) inside the same `routine/update/`,
+  with new exercises carrying their `idx` in their JSON, whenever the kept exercises' relative
+  order changes, an exercise is added anywhere but after the last kept one, an exercise is
+  added while the kept `idx` are not exactly 0..n-1, or a section move leaves the kept `idx`
+  out of order. Pure removals and order-keeping moves on consistent indexes leave gaps, as the
+  app itself does (S2/S7).
 - Create: `listGroup` from the section, `idx`/`index` global in section order (known shape).
 - Add into a section: full exercise JSON with `listGroup` (known shape).
 - Move (S7, verified 2026-10-05, iPhone + Mac): **in place** —

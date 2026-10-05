@@ -1,32 +1,31 @@
 # SmartGym MCP — Design Index
 
-Python + FastMCP · stdio · single-user local server that wraps SmartGym's local Core Data SQLite DB.
+Python + FastMCP · stdio · single-user local server that edits SmartGym routines through SmartGym's own server API.
 Notion stays on its own MCP; a thin `smartgym-sync` skill orchestrates both and holds personal config.
 
 The technical design is split into specs by risk profile:
 
 | Spec | Scope | Risk | Status |
 |---|---|---|---|
-| [`specs/00-foundation.md`](specs/00-foundation.md) | Shared: stack, DB facts, WAL/PK rules, epoch, config, layout | — read first | ✅ implemented |
-| [`specs/01-read-data.md`](specs/01-read-data.md) | Read tools + catalog resources | low — no mutation, safe while app open | ✅ implemented (evals pending) |
-| [`specs/02-write-and-sync.md`](specs/02-write-and-sync.md) | Write tools + sync model | high — guarded, managed app lifecycle | ✅ implemented + verified E2E (2026-07-10): add/update/reorder/remove/update-routine; archive verified impossible via DB write and removed (see spec 02 Part A). **SmartGym 8 (2026-10-05): edits sync only via `smartgym_publish_routines`** (re-key + tombstone, see below) |
-| [`specs/03-create-program.md`](specs/03-create-program.md) | Full program creation + verified sync-push (supersedes 02's `create_routine`) | high — Phase 0 spike passed | ✅ implemented + verified E2E (2026-07-10) |
+| [`specs/00-foundation.md`](specs/00-foundation.md) | Shared: stack, DB facts, WAL/PK rules, epoch, config, layout | — | historical (DB era); the local DB is no longer used |
+| [`specs/01-read-data.md`](specs/01-read-data.md) | Read tools + catalog resources | — | superseded by the API client (reads come from `history/all`) |
+| [`specs/02-write-and-sync.md`](specs/02-write-and-sync.md) | Write tools + sync model (DB era) | — | superseded by the API client (DB write path removed) |
+| [`specs/03-create-program.md`](specs/03-create-program.md) | Full program creation via the DB (DB era) | — | superseded by the API client (DB write path removed) |
+| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections | high — Phase 0 + S7 verified | ✅ implemented (Plan 2) |
 
 Backlog and deferred work: [`FEATURES.md`](FEATURES.md).
 
 ## One-paragraph summary
-The current `smartgym-sync` skill carries fragile knowledge (a non-obvious join, CoreData epoch
-math, WAL handling, PK allocation) that the model can get wrong. This MCP bakes that into
-deterministic tools. **Reads** are WAL-aware and safe to run live. **Writes** are backup-first +
-`dry_run`, never run under the live app (the server gracefully quits and relaunches SmartGym
-itself). New routines are born pending and push on relaunch (spec 03: create program → iPhone in
-~20 s). **Since SmartGym 8, edits of existing routines no longer push on relaunch** — the edit
-tools write locally and leave the app closed; `smartgym_publish_routines` re-keys the edited
-routines so the relaunch uploads them as new server routines, leaving an `OLD — <name>`
-tombstone the user archives in the Mac app to retire the stale copy. Archiving is in-app only.
+The MCP is a client of SmartGym's backend, like any SmartGym device. Reads come from one
+`history/all` call (routines, workouts, equipment). Every write is a dry run first; applying
+fetches the routine fresh, snapshots it, sends the app's own edit requests (`routine/update/`,
+`routine/updateExercise/`, `routine/add/`, archive/unarchive), re-reads and verifies. Routines
+have warm-up / main / cool-down sections (`listGroup` 1/0/2). The app is never quit, relaunched,
+or written to; the local DB is no longer used.
 
 ## Verified facts (2026-07-10, SmartGym v7.10.1; amended 2026-10-05 for v8.0.3) — settled, don't re-derive
-Each fact's full evidence lives in the linked spec; this is the canonical short list.
+Each fact's full evidence lives in the linked spec; this is the canonical short list. These are
+DB-era facts kept for history; the API facts (Phase 0, S7) live in the API-client spec §3/§10.
 
 - **SmartGym 8.0.3 (verified 2026-10-05, MITM capture + iPhone checks, spec 02 Part A §8.0):**
   the launch resync sends every pending routine to **`routine/add/` only**. The server dedupes
@@ -64,19 +63,17 @@ Each fact's full evidence lives in the linked spec; this is the canonical short 
   soft-delete propagates.
 
 ## Architecture invariants
-Module layering + per-tool composition table: [spec 02 Part E](specs/02-write-and-sync.md).
+Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-client-design.md).
 
-1. Tools in `server.py` are THIN — no SQL, no lifecycle code in tool bodies.
-2. Every mutation runs inside ONE `lifecycle.managed_write(cfg)` session
-   (graceful quit → backup → RW transaction → relaunch; the relaunch fires the sync push).
-   Edits of existing routines use `relaunch=False` — only create and publish relaunch.
-3. **Every mutation of an existing routine calls `writes.mark_routine_pending`**, and reaches
-   other devices only through `writes.apply_publish_routines` (re-key + tombstone).
-4. Each write tool = plan fn (RO connection, serves `dry_run=true` default) + apply fn (RW,
-   revalidates — TOCTOU-safe). All-or-nothing validation, actionable errors.
-5. Compose the granular layer (`insert_routine/insert_exercise/insert_set`,
-   `ExerciseCatalog.resolve`, `resolve_routine`, `db.next_pk`) — never grow god-methods.
-6. Soft-delete only (`ZDATEREMOVED = now`); never SQL `DELETE`. Creates are additive-only.
+1. Tools in `server.py` are thin — no HTTP or payload code in tool bodies.
+2. Every write = fetch fresh → plan (`diff.py`) → dry run returns the plan → snapshot → send →
+   re-fetch → verify (`service.py`).
+3. Every edit of an existing routine goes through `diff_routine`; single-field tools are
+   `builders.py` wrappers.
+4. Only template sets are changed; logged history is never touched.
+5. Credentials only via `api/auth.py`; never logged or returned.
+6. Before trusting a new kind of server write, capture the app doing it and add a golden
+   fixture (`tests/fixtures/api/`).
 
 ## Decision log (2026-07-10)
 - **Write mechanism:** direct DB write + managed relaunch (primary); crafted `.gym` share file
@@ -105,3 +102,13 @@ Module layering + per-tool composition table: [spec 02 Part E](specs/02-write-an
   fallback the user chose.
 - Rejected: in-app editor Save as push trigger (sends only an editor-tracked diff, and takes the
   `routine/add/` path when `hasSynced=0`); App Intents (no routine-update intent in v8.0.3).
+
+## Decision log (2026-10-06, API client)
+- **DB write path + publish/tombstone retired:** `db.py`, `lifecycle.py`, `writes.py`,
+  `queries.py` and `smartgym_publish_routines` are gone (git history keeps them); every tool
+  works over SmartGym's server API.
+- **Credentials = user-captured 0600 file** (`~/.smartgym-mcp/credentials.json`, written by
+  `scripts/capture_credentials.py`): `phrase` is unchecked by the server and never sent; the
+  app's `user-agent` / `accept` / `accept-language` headers are required.
+- **Sections modelled as three lists** (warm-up / main / cool-down; user choice A).
+- **Routine delete stays out** — archive only.

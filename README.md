@@ -24,20 +24,28 @@ syncs everywhere via SmartGym's own engine.
 
 ## What it can do
 
-**Read** — health check, list routines, routine details, workout history, your equipment.
+**Read** — health check, list routines, routine detail split into warm-up / main / cool-down
+with recent sessions, workout history, your equipment.
 
-**Write** — create complete training programs, add / update / remove / reorder exercises,
-rename and edit routines, then publish the edits to your other devices.
+**Write** — create programs with warm-up / main / cool-down, add / move / remove / reorder
+exercises, change sets / reps / weights / rest / notes, rewrite a whole routine in one call,
+archive / unarchive.
 
-**Safely** — the server backs up the database before every write, only writes while the app
-is closed (it quits SmartGym itself), and refuses anything it can't do safely. Reads are
-strictly read-only.
+**Safely** — every write is a dry run first; applying snapshots the routine to
+`~/.smartgym-mcp/backups/`, sends the change straight to SmartGym's server, re-reads it and
+verifies it. The app no longer needs to be quit or relaunched.
 
-**Syncing edits (SmartGym 8+)** — SmartGym 8 no longer uploads changes to existing routines
-made outside the app, so edits stay on the Mac (with SmartGym left closed) until you call
-`smartgym_publish_routines`. Publishing uploads each edited routine as a fresh copy and leaves
-an `OLD — <name>` routine on the Mac; archive that one in the SmartGym Mac app and the outdated
-copy disappears from your iPhone too. New programs sync on their own.
+## Connecting to your account
+
+The MCP talks to SmartGym's own server with your account's session. One-time setup:
+
+1. Install mitmproxy: `brew install --cask mitmproxy`, and trust its certificate.
+2. Run `mitmdump --mode local:SmartGym -s scripts/capture_credentials.py --set confdir=<CA dir>`.
+3. Open SmartGym; stop mitmdump when it prints "credentials saved".
+4. Remove the mitmproxy certificate trust again.
+
+The file `~/.smartgym-mcp/credentials.json` (mode 600) holds the session — never share it.
+Re-run the capture if tools report an authentication error.
 
 ## Quick start
 
@@ -76,8 +84,9 @@ Works out of the box with a standard SmartGym install. Env vars if you need them
 
 | Var | Default | Purpose |
 |---|---|---|
-| `SMARTGYM_DB_PATH` | SmartGym's container path | database location |
-| `SMARTGYM_BACKUP_DIR` | `~/.smartgym-mcp/backups` | pre-write backups |
+| `SMARTGYM_CREDENTIALS` | `~/.smartgym-mcp/credentials.json` | account session (see above) |
+| `SMARTGYM_BACKUP_DIR` | `~/.smartgym-mcp/backups` | routine snapshots taken before each write |
+| `SMARTGYM_APP_BUNDLE` | `/Applications/SmartGym.app` | exercise catalog and version check |
 
 ## Contributing
 
@@ -92,8 +101,8 @@ uv run ruff check src tests && uv run mypy src
 ## Disclaimer
 
 This is an unofficial, personal project — not affiliated with or endorsed by the makers of
-SmartGym. It reads and writes the app's local database directly; use at your own risk and keep
-backups (the server makes one before every write).
+SmartGym. It uses SmartGym's private server API with your own account session; use at your own
+risk.
 
 ## License
 
