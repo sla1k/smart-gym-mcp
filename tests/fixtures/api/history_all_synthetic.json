@@ -1,0 +1,80 @@
+{
+  "code": "SUCCESS",
+  "lastModified": "2026-10-05 15:56:48",
+  "hasMore": false,
+  "routines": [
+    {
+      "identifier": "3000001", "uniqueHashID": "26091100000001", "name": "ZZ-FB — Test",
+      "days": "2,4,6", "goal": "", "note": "Routine note", "number": "18", "reference": "0",
+      "dateArchived": null, "dateRemoved": null, "userID": "1",
+      "exercises": [
+        {"id": "400", "name": "Cross Arm Stretch", "identifier": "40000014", "uniqueHashID": "26091100000014",
+         "idx": "4", "pause": "0", "note": null, "dateRemoved": null, "listGroup": "2",
+         "sets": [{"identifier": "50000041", "uniqueHashID": "26091100000141", "firstValue": "1",
+                   "secondValue": "30", "thirdValue": "0", "type": "0", "index": "0",
+                   "dateAdded": "2026-09-11 08:34:19", "dateRemoved": null, "dateLogged": null}]},
+        {"id": "300", "name": "Shoulder Circling", "identifier": "40000010", "uniqueHashID": "26091100000010",
+         "idx": "7", "pause": "10", "note": "", "dateRemoved": null, "listGroup": "1",
+         "sets": [{"identifier": "50000001", "uniqueHashID": "26091100000101", "firstValue": "1",
+                   "secondValue": "10", "thirdValue": "0", "type": "0", "index": "0",
+                   "dateAdded": "2026-09-11 08:34:19", "dateRemoved": null, "dateLogged": ""}]},
+        {"id": "207", "name": "Cable Chest Press", "identifier": "40000012", "uniqueHashID": "26091100000012",
+         "idx": "2", "pause": "90", "note": "Slow", "dateRemoved": null, "listGroup": "0",
+         "sets": [
+           {"identifier": "50000011", "uniqueHashID": "26091100000111", "firstValue": "1",
+            "secondValue": "10", "thirdValue": "42.5", "type": "0", "index": "0",
+            "dateAdded": "2026-09-11 08:34:19", "dateRemoved": null, "dateLogged": null},
+           {"identifier": "50000021", "uniqueHashID": "26091100000121", "firstValue": "1",
+            "secondValue": "10", "thirdValue": "40", "type": "0", "index": "0",
+            "dateAdded": "2026-09-14 08:10:00", "dateRemoved": null, "dateLogged": "2026-09-14 08:10:00"},
+           {"identifier": "50000022", "uniqueHashID": "26091100000122", "firstValue": "1",
+            "secondValue": "8", "thirdValue": "42.5", "type": "0", "index": "1",
+            "dateAdded": "2026-09-14 08:14:00", "dateRemoved": null, "dateLogged": "2026-09-14 08:14:00"},
+           {"identifier": "50000023", "uniqueHashID": "26091100000123", "firstValue": "1",
+            "secondValue": "10", "thirdValue": "42.5", "type": "0", "index": "0",
+            "dateAdded": "2026-09-21 08:10:00", "dateRemoved": null, "dateLogged": "2026-09-21 08:10:00"}
+         ]},
+        {"id": "194", "name": "Push Up", "identifier": "40000013", "uniqueHashID": "26091100000013",
+         "idx": "3", "pause": "60", "note": null, "dateRemoved": "2026-09-20 00:00:00", "listGroup": "0",
+         "sets": []}
+      ]
+    },
+    {
+      "identifier": "3000002", "uniqueHashID": "26091100000002", "name": "ZZ-Old",
+      "days": "", "goal": null, "note": null, "number": "12", "reference": "0",
+      "dateArchived": "2026-09-30 10:00:00", "dateRemoved": null, "userID": "1", "exercises": []
+    },
+    {
+      "identifier": "3000003", "uniqueHashID": "26091100000003", "name": "ZZ-Gone",
+      "days": null, "goal": null, "note": null, "number": "11", "reference": "0",
+      "dateArchived": "", "dateRemoved": "2026-09-01 10:00:00", "userID": "1", "exercises": []
+    }
+  ],
+  "histories": [
+    {"identifier": "7000001", "dateAdded": "2026-09-14 09:00:00", "dateRemoved": null,
+     "routine": {"identifier": "3000001", "source": "cloud",
+                 "exercises": [{"identifier": "40000012",
+                                "sets": [{"identifier": "50000021"}, {"identifier": "50000022"}]}]},
+     "workout": {"startDate": "2026-09-14 08:00:00", "endDate": "2026-09-14 09:00:00",
+                 "duration": "3600", "calories": "350", "averageHeartRate": "120",
+                 "maxHeartRate": "160", "minHeartRate": "80", "distance": "0"}},
+    {"identifier": "7000002", "dateAdded": "2026-09-21 09:00:00", "dateRemoved": null,
+     "routine": {"identifier": "3000001", "source": "cloud",
+                 "exercises": [{"identifier": "40000012", "sets": [{"identifier": "50000023"}]}]},
+     "workout": {"startDate": "2026-09-21 08:00:00", "endDate": "", "duration": "2700.5",
+                 "calories": "", "averageHeartRate": "131.6", "maxHeartRate": "",
+                 "minHeartRate": "", "distance": "0"}},
+    {"identifier": "7000003", "dateAdded": "2026-09-22 09:00:00", "dateRemoved": "2026-09-22 10:00:00",
+     "routine": null,
+     "workout": {"startDate": "2026-09-22 08:00:00", "endDate": null, "duration": "60",
+                 "calories": "1", "averageHeartRate": "1", "maxHeartRate": "1",
+                 "minHeartRate": "1", "distance": "0"}}
+  ],
+  "equipmentLists": [
+    {"identifier": "200109", "name": "Equipment", "selectedEquipment": "1,2,38",
+     "dumbbellWeights": "", "kettlebellWeights": "8,12", "lastModified": "2026-04-30 14:51:28",
+     "isSelected": "1"}
+  ],
+  "goal": {"week": {"goal": 3}},
+  "customExercises": []
+}
