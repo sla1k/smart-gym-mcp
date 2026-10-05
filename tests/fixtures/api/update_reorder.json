@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681209",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "days": "2,4,6",
+    "requestDate": "2026-10-05T15:16:14",
+    "timezone": "Europe/Madrid",
+    "exercisesOrder": "34048393:0,34048391:1,34048392:2",
+    "goal": "changed goal"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681209"
+  }
+}

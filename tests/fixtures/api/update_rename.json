@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681209",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "goal": "asd",
+    "requestDate": "2026-10-05T15:14:30",
+    "timezone": "Europe/Madrid",
+    "name": "ZZ-SPIKE2"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681209"
+  }
+}

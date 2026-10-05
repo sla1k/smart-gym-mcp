@@ -20,6 +20,6 @@ dist/
 .claude/settings.local.json
 
 # spec
-specs/
+/specs/
 scripts/spike/spike-flows.jsonl
 scripts/spike/*_form.json

@@ -1,0 +1,34 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681209",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "days": "2,4,6",
+    "requestDate": "2026-10-05T15:16:47",
+    "timezone": "Europe/Madrid",
+    "goal": "changed goal",
+    "exercises": "[{\"totalRealSets\":1,\"stretch\":0,\"idx\":3,\"index\":3,\"pause\":0,\"genericID\":22,\"thirdImage\":\"\",\"secondImage\":\"0022-2\",\"category\":1,\"uniqueHashID\":26100517164352,\"isSingleWeight\":0,\"name\":\"Abdominal 4 points Drawing In\",\"listGroup\":0,\"type\":1,\"routineID\":3681209,\"isStretch\":false,\"id\":22,\"identifier\":224520682,\"sets\":[{\"index\":0,\"uniqueHashID\":26100583716568,\"dateAdded\":\"2026-10-05T15:16:46\",\"firstValue\":1,\"type\":0,\"secondValue\":0,\"thirdValue\":0}],\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"totalSets\":1,\"fourthImage\":\"\",\"firstImage\":\"0022-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-05T15:16:47\",\"requiresBands\":false}]"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681209",
+    "exercises": [
+      {
+        "original_id": 26100517164352,
+        "server_id": 34048426,
+        "routineID": "3681209",
+        "sets": [
+          {
+            "server_id": "149091977",
+            "original_id": "26100583716568",
+            "uniqueExerciseID": "34048426",
+            "routineID": "3681209"
+          }
+        ]
+      }
+    ]
+  }
+}
