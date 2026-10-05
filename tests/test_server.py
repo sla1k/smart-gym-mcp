@@ -17,7 +17,8 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from fakes import FakeClient
 from smartgym_mcp import server
-from smartgym_mcp.api.auth import CredentialsError
+from smartgym_mcp.api.auth import CredentialsError, FileCredentials
+from smartgym_mcp.api.client import AuthError
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.config import Config, load_config
@@ -164,6 +165,58 @@ def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None:
     assert server.smartgym_health(_ctx(app)).ok
     server.smartgym_list_routines(_ctx(app))
     assert len(attempts) == 2
+
+
+class _SessionClient(FakeClient):
+    """Rejects every read when built from the expired session, like the server does."""
+
+    def __init__(self, authorization: str) -> None:
+        super().__init__({HISTORY: ACCOUNT})
+        self.expired = authorization == "Bearer expired"
+
+    def get(self, path: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        if self.expired:
+            raise AuthError("SmartGym rejected the credentials (HTTP 401).", code="401")
+        return super().get(path, *args, **kwargs)
+
+
+def test_recaptured_credentials_take_effect_after_an_auth_error(tmp_path: Path) -> None:
+    built: list[_SessionClient] = []
+
+    def factory(cfg: Config) -> server.Services:
+        headers = FileCredentials(cfg.credentials_path).auth_headers()
+        client = _SessionClient(headers["Authorization"])
+        built.append(client)
+        return _fake_app(tmp_path, client).factory(cfg)
+
+    app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
+    creds = {"authID": "1", "app_headers": APP}
+    _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer expired"})
+    with pytest.raises(AuthError, match="rejected the credentials"):
+        server.smartgym_list_routines(_ctx(app))
+    assert built[0].closed
+
+    _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer fresh"})
+    result = server.smartgym_list_routines(_ctx(app))
+    assert [r.name for r in result.routines] == ["ZZ-FB — Test"]
+    assert len(built) == 2 and not built[1].closed
+    assert server.smartgym_health(_ctx(app)).ok
+    assert len(built) == 2
+
+
+def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
+    built: list[_SessionClient] = []
+
+    def factory(cfg: Config) -> server.Services:
+        client = _SessionClient("Bearer expired" if not built else "Bearer fresh")
+        built.append(client)
+        return _fake_app(tmp_path, client).factory(cfg)
+
+    app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
+    status = server.smartgym_health(_ctx(app))
+    assert not status.ok and status.problem is not None and "rejected" in status.problem
+    assert server.smartgym_health(_ctx(app)).ok
+    assert len(built) == 2 and built[0].closed
 
 
 def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> None:
