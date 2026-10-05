@@ -467,6 +467,55 @@ def diff_routine(
     )
 
 
+def moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet:
+    """Spec §10.4 fallback: express every section move as remove + re-add.
+
+    The re-added exercise takes the moved one's expected state (rest, note, template sets),
+    so any other edit of it rides along; it gets a new server identifier.
+    """
+    moved = [u for u in cs.updated if u.new_section is not None]
+    if not moved:
+        return cs
+    active = current.active_exercises()
+    by_id = {e.identifier: e for e in active}
+    added = list(cs.added)
+    removed = list(cs.removed)
+    updated = [u for u in cs.updated if u.new_section is None]
+    order = list(cs.order)
+    for u in moved:
+        ex = by_id[u.identifier]
+        pos = order.index(f"id:{u.identifier}")
+        view = cs.expected.exercises[pos]
+        removed.append(RemovedExercise(identifier=ex.identifier, name=ex.name))
+        order[pos] = f"new:{len(added)}"
+        added.append(
+            AddedExercise(
+                catalog_id=ex.catalog_id,
+                name=ex.name,
+                section=view.section,
+                position=pos,
+                rest_seconds=view.rest_seconds,
+                note=view.note,
+                sets=[SetSpec.model_construct(reps=r, weight_kg=w) for r, w in view.sets],
+            )
+        )
+    warnings = cs.warnings + [
+        f"{u.name!r} moves by remove + re-add (no in-place section move); its recent "
+        "sessions in this routine restart."
+        for u in moved
+    ]
+    return cs.model_copy(
+        update={
+            "added": added,
+            "removed": removed,
+            "updated": updated,
+            "order": order,
+            "final_order": _final_order(order, added, active),
+            "warnings": warnings,
+        }
+    )
+
+
 __all__ = [
     "DEFAULT_SET",
     "AddedExercise",
@@ -481,6 +530,7 @@ __all__ = [
     "RoutineView",
     "UpdatedSet",
     "diff_routine",
+    "moves_as_readd",
     "resolution_warnings",
     "round3",
     "view_of",

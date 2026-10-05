@@ -9,10 +9,16 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from smartgym_mcp import payloads
 from smartgym_mcp.catalog import CatalogExercise
-from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, diff_routine
+from smartgym_mcp.diff import (
+    DesiredExercise,
+    DesiredRoutine,
+    diff_routine,
+    moves_as_readd,
+)
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.model import Routine, RoutineExercise, TemplateSet
+from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import (
     add_routines_form,
@@ -21,7 +27,6 @@ from smartgym_mcp.payloads import (
     local_timezone_name,
     mint_unique_hashid,
     new_routine_payload,
-    order_form,
     unarchive_form,
 )
 
@@ -326,10 +331,10 @@ def test_update_rest_matches_capture() -> None:
     assert enc.exercise_edits is None
 
 
-def test_reorder_goes_to_order_form_matching_capture() -> None:
-    cs, enc = _encode(_routine(*SPIKE), _main(34048393, 34048391, 34048392))
-    assert enc.structure is None and enc.exercise_edits is None
-    assert order_form(cs, _routine(*SPIKE), [], timezone=TZ) == _fixture_form("update_reorder")
+def test_reorder_is_a_structure_form_with_only_the_order_matching_capture() -> None:
+    _, enc = _encode(_routine(*SPIKE), _main(34048393, 34048391, 34048392))
+    assert enc.exercise_edits is None
+    assert _norm(enc.structure or {}) == _fixture_form("update_reorder")
 
 
 def test_remove_exercise_matches_capture() -> None:
@@ -435,13 +440,12 @@ def test_add_exercise_matches_capture_shape() -> None:
     assert cs.final_order is None
 
 
-def test_mid_routine_add_produces_order_form_with_server_id() -> None:
+def test_mid_routine_add_carries_the_kept_order_in_the_same_request() -> None:
     new = DesiredExercise(exercise="Abdominal 4 points Drawing In")
-    cs, enc = _encode(_routine(*SPIKE), _main(34048391, new, 34048392, 34048393))
-    assert _norm(enc.structure or {})["exercises"][0]["idx"] == 1  # type: ignore[index]
-    form = order_form(cs, _routine(*SPIKE), [34049999], timezone=TZ)
-    assert form is not None
-    assert form["exercisesOrder"] == "34048391:0,34049999:1,34048392:2,34048393:3"
+    _, enc = _encode(_routine(*SPIKE), _main(34048391, new, 34048392, 34048393))
+    form = _norm(enc.structure or {})
+    assert form["exercises"][0]["idx"] == 1  # type: ignore[index]
+    assert form["exercisesOrder"] == "34048391:0,34048392:2,34048393:3"
 
 
 def test_cleared_routine_note_is_sent_as_empty_string() -> None:
@@ -478,3 +482,240 @@ def test_exercise_spec_rejects_empty_sets() -> None:
 def test_local_timezone_name_is_iana_or_utc() -> None:
     name = local_timezone_name()
     assert name == "UTC" or "/" in name
+
+
+# S7 probes on ZZ-S7 (spec §10.3): hand-built requests the server accepted, read back after each.
+S7_ROUTINE = 3681558
+SC, AB, BR, PU, CAS = 34052112, 34052309, 34052411, 34052444, 34052451
+S7_EXERCISES = {
+    SC: (507, "Shoulder Circling"),
+    AB: (256, "Ab Machine"),
+    BR: (140, "Bridge"),
+    PU: (194, "Push Up"),
+    CAS: (533, "Cross Arm Stretch"),
+}
+
+
+def _sx(ident: int, section: Section, idx: int, note: str | None = None) -> RoutineExercise:
+    cat, name = S7_EXERCISES.get(ident, (194, f"Ex {ident}"))
+    return RoutineExercise(
+        identifier=ident,
+        unique_hashid=ident,
+        catalog_id=cat,
+        name=name,
+        section=section,
+        index=idx,
+        rest_seconds=30,
+        note=note,
+        removed=False,
+        template_sets=[],
+        logged_sets=[],
+    )
+
+
+def _s7(*layout: tuple[int, Section]) -> Routine:
+    """ZZ-S7 right before a probe; `idx` runs 0..n-1 in the listed order."""
+    return Routine(
+        identifier=S7_ROUTINE,
+        unique_hashid=1,
+        name="ZZ-S7",
+        days="2,3",
+        goal="S7 capture",
+        note=None,
+        number=1,
+        archived=False,
+        removed=False,
+        exercises=[_sx(i, sec, idx) for idx, (i, sec) in enumerate(layout)],
+    )
+
+
+def _ids(*idents: int) -> list[DesiredExercise]:
+    return [DesiredExercise(exercise_id=i) for i in idents]
+
+
+def test_move_main_to_warmup_matches_capture() -> None:
+    cs, enc = _encode(_s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=_ids(SC)))
+    assert cs.final_order == [f"id:{SC}", f"id:{AB}"]
+    assert enc.exercise_edits is None
+    assert _norm(enc.structure or {}) == _fixture_form("update_move_to_warmup")
+
+
+def test_move_main_to_cooldown_matches_capture() -> None:
+    cs, enc = _encode(_s7((SC, "warmup"), (AB, "main")), DesiredRoutine(cooldown=_ids(AB)))
+    assert cs.final_order is None
+    assert _norm(enc.structure or {}) == _fixture_form("update_move_to_cooldown")
+
+
+def test_reorder_inside_warmup_matches_capture() -> None:
+    current = _s7((SC, "warmup"), (BR, "warmup"), (PU, "main"), (AB, "cooldown"))
+    _, enc = _encode(current, DesiredRoutine(warmup=_ids(BR, SC)))
+    assert enc.exercise_edits is None
+    assert _norm(enc.structure or {}) == _fixture_form("update_reorder_warmup")
+
+
+def test_remove_two_matches_capture() -> None:
+    current = _s7(
+        (BR, "warmup"), (SC, "warmup"), (PU, "main"), (AB, "cooldown"), (CAS, "cooldown")
+    )
+    cs, enc = _encode(current, DesiredRoutine(warmup=_ids(BR), cooldown=_ids(CAS)))
+    assert cs.final_order is None  # gaps stay, as the app leaves them
+    assert _norm(enc.structure or {}) == _fixture_form("update_remove_two")
+
+
+@pytest.mark.parametrize(
+    ("fixture", "before", "note"),
+    [("update_set_note", None, "x"), ("update_clear_note", "x", "")],
+)
+def test_exercise_note_set_and_clear_match_capture(
+    fixture: str, before: str | None, note: str
+) -> None:
+    current = _s7((PU, "main")).model_copy(update={"exercises": [_sx(PU, "main", 0, before)]})
+    _, enc = _encode(
+        current, DesiredRoutine(main=[DesiredExercise(exercise_id=PU, note=note)])
+    )
+    assert enc.structure is None
+    assert _norm(enc.exercise_edits or {}) == _fixture_form(fixture)
+
+
+def test_rest_and_move_merge_into_one_entry() -> None:
+    current = _s7((SC, "warmup"), (AB, "main"))
+    desired = DesiredRoutine(
+        warmup=[
+            DesiredExercise(exercise_id=SC),
+            DesiredExercise(exercise_id=AB, rest_seconds=45),
+        ]
+    )
+    _, enc = _encode(current, desired)
+    assert _norm(enc.structure or {})["updateExercises"] == [
+        {"exerciseID": AB, "pause": "45", "listGroup": "1"}
+    ]
+
+
+def _app_added(fixture: str) -> tuple[dict[str, object], dict[str, object], CatalogExercise]:
+    app = _fixture_form(fixture)
+    (app_ex,) = app["exercises"]  # type: ignore[misc]
+    images = ("first", "second", "third", "fourth", "fifth", "sixth")
+    cat = CatalogExercise(
+        id=int(app_ex["id"]),
+        name=str(app_ex["name"]),
+        type=int(app_ex["type"]),
+        category=int(app_ex["category"]),
+        sub_categories=str(app_ex.get("subCategories", "")),
+        two_sides=int(app_ex["twoSides"]),
+        stretch=int(app_ex["stretch"]),
+        equipment_ids=("38",) if app_ex["requiresBands"] else (),
+        images=tuple(str(app_ex.get(f"{n}Image", "")) for n in images),  # type: ignore[arg-type]
+    )
+    return app, app_ex, cat
+
+
+def _new_like(app_ex: dict[str, object]) -> DesiredExercise:
+    return DesiredExercise(
+        exercise=str(app_ex["name"]),
+        rest_seconds=int(app_ex["pause"]),  # type: ignore[call-overload]
+        note=app_ex.get("note"),  # type: ignore[arg-type]
+        sets=[
+            SetSpec(reps=s["secondValue"], weight_kg=s["thirdValue"])
+            for s in app_ex["sets"]  # type: ignore[attr-defined]
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("fixture", "layout", "section", "kept", "ordered"),
+    [
+        ("update_add_to_warmup", ((SC, "warmup"), (AB, "cooldown")), "warmup", (SC,), True),
+        (
+            "update_add_main_before_cooldown",
+            ((SC, "warmup"), (BR, "warmup"), (AB, "cooldown")),
+            "main",
+            (),
+            True,
+        ),
+        (
+            "update_add_to_cooldown",
+            ((BR, "warmup"), (SC, "warmup"), (PU, "main"), (AB, "cooldown")),
+            "cooldown",
+            (AB,),
+            False,
+        ),
+    ],
+)
+def test_add_into_section_matches_capture_exactly(
+    fixture: str,
+    layout: tuple[tuple[int, Section], ...],
+    section: Section,
+    kept: tuple[int, ...],
+    ordered: bool,
+) -> None:
+    """The probe's minted hashids and timestamp are replayed, so the whole form must match."""
+    app, app_ex, cat = _app_added(fixture)
+    sets: list[dict[str, object]] = app_ex["sets"]  # type: ignore[assignment]
+    minted = iter([int(app_ex["uniqueHashID"]), *(int(s["uniqueHashID"]) for s in sets)])  # type: ignore[call-overload]
+    now = datetime.fromisoformat(str(app_ex["dateAdded"])).replace(tzinfo=UTC)
+    current = _s7(*layout)
+    desired = DesiredRoutine(**{section: [*_ids(*kept), _new_like(app_ex)]})
+    cs = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
+    enc = encode_change(
+        cs, current, {cat.id: cat}, timezone=TZ, now=now, mint=lambda _now: next(minted)
+    )
+    assert (cs.final_order is not None) == ordered
+    assert _norm(enc.structure or {}) == app
+    assert enc.added_hashids == [app_ex["uniqueHashID"]]
+
+
+def test_app_add_at_top_of_main_matches_capture() -> None:
+    """A real in-app capture: the app's JSON differs in keys we never send (identifier)."""
+    app, app_ex, cat = _app_added("update_add_first_app")
+    current = _s7((SC, "main"))
+    desired = DesiredRoutine(main=[_new_like(app_ex), *_ids(SC)])
+    cs = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
+    enc = encode_change(cs, current, {cat.id: cat}, timezone=TZ, now=NOW, mint=_counter())
+    ours = _norm(enc.structure or {})
+    assert {k: v for k, v in ours.items() if k != "exercises"} == {
+        k: v for k, v in app.items() if k != "exercises"
+    }
+    (our_ex,) = ours["exercises"]  # type: ignore[misc]
+    assert set(app_ex) - set(our_ex) == {"identifier"}
+    assert set(our_ex) - set(app_ex) <= {"subCategories", "mode"}
+    minted = {"uniqueHashID", "dateAdded", "sets", "subCategories", "mode", "identifier"}
+    for key in set(app_ex) - minted:
+        assert our_ex[key] == app_ex[key], key
+    strip = ("uniqueHashID", "dateAdded")
+    assert [{k: v for k, v in s.items() if k not in strip} for s in our_ex["sets"]] == [
+        {k: v for k, v in s.items() if k not in strip}
+        for s in app_ex["sets"]  # type: ignore[attr-defined]
+    ]
+
+
+def test_move_fallback_encodes_as_remove_plus_readd_with_order() -> None:
+    current = _s7((AB, "main"), (SC, "main"))
+    cs = moves_as_readd(
+        diff_routine(current, DesiredRoutine(warmup=_ids(SC)), CATALOG), current
+    )
+    cat = CatalogExercise(
+        id=507,
+        name="Shoulder Circling",
+        type=2,
+        category=9,
+        sub_categories="",
+        two_sides=0,
+        stretch=1,
+        equipment_ids=(),
+        images=("0507-1", "", "", "", "", ""),
+    )
+    enc = encode_change(cs, current, {507: cat}, timezone=TZ, now=NOW, mint=_counter())
+    form = _norm(enc.structure or {})
+    assert form["removeExercises"] == str(SC)
+    assert "updateExercises" not in form
+    (ex,) = form["exercises"]  # type: ignore[misc]
+    assert (ex["id"], ex["idx"], ex["listGroup"]) == (507, 0, 1)
+    assert form["exercisesOrder"] == f"{AB}:1"
+
+
+def test_in_place_move_refuses_to_encode_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(payloads, "SECTION_MOVE_IN_PLACE", False)
+    with pytest.raises(ValueError, match="moves_as_readd"):
+        _encode(_s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=_ids(SC)))

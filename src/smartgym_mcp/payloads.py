@@ -3,8 +3,11 @@
 Shapes mirror the app's own captured requests (2026-10-05, v8.0.3; fixtures in
 tests/fixtures/api/). New objects carry only a client `uniqueHashID`; the
 server assigns identifiers and returns the mapping. Edits go to two endpoints:
-`routine/update/` (routine fields, rest, sections, added and removed exercises,
-order) and `routine/updateExercise/` (exercise notes and template sets).
+`routine/update/` (routine fields, rest, section moves, added and removed exercises,
+order) and `routine/updateExercise/` (exercise notes and template sets). An order
+change rides in the same `routine/update/` as the adds it accompanies, as the app
+does (spec §10.3, S7): `exercisesOrder` lists the kept exercises at their final
+global index and each new exercise carries its own `idx`.
 Common fields (appVersion, authID, requestDate) are added by api/client.py.
 """
 
@@ -25,6 +28,9 @@ from .models import ExerciseSpec, RoutineSpec, SetSpec
 
 _BAND_EQUIPMENT_ID = "38"
 Mint = Callable[[datetime], int]
+
+# Spec §10.3 / S7: True = the server moves an exercise between sections in place.
+SECTION_MOVE_IN_PLACE = True
 
 
 def mint_unique_hashid(now: datetime) -> int:
@@ -182,6 +188,13 @@ def unarchive_form(routine_identifier: int) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class EncodedChange:
+    """A ChangeSet as at most two requests; together they are the whole change.
+
+    `structure` → `routine/update/`, `exercise_edits` → `routine/updateExercise/`.
+    `added_hashids[k]` is the client `uniqueHashID` of `ChangeSet.added[k]`, which the
+    server's response maps to its new identifier.
+    """
+
     structure: dict[str, str] | None
     exercise_edits: dict[str, str] | None
     added_hashids: list[int]
@@ -201,6 +214,13 @@ def _update_entry(u: ExerciseUpdate) -> dict[str, Any] | None:
     for c in u.changes:
         if c.field == "rest_seconds":
             entry["pause"] = c.new
+    if u.new_section is not None:
+        if not SECTION_MOVE_IN_PLACE:
+            raise ValueError(
+                "Section moves must be expressed with diff.moves_as_readd: the server has no "
+                "in-place move (spec §10.4)."
+            )
+        entry["listGroup"] = str(LIST_GROUP_BY_SECTION[u.new_section])
     if not entry:
         return None
     entry["exerciseID"] = u.identifier
@@ -245,7 +265,15 @@ def _structure(
             payloads.append(p)
             hashids.append(int(p["uniqueHashID"]))
         form["exercises"] = _json(payloads)
-    meaningful = cs.routine_changes or entries or cs.removed or cs.added
+    if cs.final_order is not None:
+        form["exercisesOrder"] = ",".join(
+            f"{key[3:]}:{pos}"
+            for pos, key in enumerate(cs.final_order)
+            if key.startswith("id:")
+        )
+    meaningful = (
+        cs.routine_changes or entries or cs.removed or cs.added or cs.final_order is not None
+    )
     return (form if meaningful else None), hashids
 
 
@@ -329,21 +357,8 @@ def encode_change(
     )
 
 
-def order_form(
-    cs: ChangeSet, current: Routine, added_ids: Sequence[int], *, timezone: str
-) -> dict[str, str] | None:
-    if cs.final_order is None:
-        return None
-    ids: list[int] = []
-    for key in cs.final_order:
-        kind, _, value = key.partition(":")
-        ids.append(int(value) if kind == "id" else added_ids[int(value)])
-    form = _routine_base(cs, current, timezone)
-    form["exercisesOrder"] = ",".join(f"{ident}:{pos}" for pos, ident in enumerate(ids))
-    return form
-
-
 __all__ = [
+    "SECTION_MOVE_IN_PLACE",
     "EncodedChange",
     "Mint",
     "add_routines_form",
@@ -353,7 +368,6 @@ __all__ = [
     "local_timezone_name",
     "mint_unique_hashid",
     "new_routine_payload",
-    "order_form",
     "routine_entries",
     "unarchive_form",
 ]
