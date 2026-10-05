@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, date
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from smartgym_mcp.catalog import CatalogEquipment
-from smartgym_mcp.model import parse_history_all
+from smartgym_mcp.model import AccountData, LoggedSet, Workout, parse_history_all
 from smartgym_mcp.reads import equipment, list_routines, routine_detail, workout_history
 
 DATA = parse_history_all(
@@ -99,3 +101,65 @@ def test_equipment_owned_flags_and_weights() -> None:
         (38, True),
     ]
     assert (owned.dumbbell_weights, owned.kettlebell_weights) == (None, "8,12")
+
+
+MADRID = ZoneInfo("Europe/Madrid")
+
+
+def _with_workouts(starts: list[str]) -> AccountData:
+    """DATA with its workouts replaced: one per start, each logging one chest set at that time."""
+    data = DATA.model_copy(deep=True)
+    chest = data.routines[0].section("main")[0]
+    chest.logged_sets = []
+    data.workouts = []
+    for n, start in enumerate(starts, start=1):
+        chest.logged_sets.append(
+            LoggedSet(
+                identifier=9000 + n, index=0, reps=n, weight_kg=10.0 * n, logged_at=start
+            )
+        )
+        data.workouts.append(
+            Workout(
+                identifier=8000 + n,
+                routine_identifier=data.routines[0].identifier,
+                start=start,
+                end=None,
+                duration_s=600,
+                calories=None,
+                avg_hr=None,
+                max_hr=None,
+                set_ids=[9000 + n],
+            )
+        )
+    return data
+
+
+def test_local_time_is_dst_aware_for_an_injected_zone() -> None:
+    data = _with_workouts(["2026-03-28 23:30:00", "2026-03-29 22:30:00"])
+    result = workout_history(data, date_from="2026-03-01", date_to="2026-04-30", tz=MADRID)
+    assert [s.date for s in result.sessions] == ["2026-03-30 00:30", "2026-03-29 00:30"]
+    detail = routine_detail(data.routines[0], data, tz=MADRID)
+    assert [s.date for s in detail.main[0].sessions] == ["2026-03-30", "2026-03-29"]
+
+
+def test_local_time_is_dst_aware_for_the_system_zone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TZ", "Europe/Madrid")
+    time.tzset()
+    try:
+        data = _with_workouts(["2026-03-28 23:30:00", "2026-03-29 22:30:00"])
+        result = workout_history(data, date_from="2026-03-01", date_to="2026-04-30")
+        assert [s.date for s in result.sessions] == ["2026-03-30 00:30", "2026-03-29 00:30"]
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_same_day_workouts_stay_separate_sessions() -> None:
+    data = _with_workouts(["2026-09-21 08:00:00", "2026-09-21 17:00:00"])
+    detail = routine_detail(data.routines[0], data, tz=UTC)
+    first, second = detail.main[0].sessions
+    assert (first.date, second.date) == ("2026-09-21", "2026-09-21")
+    assert [(s.reps, s.weight_kg) for s in first.sets] == [(2.0, 20.0)]
+    assert [(s.reps, s.weight_kg) for s in second.sets] == [(1.0, 10.0)]
+    assert detail.main[0].top_set is not None and detail.main[0].top_set.weight_kg == 20.0
+    assert detail.main[0].total_volume == 40.0
