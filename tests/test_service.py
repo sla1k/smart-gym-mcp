@@ -420,6 +420,70 @@ def test_create_sends_sections_and_verifies(tmp_path: Path) -> None:
     assert [(c.identifier, c.name) for c in result.created] == [(3000009, "ZZ-New")]
 
 
+def _created_with_days(server_days: str) -> dict[str, Any]:
+    created = _raw_routine(
+        _raw_ex(902, 20, 0, 0, [(903, 10, 0)], pause="0"),
+        ident="3000009",
+        name="ZZ-New",
+        hashid=str(FIRST_HASH),
+    )
+    created["days"] = server_days
+    return created
+
+
+def test_create_without_days_accepts_the_servers_default_days(tmp_path: Path) -> None:
+    client = FakeClient(
+        {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
+    )
+    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    result = _service(client, tmp_path).create([spec], dry_run=False)
+    ((_, form),) = client.sent
+    (payload,) = json.loads(form["routines"])
+    assert "days" not in payload
+    assert [c.name for c in result.created] == ["ZZ-New"]
+
+
+def test_create_with_blank_days_accepts_the_servers_default_days(tmp_path: Path) -> None:
+    client = FakeClient(
+        {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
+    )
+    spec = RoutineSpec(name="ZZ-New", days="", exercises=[ExerciseSpec(exercise="Plank")])
+    result = _service(client, tmp_path).create([spec], dry_run=False)
+    assert [c.name for c in result.created] == ["ZZ-New"]
+
+
+def test_create_with_days_still_verifies_them(tmp_path: Path) -> None:
+    client = FakeClient(
+        {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
+    )
+    spec = RoutineSpec(name="ZZ-New", days="2,4", exercises=[ExerciseSpec(exercise="Plank")])
+    with pytest.raises(WriteVerifyError, match="days: expected '2,4', got '0001'"):
+        _service(client, tmp_path).create([spec], dry_run=False)
+
+
+def test_create_without_days_still_verifies_the_other_fields(tmp_path: Path) -> None:
+    created = _created_with_days("0001")
+    created["name"] = "ZZ-Other"
+    client = FakeClient({HISTORY: [_account(BEFORE), _account(BEFORE, created)]})
+    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    with pytest.raises(WriteVerifyError, match="name: expected 'ZZ-New'") as exc:
+        _service(client, tmp_path).create([spec], dry_run=False)
+    assert "days" not in str(exc.value)
+
+
+def test_editing_a_routine_with_server_default_days_keeps_them(tmp_path: Path) -> None:
+    before = {**BEFORE, "days": "0001"}
+    after = {**before, "note": "Heavy"}
+    client = FakeClient({HISTORY: _account(before), SINGLE: _single(before, after)})
+    result = _service(client, tmp_path).edit(
+        "ZZ-Svc", lambda _r: DesiredRoutine(note="Heavy"), dry_run=False
+    )
+    assert result.changes.expected.days == "0001"
+    ((path, form),) = client.sent
+    assert path == "routine/update/"
+    assert form["days"] == "0001" and form["note"] == "Heavy"
+
+
 def test_archive_and_skip_already_archived(tmp_path: Path) -> None:
     old = _raw_routine(
         ident="3000002", name="ZZ-Old", hashid="2", archived="2026-09-30 10:00:00"
