@@ -137,3 +137,26 @@ def test_non_json_body_raises_api_error() -> None:
 def test_client_repr_hides_credentials() -> None:
     client = _client(lambda _r: httpx.Response(200, json={"code": "SUCCESS"}))
     assert SECRET not in repr(client) and PHRASE not in repr(client)
+
+
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_write_5xx_reports_unknown_outcome(status: int) -> None:
+    client = _client(lambda _r: httpx.Response(status))
+    with pytest.raises(WriteOutcomeUnknown, match="re-fetch"):
+        client.post("routine/add/", {"routines": "[]"})
+
+
+def test_write_decoding_error_reports_unknown_outcome() -> None:
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError("bad gzip")
+
+    with pytest.raises(WriteOutcomeUnknown):
+        _client(handler).post("routine/add/", {"routines": "[]"})
+
+
+def test_read_decoding_error_raises_api_error() -> None:
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError("bad gzip")
+
+    with pytest.raises(ApiError):
+        _client(handler, max_read_attempts=1).get("routine/all/1/")

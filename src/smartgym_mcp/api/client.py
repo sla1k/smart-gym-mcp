@@ -95,7 +95,7 @@ class ApiClient:
                 resp = self._http.get(
                     path, params=query, headers=dict(self._credentials.auth_headers())
                 )
-            except httpx.TransportError as exc:
+            except httpx.RequestError as exc:
                 last = exc
                 logger.info("GET %s network error (attempt %d)", path, attempt + 1)
                 continue
@@ -115,11 +115,16 @@ class ApiClient:
             resp = self._http.post(
                 path, files=files, headers=dict(self._credentials.auth_headers())
             )
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:
             raise WriteOutcomeUnknown(
                 f"Network error during write to {path} ({type(exc).__name__}); the change "
                 "may or may not have landed — re-fetch before retrying."
             ) from None
+        if resp.status_code >= 500:
+            raise WriteOutcomeUnknown(
+                f"SmartGym answered HTTP {resp.status_code} during write to {path}; the "
+                "change may or may not have landed — re-fetch before retrying."
+            )
         return self._decode(path, resp, require_success=True)
 
     @staticmethod

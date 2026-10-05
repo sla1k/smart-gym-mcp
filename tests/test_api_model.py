@@ -60,3 +60,27 @@ def test_missing_required_field_raises_payload_error() -> None:
     del raw["identifier"]
     with pytest.raises(ApiPayloadError, match="identifier"):
         parse_routine(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [("pause", "10.0", 10), ("pause", "", 0), ("pause", None, 0), ("idx", "1.0", 1)],
+)
+def test_integral_strings_coerce(field: str, value: object, expected: int) -> None:
+    raw = _raw()["routines"][0]
+    raw["exercises"][1][field] = value
+    ex = next(e for e in parse_routine(raw).exercises if e.catalog_id == 207)
+    assert (ex.rest_seconds if field == "pause" else ex.index) == expected
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("idx", ""), ("idx", "1.5"), ("pause", "abc"), ("secondValue", "")]
+)
+def test_bad_numbers_raise_payload_error_naming_field(field: str, value: str) -> None:
+    raw = _raw()["routines"][0]
+    target = raw["exercises"][1]
+    if field == "secondValue":
+        target = target["sets"][0]
+    target[field] = value
+    with pytest.raises(ApiPayloadError, match=field):
+        parse_routine(raw)
