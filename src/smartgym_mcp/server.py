@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 import sys
 import threading
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__, builders, catalog, reads
 from .api.auth import CredentialsError, FileCredentials
-from .api.client import ApiClient, ApiError
+from .api.client import ApiClient, ApiError, AuthError
 from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
@@ -93,11 +93,29 @@ class AppContext:
                 self._services = self.factory(self.cfg)
             return self._services
 
+    @contextmanager
+    def use(self) -> Iterator[Services]:
+        """Services for one tool call. An AuthError drops them (closing the client) so the
+        next call re-reads the credentials file — a re-captured session takes effect without
+        restarting the server. The error itself propagates unchanged."""
+        services = self.services()
+        try:
+            yield services
+        except AuthError:
+            self._drop(services)
+            raise
+
+    def _drop(self, services: Services) -> None:
+        with self._lock:
+            if self._services is services:
+                self._services = None
+        services.client.close()
+
     def close(self) -> None:
         with self._lock:
-            if self._services is not None:
-                self._services.client.close()
-                self._services = None
+            services, self._services = self._services, None
+        if services is not None:
+            services.client.close()
 
 
 @asynccontextmanager
@@ -116,6 +134,11 @@ mcp = FastMCP("smartgym_mcp", lifespan=lifespan)
 def _app(ctx: Context) -> AppContext:
     app: AppContext = ctx.request_context.lifespan_context
     return app
+
+
+def _services(ctx: Context) -> AbstractContextManager[Services]:
+    """The one way tools reach the services (see AppContext.use)."""
+    return _app(ctx).use()
 
 
 class HealthStatus(BaseModel):
@@ -146,7 +169,8 @@ def smartgym_health(ctx: Context) -> HealthStatus:
             "trusting edits."
         )
     try:
-        data = app.services().store.data()
+        with app.use() as services:
+            data = services.store.data()
     except (CredentialsError, ApiError, ValueError, KeyError, OSError) as exc:
         return HealthStatus(
             ok=False,
@@ -177,7 +201,8 @@ def smartgym_list_routines(
     Archived routines are listed only with include_archived=true. Use the id (or the
     name) in the other tools.
     """
-    data = _app(ctx).services().store.data()
+    with _services(ctx) as services:
+        data = services.store.data()
     return reads.list_routines(data, include_archived=include_archived)
 
 
@@ -192,10 +217,11 @@ def smartgym_get_routine(
     up to `history_depth` recent sessions (reps + weight_kg; 0.0 = bodyweight) with the
     latest session's top set and total volume.
     """
-    store = _app(ctx).services().store
-    return reads.routine_detail(
-        store.resolve(routine), store.data(), history_depth=history_depth
-    )
+    with _services(ctx) as services:
+        store = services.store
+        return reads.routine_detail(
+            store.resolve(routine), store.data(), history_depth=history_depth
+        )
 
 
 @mcp.tool(annotations=_read_only("Get workout history"))
@@ -214,23 +240,26 @@ def smartgym_get_workout_history(
     (YYYY-MM-DD, inclusive, local time) override it. Optional `routine` filter (name or
     id). Paginated: total, has_more, next_offset.
     """
-    store = _app(ctx).services().store
-    return reads.workout_history(
-        store.data(),
-        days=days,
-        date_from=date_from,
-        date_to=date_to,
-        routine=store.resolve(routine) if routine else None,
-        limit=limit,
-        offset=offset,
-    )
+    with _services(ctx) as services:
+        store = services.store
+        return reads.workout_history(
+            store.data(),
+            days=days,
+            date_from=date_from,
+            date_to=date_to,
+            routine=store.resolve(routine) if routine else None,
+            limit=limit,
+            offset=offset,
+        )
 
 
 @mcp.tool(annotations=_read_only("Get equipment"))
 def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> reads.EquipmentListResult:
     """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
-    services = _app(ctx).services()
-    return reads.equipment(services.store.data(), services.equipment, owned_only=owned_only)
+    with _services(ctx) as services:
+        return reads.equipment(
+            services.store.data(), services.equipment, owned_only=owned_only
+        )
 
 
 @mcp.tool(annotations=_destructive("Create program"))
@@ -247,7 +276,8 @@ def smartgym_create_program(
     dry_run=true (default) returns the plan and sends NOTHING; dry_run=false creates the
     routines and verifies them on the server.
     """
-    return _app(ctx).services().service.create(routines, dry_run=dry_run)
+    with _services(ctx) as services:
+        return services.service.create(routines, dry_run=dry_run)
 
 
 @mcp.tool(annotations=_destructive("Update routine"))
@@ -266,7 +296,8 @@ def smartgym_update_routine(
     routine, sends the edit, and verifies it on the server.
     """
     desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
-    return _app(ctx).services().service.edit(routine, lambda _r: desired, dry_run=dry_run)
+    with _services(ctx) as services:
+        return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
 @mcp.tool(annotations=_destructive("Add exercise"))
@@ -287,10 +318,8 @@ def smartgym_add_exercise(
     note and template sets (omitted = one 1x10 set, flagged). dry_run=true (default)
     sends NOTHING.
     """
-    return (
-        _app(ctx)
-        .services()
-        .service.edit(
+    with _services(ctx) as services:
+        return services.service.edit(
             routine,
             lambda r: builders.add_exercise(
                 r,
@@ -303,7 +332,6 @@ def smartgym_add_exercise(
             ),
             dry_run=dry_run,
         )
-    )
 
 
 @mcp.tool(annotations=_destructive("Move exercise"))
@@ -319,17 +347,14 @@ def smartgym_move_exercise(
     `exercise_id` comes from smartgym_get_routine; `position` counts within the target
     section (omitted = last). dry_run=true (default) sends NOTHING.
     """
-    return (
-        _app(ctx)
-        .services()
-        .service.edit_exercise(
+    with _services(ctx) as services:
+        return services.service.edit_exercise(
             exercise_id,
             lambda r: builders.move_exercise(
                 r, exercise_id, section=section, position=position
             ),
             dry_run=dry_run,
         )
-    )
 
 
 @mcp.tool(annotations=_destructive("Remove exercise"))
@@ -340,13 +365,10 @@ def smartgym_remove_exercise(
 
     `exercise_id` comes from smartgym_get_routine. dry_run=true (default) sends NOTHING.
     """
-    return (
-        _app(ctx)
-        .services()
-        .service.edit_exercise(
+    with _services(ctx) as services:
+        return services.service.edit_exercise(
             exercise_id, lambda r: builders.remove_exercise(r, exercise_id), dry_run=dry_run
         )
-    )
 
 
 @mcp.tool(annotations=_destructive("Reorder routine"))
@@ -364,15 +386,12 @@ def smartgym_reorder_routine(
     order; omitted sections stay as they are. To change an exercise's section use
     smartgym_move_exercise. dry_run=true (default) sends NOTHING.
     """
-    return (
-        _app(ctx)
-        .services()
-        .service.edit(
+    with _services(ctx) as services:
+        return services.service.edit(
             routine,
             lambda r: builders.reorder(r, warmup=warmup, main=main, cooldown=cooldown),
             dry_run=dry_run,
         )
-    )
 
 
 @mcp.tool(annotations=_destructive("Update exercise"))
@@ -390,17 +409,14 @@ def smartgym_update_exercise(
     extra ones added. Logged history is never touched. dry_run=true (default) sends
     NOTHING.
     """
-    return (
-        _app(ctx)
-        .services()
-        .service.edit_exercise(
+    with _services(ctx) as services:
+        return services.service.edit_exercise(
             exercise_id,
             lambda r: builders.update_exercise(
                 r, exercise_id, rest_seconds=rest_seconds, note=note, sets=sets
             ),
             dry_run=dry_run,
         )
-    )
 
 
 @mcp.tool(annotations=_destructive("Apply routine"))
@@ -427,7 +443,8 @@ def smartgym_apply_routine(
     desired = DesiredRoutine(
         name=name, days=days, goal=goal, note=note, warmup=warmup, main=main, cooldown=cooldown
     )
-    return _app(ctx).services().service.edit(routine, lambda _r: desired, dry_run=dry_run)
+    with _services(ctx) as services:
+        return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
 @mcp.tool(annotations=_destructive("Archive routines"))
@@ -438,7 +455,8 @@ def smartgym_archive_routines(
 
     Reversible with smartgym_unarchive_routine. dry_run=true (default) sends NOTHING.
     """
-    return _app(ctx).services().service.set_archived(routines, archived=True, dry_run=dry_run)
+    with _services(ctx) as services:
+        return services.service.set_archived(routines, archived=True, dry_run=dry_run)
 
 
 @mcp.tool(annotations=_destructive("Unarchive routine"))
@@ -446,9 +464,8 @@ def smartgym_unarchive_routine(
     ctx: Context, routine: str, dry_run: bool = True
 ) -> ArchiveResult:
     """Bring an archived routine back to the active list. dry_run=true sends NOTHING."""
-    return (
-        _app(ctx).services().service.set_archived([routine], archived=False, dry_run=dry_run)
-    )
+    with _services(ctx) as services:
+        return services.service.set_archived([routine], archived=False, dry_run=dry_run)
 
 
 @mcp.resource("smartgym://catalog/exercises", mime_type="application/json")

@@ -21,6 +21,7 @@ class FakeClient:
         self.user_id = user_id
         self.sent: list[tuple[str, dict[str, str]]] = []
         self.get_calls: list[str] = []
+        self.closed = False
 
     def get(
         self,
@@ -42,3 +43,6 @@ class FakeClient:
         if isinstance(nxt, Exception):
             raise nxt
         return nxt
+
+    def close(self) -> None:
+        self.closed = True
