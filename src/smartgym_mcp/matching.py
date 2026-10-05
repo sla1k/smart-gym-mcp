@@ -1,14 +1,13 @@
-"""Deterministic exercise-name resolution against the ZEXERCISE catalog.
+"""Deterministic exercise-name resolution against the app-bundle catalog.
 
-Spec 03 §E: numeric → exact Z_PK; else exact case-insensitive name; else
-normalized token-set fuzzy match with threshold 0.85. Anything below threshold
-fails with top candidates — nothing silently wrong is ever resolved. No LLM.
+Numeric → catalog id; else exact case-insensitive name; else normalized
+token-set fuzzy match with threshold 0.85. Anything below threshold fails with
+top candidates — nothing silently wrong is ever resolved. No LLM.
 """
 
 from __future__ import annotations
 
 import re
-import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -48,7 +47,7 @@ def _ratio(a: str, b: str) -> float:
 
 @dataclass(frozen=True)
 class _Entry:
-    z_pk: int
+    catalog_id: int
     name: str
     tokens: str
 
@@ -57,37 +56,27 @@ class ExerciseCatalog:
     """Immutable catalog snapshot with tokens precomputed once per load."""
 
     def __init__(self, entries: list[tuple[int, str]]) -> None:
-        self._entries = [_Entry(z_pk, name, _tokens(name)) for z_pk, name in entries]
-        self._by_pk = {e.z_pk: e for e in self._entries}
+        self._entries = [
+            _Entry(catalog_id, name, _tokens(name)) for catalog_id, name in entries
+        ]
+        self._by_id = {e.catalog_id: e for e in self._entries}
         self._by_lower_name = {e.name.lower(): e for e in self._entries}
 
     @classmethod
-    def load(cls, conn: sqlite3.Connection) -> ExerciseCatalog:
-        """ZEXERCISE has no removed/hidden column — every named row is a candidate."""
-        return cls(
-            [
-                (int(r[0]), str(r[1]))
-                for r in conn.execute(
-                    "SELECT Z_PK, ZNAME FROM ZEXERCISE WHERE ZNAME IS NOT NULL"
-                )
-            ]
-        )
-
-    @classmethod
     def from_bundle(cls, exercises: Sequence[CatalogExercise]) -> ExerciseCatalog:
-        """Catalog from the app bundle; resolutions carry the catalog id in `z_pk`."""
+        """Catalog from the app bundle."""
         return cls([(e.id, e.name) for e in exercises])
 
     def resolve(self, ref: str) -> ExerciseResolution:
-        """Resolve one exercise reference (name or numeric z_pk).
+        """Resolve one exercise reference (name or numeric catalog id).
 
         Raises UnresolvedExercise (with closest candidates) below threshold.
         """
         s = ref.strip()
         if s.isdigit():
-            entry = self._by_pk.get(int(s))
+            entry = self._by_id.get(int(s))
             if entry is None:
-                raise UnresolvedExercise(f"No catalog exercise with z_pk={s}.")
+                raise UnresolvedExercise(f"No catalog exercise with id={s}.")
             return self._exact(ref, entry)
 
         entry = self._by_lower_name.get(s.lower())
@@ -105,12 +94,13 @@ class ExerciseCatalog:
             return ExerciseResolution(
                 input=ref,
                 resolved_name=best.name,
-                z_pk=best.z_pk,
+                catalog_id=best.catalog_id,
                 confidence=round(best_score, 3),
                 fuzzy=True,
             )
         candidates = ", ".join(
-            f"{e.name!r} (z_pk={e.z_pk}, {score:.2f})" for score, e in scored[:_SUGGESTIONS]
+            f"{e.name!r} (id={e.catalog_id}, {score:.2f})"
+            for score, e in scored[:_SUGGESTIONS]
         )
         raise UnresolvedExercise(
             f"Could not resolve exercise {ref!r} (best match below "
@@ -120,5 +110,9 @@ class ExerciseCatalog:
     @staticmethod
     def _exact(ref: str, entry: _Entry) -> ExerciseResolution:
         return ExerciseResolution(
-            input=ref, resolved_name=entry.name, z_pk=entry.z_pk, confidence=1.0, fuzzy=False
+            input=ref,
+            resolved_name=entry.name,
+            catalog_id=entry.catalog_id,
+            confidence=1.0,
+            fuzzy=False,
         )

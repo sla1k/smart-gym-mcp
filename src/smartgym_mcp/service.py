@@ -318,7 +318,7 @@ class RoutineService:
                 except UnresolvedExercise as exc:
                     problems.append(f"{spec.name} / {section}: {exc}")
                     continue
-                cat = self._bundle.get(res.z_pk)
+                cat = self._bundle.get(res.catalog_id)
                 if cat is None:
                     problems.append(
                         f"{spec.name} / {section}: {res.resolved_name!r} is not in the app's "
