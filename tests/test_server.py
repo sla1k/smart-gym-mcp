@@ -240,6 +240,31 @@ def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> 
         services.client.close()
 
 
+def test_build_services_closes_the_client_when_a_later_step_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built: list[Any] = []
+
+    class _RecordingClient(server.ApiClient):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.closed = False
+            built.append(self)
+
+        def close(self) -> None:
+            self.closed = True
+            super().close()
+
+    monkeypatch.setattr(server, "ApiClient", _RecordingClient)
+    cfg = _cfg(tmp_path)  # no app bundle → loading Exercises.json fails
+    _write_credentials(
+        cfg.credentials_path, {"authorization": SECRET, "authID": "42", "app_headers": APP}
+    )
+    with pytest.raises(FileNotFoundError):
+        server.build_services(cfg)
+    assert len(built) == 1 and built[0].closed
+
+
 # ---------------------------------------------------------------------- health
 def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     tmp_path: Path,
@@ -280,6 +305,43 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
 
 
 # ---------------------------------------------------------------------- writes
+@pytest.mark.parametrize(
+    ("tool", "arguments", "field"),
+    [
+        (
+            "smartgym_add_exercise",
+            {"routine": "ZZ", "exercise": "Plank", "position": -1},
+            "position",
+        ),
+        ("smartgym_move_exercise", {"exercise_id": 1, "section": "main", "position": -1}, "position"),
+        ("smartgym_create_program", {"routines": []}, "routines"),
+        ("smartgym_update_routine", {"routine": "ZZ", "days": "Monday"}, "days"),
+        ("smartgym_apply_routine", {"routine": "ZZ", "days": "2,3,"}, "days"),
+    ],
+    ids=["add-negative-position", "move-negative-position", "empty-program", "update-days",
+         "apply-days"],
+)  # fmt: skip
+def test_write_tools_reject_bad_arguments(
+    tool: str, arguments: dict[str, Any], field: str
+) -> None:
+    with pytest.raises(ToolError, match=field):
+        asyncio.run(server.mcp.call_tool(tool, arguments))
+
+
+def test_days_format_is_documented_in_the_tool_schemas() -> None:
+    tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
+    for name in (
+        "smartgym_update_routine",
+        "smartgym_apply_routine",
+        "smartgym_create_program",
+    ):
+        tool = tools[name]
+        assert "1 = Sunday, 2 = Monday" in (tool.description or ""), name
+    for name in ("smartgym_update_routine", "smartgym_apply_routine"):
+        days = tools[name].inputSchema["properties"]["days"]
+        assert "1 = Sunday" in days["description"], name
+
+
 def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:
     client = FakeClient({HISTORY: ACCOUNT, SINGLE: _single()})
     result = server.smartgym_update_exercise(
