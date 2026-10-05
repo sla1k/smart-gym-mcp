@@ -27,14 +27,20 @@ CRED = Path.home() / ".smartgym-mcp" / "credentials.json"
 SECRET_HEADERS = ("authorization", "phrase")
 
 
+SHOW_VALUES = {"code", "hasMore", "lastModified"}
+MAX_DEPTH = 6
+
+
 def _shape(value: object, path: str, depth: int = 0) -> None:
-    """Print structure only — key names, types, list lengths; never values."""
-    if depth > 3:
+    """Print structure only — key names, types, list lengths; values only for SHOW_VALUES."""
+    if depth > MAX_DEPTH:
         return
     if isinstance(value, dict):
         for k in sorted(value):
             v = value[k]
             kind = f"list[{len(v)}]" if isinstance(v, list) else type(v).__name__
+            if depth == 0 and k in SHOW_VALUES:
+                kind += f" = {v!r}"
             print(f"{'  ' * depth}{path}{k}: {kind}")
             _shape(v, "", depth + 1)
     elif isinstance(value, list) and value:
