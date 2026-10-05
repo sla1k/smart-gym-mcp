@@ -261,3 +261,10 @@ def test_only_whole_id_segments_are_masked() -> None:
     with pytest.raises(ApiError) as exc:
         client.get(f"routine/single/{UID}1/")
     assert f"{UID}1" in str(exc.value)
+
+
+def test_account_id_not_logged_by_httpx_on_success(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    client = _uid_client(lambda _r: httpx.Response(200, json={"code": "SUCCESS"}))
+    client.get(f"history/all/{UID}/")
+    assert UID not in caplog.text
