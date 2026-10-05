@@ -1,0 +1,21 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/updateExercise/",
+  "query": {},
+  "form": {
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "requestDate": "2026-10-05T15:16:05",
+    "timezone": "Europe/Madrid",
+    "exercises": "[{\"exerciseID\":34048393,\"note\":\"cahnge note\"}]"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "exercises": [
+      {
+        "exerciseID": 34048393
+      }
+    ],
+    "histories": []
+  }
+}

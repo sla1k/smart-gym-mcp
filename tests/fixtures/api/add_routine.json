@@ -1,0 +1,81 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/add/",
+  "query": {},
+  "form": {
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "routines": "[{\"number\":17,\"reference\":1,\"uniqueHashID\":26100512239894,\"goal\":\"asd\",\"hasSynced\":0,\"dateCreated\":\"2026-10-04T22:00:00\",\"migratedSets\":1,\"identifier\":3681032,\"exercises\":[{\"totalRealSets\":2,\"stretch\":0,\"idx\":0,\"index\":0,\"genericID\":194,\"secondImage\":\"0194-2\",\"thirdImage\":\"\",\"uniqueHashID\":26100517120048,\"category\":11,\"isSingleWeight\":0,\"pause\":15,\"name\":\"Push Up\",\"listGroup\":0,\"type\":1,\"subCategories\":\"9,12\",\"routineID\":3681032,\"id\":194,\"identifier\":224520682,\"isStretch\":false,\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"sets\":[{\"index\":0,\"uniqueHashID\":26100535496863,\"dateAdded\":\"2026-10-05T15:12:03\",\"firstValue\":1,\"type\":0,\"secondValue\":12,\"thirdValue\":0},{\"index\":1,\"uniqueHashID\":26100564773047,\"dateAdded\":\"2026-10-05T15:12:03\",\"firstValue\":1,\"type\":0,\"secondValue\":12,\"thirdValue\":0}],\"fourthImage\":\"\",\"totalSets\":2,\"firstImage\":\"0194-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-05T15:13:16\",\"requiresBands\":false},{\"totalRealSets\":2,\"stretch\":0,\"idx\":1,\"index\":1,\"genericID\":20,\"secondImage\":\"\",\"thirdImage\":\"\",\"uniqueHashID\":26100517121186,\"category\":1,\"isSingleWeight\":0,\"pause\":45,\"name\":\"Plank\",\"listGroup\":0,\"type\":2,\"subCategories\":\"6,9,102\",\"routineID\":3681032,\"id\":20,\"identifier\":224520683,\"isStretch\":false,\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"sets\":[{\"index\":0,\"uniqueHashID\":26100579685767,\"dateAdded\":\"2026-10-05T15:12:13\",\"firstValue\":1,\"type\":0,\"secondValue\":30,\"thirdValue\":0},{\"index\":1,\"uniqueHashID\":26100590904970,\"dateAdded\":\"2026-10-05T15:12:13\",\"firstValue\":1,\"type\":0,\"secondValue\":30,\"thirdValue\":0}],\"fourthImage\":\"\",\"totalSets\":2,\"firstImage\":\"0020-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-05T15:13:16\",\"requiresBands\":false},{\"totalRealSets\":2,\"stretch\":0,\"idx\":2,\"index\":2,\"genericID\":100,\"secondImage\":\"0100-2\",\"thirdImage\":\"\",\"uniqueHashID\":26100517130560,\"category\":6,\"isSingleWeight\":0,\"pause\":15,\"name\":\"Squat\",\"listGroup\":0,\"type\":1,\"subCategories\":\"7,104,108\",\"routineID\":3681032,\"id\":100,\"identifier\":224520684,\"isStretch\":false,\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"sets\":[{\"index\":0,\"uniqueHashID\":26100555166713,\"dateAdded\":\"2026-10-05T15:13:07\",\"firstValue\":1,\"type\":0,\"secondValue\":15,\"thirdValue\":0},{\"index\":1,\"uniqueHashID\":26100533684302,\"dateAdded\":\"2026-10-05T15:13:07\",\"firstValue\":1,\"type\":0,\"secondValue\":15,\"thirdValue\":0}],\"fourthImage\":\"\",\"totalSets\":2,\"firstImage\":\"0100-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-05T15:13:16\",\"requiresBands\":false}],\"name\":\"ZZ-SPIKE\"}]",
+    "requestDate": "2026-10-05T15:13:16",
+    "timezone": "Europe/Madrid"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routines": [
+      {
+        "original_id": 26100512239894,
+        "server_id": "3681209",
+        "userID": "1",
+        "smartTrainerWorkoutID": null
+      }
+    ],
+    "exercises": [
+      {
+        "original_id": 26100517120048,
+        "server_id": "34048391",
+        "userID": "1",
+        "routineID": "3681209"
+      },
+      {
+        "original_id": 26100517121186,
+        "server_id": "34048392",
+        "userID": "1",
+        "routineID": "3681209"
+      },
+      {
+        "original_id": 26100517130560,
+        "server_id": "34048393",
+        "userID": "1",
+        "routineID": "3681209"
+      }
+    ],
+    "sets": [
+      {
+        "server_id": "149091741",
+        "original_id": "26100535496863",
+        "uniqueExerciseID": "34048391",
+        "routineID": "3681209"
+      },
+      {
+        "server_id": "149091742",
+        "original_id": "26100564773047",
+        "uniqueExerciseID": "34048391",
+        "routineID": "3681209"
+      },
+      {
+        "server_id": "149091743",
+        "original_id": "26100579685767",
+        "uniqueExerciseID": "34048392",
+        "routineID": "3681209"
+      },
+      {
+        "server_id": "149091744",
+        "original_id": "26100590904970",
+        "uniqueExerciseID": "34048392",
+        "routineID": "3681209"
+      },
+      {
+        "server_id": "149091745",
+        "original_id": "26100555166713",
+        "uniqueExerciseID": "34048393",
+        "routineID": "3681209"
+      },
+      {
+        "server_id": "149091746",
+        "original_id": "26100533684302",
+        "uniqueExerciseID": "34048393",
+        "routineID": "3681209"
+      }
+    ]
+  }
+}

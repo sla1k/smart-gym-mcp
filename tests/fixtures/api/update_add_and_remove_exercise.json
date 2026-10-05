@@ -1,0 +1,47 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681209",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "days": "2,4,6",
+    "requestDate": "2026-10-05T15:16:33",
+    "timezone": "Europe/Madrid",
+    "goal": "changed goal",
+    "exercises": "[{\"totalRealSets\":3,\"stretch\":0,\"idx\":2,\"index\":2,\"pause\":60,\"genericID\":256,\"thirdImage\":\"\",\"secondImage\":\"0256-2\",\"category\":1,\"uniqueHashID\":26100517162124,\"isSingleWeight\":0,\"name\":\"Ab Machine\",\"listGroup\":0,\"type\":0,\"routineID\":3681209,\"isStretch\":false,\"id\":256,\"identifier\":224520682,\"sets\":[{\"index\":0,\"uniqueHashID\":26100557160269,\"dateAdded\":\"2026-10-05T15:16:23\",\"firstValue\":1,\"type\":0,\"secondValue\":15,\"thirdValue\":36},{\"index\":1,\"uniqueHashID\":26100549229340,\"dateAdded\":\"2026-10-05T15:16:23\",\"firstValue\":1,\"type\":0,\"secondValue\":15,\"thirdValue\":36},{\"index\":2,\"uniqueHashID\":26100526419289,\"dateAdded\":\"2026-10-05T15:16:23\",\"firstValue\":1,\"type\":0,\"secondValue\":15,\"thirdValue\":36}],\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"totalSets\":3,\"fourthImage\":\"\",\"firstImage\":\"0256-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-05T15:16:33\",\"requiresBands\":false}]",
+    "removeExercises": "34048392"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681209",
+    "exercises": [
+      {
+        "original_id": 26100517162124,
+        "server_id": 34048425,
+        "routineID": "3681209",
+        "sets": [
+          {
+            "server_id": "149091969",
+            "original_id": "26100557160269",
+            "uniqueExerciseID": "34048425",
+            "routineID": "3681209"
+          },
+          {
+            "server_id": "149091970",
+            "original_id": "26100549229340",
+            "uniqueExerciseID": "34048425",
+            "routineID": "3681209"
+          },
+          {
+            "server_id": "149091971",
+            "original_id": "26100526419289",
+            "uniqueExerciseID": "34048425",
+            "routineID": "3681209"
+          }
+        ]
+      }
+    ]
+  }
+}

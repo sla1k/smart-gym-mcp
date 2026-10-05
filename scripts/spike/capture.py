@@ -6,7 +6,7 @@ everywhere, and bodies of login/token endpoints are dropped. Per request only
 a verdict is kept: whether each secret header equals the previous request's.
 
 With SPIKE_SAVE_CREDENTIALS=1 the latest complete header pair plus the account
-id are written to ~/.smartgym-mcp/credentials.json (mode 0600) for send.py;
+id and the requestDate the pair was made for are written to ~/.smartgym-mcp/credentials.json (mode 0600) for send.py;
 that file never leaves the user's machine.
 """
 
@@ -25,6 +25,7 @@ from mitmproxy import http
 OUT = Path(__file__).with_name("spike-flows.jsonl")
 CRED = Path.home() / ".smartgym-mcp" / "credentials.json"
 SECRET_HEADERS = ("authorization", "phrase")
+APP_HEADERS = ("accept", "accept-language", "user-agent")
 AUTH_PATH = re.compile(r"login|logout|auth(?!ID)|token|register|password|session", re.I)
 REDACTED = "<REDACTED>"
 _last: dict[str, str] = {}
@@ -74,15 +75,22 @@ def _form(req: http.Request) -> dict[str, str]:
     return {}
 
 
-def _save_credentials(flow: http.HTTPFlow, account: str | None) -> None:
+def _save_credentials(
+    flow: http.HTTPFlow, account: str | None, request_date: str | None
+) -> None:
     headers = {h: flow.request.headers.get(h) for h in SECRET_HEADERS}
-    if not all(headers.values()) or not account:
+    if not all(headers.values()) or not account or not request_date:
         return
     CRED.parent.mkdir(parents=True, exist_ok=True)
     tmp = CRED.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump({**headers, "authID": account}, f)
+        app = {
+            h: flow.request.headers.get(h) for h in APP_HEADERS if flow.request.headers.get(h)
+        }
+        json.dump(
+            {**headers, "authID": account, "requestDate": request_date, "app_headers": app}, f
+        )
     os.replace(tmp, CRED)
 
 
@@ -100,6 +108,7 @@ def response(flow: http.HTTPFlow) -> None:
         "path": path,
         "query": query,
         "header_names": sorted(flow.request.headers.keys()),
+        "app_headers": {h: flow.request.headers.get(h) for h in APP_HEADERS},
         "secret_verdicts": _verdicts(flow),
         "form": form,
         "req": flow.request.get_content().decode("utf-8", errors="replace"),
@@ -114,4 +123,4 @@ def response(flow: http.HTTPFlow) -> None:
     with OUT.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
     if os.environ.get("SPIKE_SAVE_CREDENTIALS") == "1":
-        _save_credentials(flow, account)
+        _save_credentials(flow, account, form.get("requestDate") or query.get("requestDate"))

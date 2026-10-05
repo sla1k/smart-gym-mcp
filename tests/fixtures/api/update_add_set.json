@@ -1,0 +1,29 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/updateExercise/",
+  "query": {},
+  "form": {
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "requestDate": "2026-10-05T15:17:10",
+    "timezone": "Europe/Madrid",
+    "exercises": "[{\"addedSets\":[{\"routineID\":3681209,\"index\":3,\"uniqueHashID\":26100568239109,\"firstValue\":1,\"secondValue\":10,\"type\":0,\"uniqueExerciseID\":34048425,\"thirdValue\":32}],\"exerciseID\":34048425}]"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "exercises": [
+      {
+        "exerciseID": 34048425,
+        "addedSets": [
+          {
+            "server_id": "149092034",
+            "original_id": "26100568239109",
+            "uniqueExerciseID": "34048425",
+            "routineID": "3681209"
+          }
+        ]
+      }
+    ],
+    "histories": []
+  }
+}

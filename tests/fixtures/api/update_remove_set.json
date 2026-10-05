@@ -1,0 +1,21 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/updateExercise/",
+  "query": {},
+  "form": {
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "requestDate": "2026-10-05T15:17:33",
+    "timezone": "Europe/Madrid",
+    "exercises": "[{\"removedSets\":[{\"thirdValue\":32,\"uniqueHashID\":26100568239109,\"dateAdded\":\"2026-10-05T15:17:10\",\"firstValue\":1,\"identifier\":149092034,\"secondValue\":10,\"type\":0,\"index\":3}],\"exerciseID\":34048425}]"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "exercises": [
+      {
+        "exerciseID": 34048425
+      }
+    ],
+    "histories": []
+  }
+}
