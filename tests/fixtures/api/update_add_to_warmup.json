@@ -1,0 +1,34 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3681558",
+    "appVersion": "8.0.3",
+    "days": "2,3",
+    "timezone": "Europe/Madrid",
+    "goal": "S7 capture",
+    "exercises": "[{\"id\":140,\"genericID\":140,\"name\":\"Bridge\",\"idx\":1,\"index\":1,\"pause\":30,\"type\":1,\"category\":7,\"subCategories\":\"103,104\",\"twoSides\":0,\"stretch\":0,\"isStretch\":false,\"isCustom\":0,\"requiresBands\":false,\"isSingleWeight\":0,\"listGroup\":1,\"mode\":0,\"totalSets\":1,\"totalRealSets\":1,\"firstImage\":\"0140-1\",\"secondImage\":\"0140-2\",\"thirdImage\":\"\",\"fourthImage\":\"\",\"fifthImage\":\"\",\"sixthImage\":\"\",\"uniqueHashID\":26100575673347,\"dateAdded\":\"2026-10-05T19:22:59\",\"routineID\":3681558,\"sets\":[{\"index\":0,\"type\":0,\"firstValue\":1,\"secondValue\":12,\"thirdValue\":0,\"uniqueHashID\":26100565584473,\"dateAdded\":\"2026-10-05T19:22:59\"}]}]",
+    "exercisesOrder": "34052112:0,34052309:2",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3681558",
+    "exercises": [
+      {
+        "original_id": 26100575673347,
+        "server_id": 34052411,
+        "routineID": "3681558",
+        "sets": [
+          {
+            "server_id": "149111689",
+            "original_id": "26100565584473",
+            "uniqueExerciseID": "34052411",
+            "routineID": "3681558"
+          }
+        ]
+      }
+    ]
+  }
+}

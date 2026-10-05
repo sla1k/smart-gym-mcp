@@ -4,7 +4,8 @@ usage:
   uv run python scripts/spike/send.py <path> <form.json> [--keep-date]   # POST
   uv run python scripts/spike/send.py <path> --get [--keep-date]         # GET
   flags: --keep-date, --bad-phrase (phrase replaced by garbage), --no-phrase,
-         --shape (print response structure only, no values)
+         --shape (print response structure only, no values),
+         --save=<name> (write tests/fixtures/api/<name>.json, account id scrubbed)
   "{authID}" in <path> is replaced by the account id.
 form.json: {"field": "value", ...} — values sent as multipart form fields.
 `authID` always comes from the local credentials file (fixtures carry the
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +26,7 @@ import httpx
 
 BASE = "https://api.smartgymapp.com/v1.1/"
 CRED = Path.home() / ".smartgym-mcp" / "credentials.json"
+FIXTURES = Path(__file__).parents[2] / "tests" / "fixtures" / "api"
 SECRET_HEADERS = ("authorization", "phrase")
 
 
@@ -45,6 +48,36 @@ def _shape(value: object, path: str, depth: int = 0) -> None:
             _shape(v, "", depth + 1)
     elif isinstance(value, list) and value:
         _shape(value[0], "[0].", depth)
+
+
+def _save_fixture(
+    name: str,
+    method: str,
+    path: str,
+    fields: dict[str, str],
+    body: object,
+    creds: dict[str, str],
+) -> None:
+    """Write a scrub.py-format fixture: account id → "1", no requestDate, no secrets."""
+    form = {k: v for k, v in fields.items() if k != "requestDate"}
+    blob = json.dumps(
+        {
+            "method": method,
+            "path": "/v1.1/" + path,
+            "query": {},
+            "form": form,
+            "response": body,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    for secret in (creds["authorization"], creds["phrase"]):
+        if secret and secret in blob:
+            sys.exit("credential value found in response — not writing a fixture")
+    blob = re.sub(rf"(?<!\d){re.escape(creds['authID'])}(?!\d)", "1", blob)
+    FIXTURES.mkdir(parents=True, exist_ok=True)
+    (FIXTURES / f"{name}.json").write_text(blob + "\n", encoding="utf-8")
+    print("saved fixture", name)
 
 
 def main() -> None:
@@ -79,6 +112,11 @@ def main() -> None:
             r.status_code, "non-JSON response from", r.headers.get("server"), "|", r.text[:300]
         )
         return
+    save = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--save=")), None)
+    if save and isinstance(body, dict):
+        _save_fixture(
+            save, "GET" if "--get" in flags else "POST", args[0], fields, body, creds
+        )
     if isinstance(body, dict) and "--shape" in flags:
         print(r.status_code, "code =", body.get("code"))
         _shape(body, "")
