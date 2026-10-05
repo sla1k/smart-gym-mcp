@@ -153,6 +153,31 @@ def test_workouts_parse_numbers_and_skip_removed_histories() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "workout", [None, {}, {"startDate": ""}, {"startDate": None}, "oops", []]
+)
+def test_live_history_without_a_usable_workout_is_skipped(workout: object) -> None:
+    raw = _account()
+    raw["histories"].append(
+        {"identifier": "7000009", "dateRemoved": None, "routine": None, "workout": workout}
+    )
+    data = parse_history_all(raw)
+    assert [w.identifier for w in data.workouts] == [7000001, 7000002]
+
+
+def test_history_without_a_workout_key_is_skipped() -> None:
+    raw = _account()
+    raw["histories"].append({"identifier": "7000009", "dateRemoved": None, "routine": None})
+    assert [w.identifier for w in parse_history_all(raw).workouts] == [7000001, 7000002]
+
+
+def test_workout_with_start_but_malformed_other_field_still_fails_closed() -> None:
+    raw = _account()
+    raw["histories"][0]["workout"]["duration"] = "abc"
+    with pytest.raises(ApiPayloadError):
+        parse_history_all(raw)
+
+
 def test_equipment_lists_parse() -> None:
     (eq,) = parse_history_all(_account()).equipment_lists
     assert (eq.identifier, eq.selected, eq.equipment_ids) == (200109, True, [1, 2, 38])

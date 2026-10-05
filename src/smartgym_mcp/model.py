@@ -254,6 +254,11 @@ def _parse_equipment_list(raw: Mapping[str, Any]) -> EquipmentList:
     )
 
 
+def _has_workout_start(history: Mapping[str, Any]) -> bool:
+    workout = history.get("workout")
+    return isinstance(workout, Mapping) and _present(workout.get("startDate"))
+
+
 def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
     _check_success(raw)
     if str(raw.get("hasMore", False)).lower() in ("true", "1"):
@@ -266,7 +271,7 @@ def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
         workouts=[
             _parse_workout(h)
             for h in raw.get("histories") or []
-            if not _present(h.get("dateRemoved"))
+            if not _present(h.get("dateRemoved")) and _has_workout_start(h)
         ],
         equipment_lists=[_parse_equipment_list(e) for e in raw.get("equipmentLists") or []],
         last_modified=_text(raw.get("lastModified")),
