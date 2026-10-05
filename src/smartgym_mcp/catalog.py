@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import plistlib
 from dataclasses import dataclass
 
 from .config import Config
@@ -27,6 +28,17 @@ def read_catalog(cfg: Config, name: str) -> str:
             "Is SmartGym installed at SMARTGYM_APP_BUNDLE?"
         )
     return path.read_text(encoding="utf-8")
+
+
+def installed_app_version(cfg: Config) -> str | None:
+    """CFBundleShortVersionString of the installed SmartGym app, None if unreadable."""
+    plist = cfg.app_bundle / "Contents" / "Info.plist"
+    try:
+        with plist.open("rb") as f:
+            value = plistlib.load(f).get("CFBundleShortVersionString")
+    except (OSError, plistlib.InvalidFileException):
+        return None
+    return str(value) if value else None
 
 
 @dataclass(frozen=True)
