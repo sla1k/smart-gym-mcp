@@ -10,7 +10,10 @@ usage:
 form.json: {"field": "value", ...} — values sent as multipart form fields.
 `authID` always comes from the local credentials file (fixtures carry the
 scrubbed "1"). --keep-date sends the requestDate the captured `phrase` was
-made for; without it requestDate is "now". Prints only the HTTP status, the
+made for; without it requestDate is "now". A credentials file written by
+scripts/capture_credentials.py has no `phrase` / `requestDate`: the request is
+then sent without a phrase, and --keep-date / --bad-phrase stop with an error.
+Prints only the HTTP status, the
 response `code` and top-level keys (bodies can hold personal data).
 """
 
@@ -71,7 +74,7 @@ def _save_fixture(
         ensure_ascii=False,
         indent=2,
     )
-    for secret in (creds["authorization"], creds["phrase"]):
+    for secret in (creds["authorization"], creds.get("phrase")):
         if secret and secret in blob:
             sys.exit("credential value found in response — not writing a fixture")
     blob = re.sub(rf"(?<!\d){re.escape(creds['authID'])}(?!\d)", "1", blob)
@@ -85,11 +88,20 @@ def main() -> None:
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     creds = json.loads(CRED.read_text())
     path = args[0].replace("{authID}", creds["authID"])
-    headers = {**creds.get("app_headers", {}), **{h: creds[h] for h in SECRET_HEADERS}}
+    for flag, field in (("--keep-date", "requestDate"), ("--bad-phrase", "phrase")):
+        if flag in flags and not creds.get(field):
+            sys.exit(
+                f"{flag} needs `{field}` in {CRED}, which this credentials file lacks "
+                "(scripts/capture_credentials.py does not record it)."
+            )
+    headers = {
+        **creds.get("app_headers", {}),
+        **{h: creds[h] for h in SECRET_HEADERS if creds.get(h)},
+    }
     if "--bad-phrase" in flags:
         headers["phrase"] = "0" * len(headers["phrase"])
     if "--no-phrase" in flags:
-        del headers["phrase"]
+        headers.pop("phrase", None)
     fields: dict[str, str] = {}
     if "--get" not in flags:
         fields = json.loads(Path(args[1]).read_text(encoding="utf-8"))
