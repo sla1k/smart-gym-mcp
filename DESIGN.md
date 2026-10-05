@@ -115,3 +115,11 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   app's `user-agent` / `accept` / `accept-language` headers are required.
 - **Sections modelled as three lists** (warm-up / main / cool-down; user choice A).
 - **Routine delete stays out** — archive only.
+- **Section display needs a main exercise:** the iPhone shows Warm Up / Cool Down headers (the
+  Mac shows separate cards) only when the routine has at least one main exercise; the Mac app
+  has no section editor (S7).
+- **Return routines restructured (2026-10-06):** FB-A/B/C — Return W1/W2 split into warm-up /
+  main / cool-down in place via `apply_routine` (section moves only; the core block Crunch /
+  Side Plank / Bird Dog kept in warm-up, user choice); snapshots in
+  `~/.smartgym-mcp/backups/`. The older duplicate "Return W2" copies (3681263, 3681262,
+  3681264) were archived, keeping 3681294 / 3681296 / 3681295.
