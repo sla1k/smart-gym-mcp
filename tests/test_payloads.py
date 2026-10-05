@@ -65,7 +65,7 @@ def _counter() -> object:
 def test_new_routine_payload_matches_captured_shape() -> None:
     spec = RoutineSpec(
         name="ZZ-FB — Test",
-        days="0001",
+        days="2,3",
         note="note",
         exercises=[
             ExerciseSpec(
@@ -94,7 +94,7 @@ def test_new_routine_payload_matches_captured_shape() -> None:
         )
     } == {
         "name": "ZZ-FB — Test",
-        "days": "0001",
+        "days": "2,3",
         "goal": None,
         "note": "note",
         "number": 21,

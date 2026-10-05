@@ -27,7 +27,7 @@ from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .matching import ExerciseCatalog
 from .model import Section
-from .models import RoutineSpec, SetSpec
+from .models import Days, RoutineSpec, SetSpec
 from .payloads import local_timezone_name
 from .service import ArchiveResult, CreateResult, EditResult, RoutineService
 
@@ -61,22 +61,26 @@ def build_services(cfg: Config) -> Services:
     client = ApiClient(
         credentials, app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION
     )
-    store = AccountStore(client)
-    exercises = catalog.load_bundle_exercises(cfg)
-    service = RoutineService(
-        client,
-        store,
-        ExerciseCatalog.from_bundle(exercises),
-        {e.id: e for e in exercises},
-        backup_dir=cfg.backup_dir,
-        timezone=local_timezone_name(),
-    )
-    return Services(
-        client=client,
-        store=store,
-        service=service,
-        equipment=catalog.load_bundle_equipment(cfg),
-    )
+    try:
+        store = AccountStore(client)
+        exercises = catalog.load_bundle_exercises(cfg)
+        service = RoutineService(
+            client,
+            store,
+            ExerciseCatalog.from_bundle(exercises),
+            {e.id: e for e in exercises},
+            backup_dir=cfg.backup_dir,
+            timezone=local_timezone_name(),
+        )
+        return Services(
+            client=client,
+            store=store,
+            service=service,
+            equipment=catalog.load_bundle_equipment(cfg),
+        )
+    except BaseException:
+        client.close()
+        raise
 
 
 @dataclass
@@ -264,15 +268,18 @@ def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> reads.Equip
 
 @mcp.tool(annotations=_destructive("Create program"))
 def smartgym_create_program(
-    ctx: Context, routines: list[RoutineSpec], dry_run: bool = True
+    ctx: Context,
+    routines: Annotated[list[RoutineSpec], Field(min_length=1)],
+    dry_run: bool = True,
 ) -> CreateResult:
     """Create one or more routines (a program) on the SmartGym server — all devices get them.
 
-    Each routine: name (must not match an existing routine), optional days/goal/note, and
+    Each routine: name (must not match an active routine), optional days/goal/note, and
     three ordered sections — `warmup` (optional), `exercises` (= main, required),
     `cooldown` (optional). Exercises are catalog names (fuzzy-matched, deterministic) or
     catalog ids, with optional rest_seconds, note and template sets (reps + weight_kg;
-    omitted = one 1x10 set, flagged). Validation is all-or-nothing.
+    omitted = one 1x10 set, flagged). `days` is comma-separated weekday numbers,
+    1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6"). Validation is all-or-nothing.
     dry_run=true (default) returns the plan and sends NOTHING; dry_run=false creates the
     routines and verifies them on the server.
     """
@@ -285,12 +292,15 @@ def smartgym_update_routine(
     ctx: Context,
     routine: str,
     name: str | None = None,
-    days: str | None = None,
+    days: Days = None,
     goal: str | None = None,
     note: str | None = None,
     dry_run: bool = True,
 ) -> EditResult:
     """Edit a routine's name, days, goal or note (only the fields you pass; "" clears).
+
+    `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
+    (e.g. "2,4,6"). A new name must not match another active routine.
 
     dry_run=true (default) shows old → new and sends NOTHING; dry_run=false snapshots the
     routine, sends the edit, and verifies it on the server.
@@ -306,7 +316,7 @@ def smartgym_add_exercise(
     routine: str,
     exercise: str,
     section: Section = "main",
-    position: int | None = None,
+    position: Annotated[int | None, Field(ge=0)] = None,
     rest_seconds: int | None = None,
     note: str | None = None,
     sets: list[SetSpec] | None = None,
@@ -339,7 +349,7 @@ def smartgym_move_exercise(
     ctx: Context,
     exercise_id: int,
     section: Section,
-    position: int | None = None,
+    position: Annotated[int | None, Field(ge=0)] = None,
     dry_run: bool = True,
 ) -> EditResult:
     """Move an exercise to another section (or to another position in its section).
@@ -424,7 +434,7 @@ def smartgym_apply_routine(
     ctx: Context,
     routine: str,
     name: str | None = None,
-    days: str | None = None,
+    days: Days = None,
     goal: str | None = None,
     note: str | None = None,
     warmup: list[DesiredExercise] | None = None,
@@ -437,7 +447,8 @@ def smartgym_apply_routine(
     Each section you pass is the complete ordered list for that section: existing
     exercises by exercise_id (optionally with new rest/note/sets), new ones by catalog
     name. An existing exercise listed under another section moves there; one you leave
-    out of a passed section is removed. Omitted sections stay as they are.
+    out of a passed section is removed. Omitted sections stay as they are. `days` is
+    comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6").
     dry_run=true (default) shows the full plan and sends NOTHING.
     """
     desired = DesiredRoutine(

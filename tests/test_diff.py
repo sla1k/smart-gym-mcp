@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from smartgym_mcp.diff import (
     DesiredExercise,
@@ -14,7 +15,7 @@ from smartgym_mcp.diff import (
 )
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, TemplateSet
-from smartgym_mcp.models import SetSpec
+from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 
 CATALOG = ExerciseCatalog(
     [
@@ -378,3 +379,18 @@ def test_moves_as_readd_keeps_other_edits_of_the_moved_exercise() -> None:
 def test_moves_as_readd_is_identity_without_moves() -> None:
     cs = diff_routine(_routine(), DesiredRoutine(main=_ids(13, 11, 12)), CATALOG)
     assert moves_as_readd(cs, _routine()) == cs
+
+
+@pytest.mark.parametrize("days", ["1", "2,3", "1,2,3,4,5,6,7", "", "  ", None])
+def test_days_accepts_weekday_numbers_or_empty(days: str | None) -> None:
+    assert DesiredRoutine(days=days).days == days
+    spec = RoutineSpec(name="ZZ", days=days, exercises=[ExerciseSpec(exercise="Plank")])
+    assert spec.days == days
+
+
+@pytest.mark.parametrize("days", ["0", "8", "Monday", "2, 3", "2,3,", ",2", "2;3", "23"])
+def test_days_rejects_anything_else_naming_the_format(days: str) -> None:
+    with pytest.raises(ValidationError, match="1 = Sunday, 2 = Monday"):
+        DesiredRoutine(days=days)
+    with pytest.raises(ValidationError, match="comma-separated weekday numbers"):
+        RoutineSpec(name="ZZ", days=days, exercises=[ExerciseSpec(exercise="Plank")])
