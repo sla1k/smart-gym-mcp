@@ -18,6 +18,10 @@ import httpx
 
 logger = logging.getLogger("smartgym_mcp.api")
 
+# httpx/httpcore INFO/DEBUG request lines carry the full URL, including the account id.
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 BASE_URL = "https://api.smartgymapp.com/v1.1/"
 _TIMEOUT_S = 30.0
 
