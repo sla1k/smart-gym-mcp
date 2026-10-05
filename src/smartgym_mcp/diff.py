@@ -5,7 +5,8 @@ module turns it into one ChangeSet that payloads.py later encodes for
 routine/update/. Exercises are matched by server identifier only, so a
 routine holding the same catalog exercise twice stays unambiguous. Sets are
 matched by position: overlap → update, extra desired → add, extra current →
-remove. Validation is all-or-nothing.
+remove. Kept sets are renumbered 0..n-1 so an added set never reuses an index.
+Validation is all-or-nothing.
 """
 
 from __future__ import annotations
@@ -145,7 +146,11 @@ def _exercise_update(ex: RoutineExercise, want: DesiredExercise) -> ExerciseUpda
         for i, s in enumerate(want.sets):
             if i >= len(current):
                 added.append(AddedSet(index=i, reps=s.reps, weight_kg=s.weight_kg))
-            elif (current[i].reps, current[i].weight_kg) != (s.reps, s.weight_kg):
+            elif (current[i].index, current[i].reps, current[i].weight_kg) != (
+                i,
+                s.reps,
+                s.weight_kg,
+            ):
                 updated.append(
                     UpdatedSet(
                         identifier=current[i].identifier,

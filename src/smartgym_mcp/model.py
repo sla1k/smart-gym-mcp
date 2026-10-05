@@ -58,12 +58,26 @@ def _req(raw: Mapping[str, Any], key: str) -> Any:
     return raw[key]
 
 
+def _float_value(key: str, value: Any) -> float:
+    try:
+        return float(str(value))
+    except ValueError:
+        raise ApiPayloadError(f"API field {key!r} = {value!r} is not a number.") from None
+
+
+def _int_value(key: str, value: Any) -> int:
+    number = _float_value(key, value)
+    if not number.is_integer():
+        raise ApiPayloadError(f"API field {key!r} = {value!r} is not a whole number.")
+    return int(number)
+
+
 def _int(raw: Mapping[str, Any], key: str) -> int:
-    return int(str(_req(raw, key)))
+    return _int_value(key, _req(raw, key))
 
 
 def _float(raw: Mapping[str, Any], key: str) -> float:
-    return float(str(_req(raw, key)))
+    return _float_value(key, _req(raw, key))
 
 
 def _text(value: Any) -> str | None:
@@ -95,7 +109,7 @@ def _parse_exercise(raw: Mapping[str, Any]) -> RoutineExercise:
         catalog_id=_int(raw, "id"),
         name=str(_req(raw, "name")),
         index=_int(raw, "idx"),
-        rest_seconds=int(str(raw.get("pause") or 0)),
+        rest_seconds=_int_value("pause", raw.get("pause") or 0),
         note=_text(raw.get("note")),
         removed=raw.get("dateRemoved") is not None,
         template_sets=sorted(sets, key=lambda s: s.index),

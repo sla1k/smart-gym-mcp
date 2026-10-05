@@ -2,7 +2,8 @@
 
 usage: uv run python scripts/spike/send.py <path> <form.json>
 form.json: {"field": "value", ...} — values sent as multipart form fields.
-Prints only the HTTP status and the JSON response body.
+`authID` always comes from the local credentials file (fixtures carry the
+scrubbed "1"). Prints only the HTTP status and the JSON response body.
 """
 
 from __future__ import annotations
@@ -16,15 +17,19 @@ import httpx
 
 BASE = "https://api.smartgymapp.com/v1.1/"
 CRED = Path.home() / ".smartgym-mcp" / "credentials.json"
+SECRET_HEADERS = ("authorization", "phrase")
 
 
 def main() -> None:
     path, form_file = sys.argv[1], Path(sys.argv[2])
     creds = json.loads(CRED.read_text())
+    headers = {h: creds[h] for h in SECRET_HEADERS}
     form = json.loads(form_file.read_text(encoding="utf-8"))
-    form.setdefault("requestDate", dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S"))
+    form["authID"] = creds["authID"]
+    form.setdefault("appVersion", "8.0.3")
+    form["requestDate"] = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S")
     files = {k: (None, str(v).encode("utf-8")) for k, v in form.items()}
-    r = httpx.post(BASE + path, files=files, headers=creds, timeout=30)
+    r = httpx.post(BASE + path, files=files, headers=headers, timeout=30)
     print(r.status_code)
     print(r.text)
 

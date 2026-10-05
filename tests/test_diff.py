@@ -191,3 +191,19 @@ def test_desired_exercise_needs_exactly_one_reference() -> None:
         DesiredExercise()
     with pytest.raises(ValueError, match="exactly one"):
         DesiredExercise(exercise_id=1, exercise="Plank")
+
+
+def test_set_index_gaps_are_renumbered_so_added_sets_never_collide() -> None:
+    routine = _routine()
+    gappy = [
+        TemplateSet(
+            identifier=200 + i, unique_hashid=200 + i, index=idx, reps=10, weight_kg=40
+        )
+        for i, idx in enumerate((0, 2, 3))
+    ]
+    routine.exercises[1].template_sets = gappy
+    sets = [SetSpec(reps=10, weight_kg=40)] * 4
+    wanted = _keep_all(**{"12": DesiredExercise(exercise_id=12, sets=sets)})
+    (upd,) = diff_routine(routine, DesiredRoutine(exercises=wanted), CATALOG).updated
+    assert [(u.identifier, u.index) for u in upd.updated_sets] == [(201, 1), (202, 2)]
+    assert [a.index for a in upd.added_sets] == [3]
