@@ -335,3 +335,12 @@ def test_append_to_routine_with_idx_gap_renumbers() -> None:
         routine, DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
     )
     assert cs.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+
+
+def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
+    routine = _routine()
+    routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
+    cs = diff_routine(routine, DesiredRoutine(warmup=_ids(10, 11)), CATALOG)
+    (upd,) = cs.updated
+    assert (upd.identifier, upd.new_section) == (11, "warmup")
+    assert cs.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]

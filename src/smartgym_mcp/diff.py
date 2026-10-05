@@ -345,21 +345,36 @@ def _slots(
 
 
 def _final_order(
-    order: list[str], added: list[AddedExercise], active: list[RoutineExercise]
+    order: list[str],
+    added: list[AddedExercise],
+    active: list[RoutineExercise],
+    sections: dict[str, Section] | None = None,
 ) -> list[str] | None:
     """`order` when the server must renumber `idx`, None when every kept exercise keeps it.
 
-    An append counts as "no renumbering" only when the kept exercises' current idx are
-    exactly 0..n-1; otherwise the new exercise's idx would collide with an existing one.
+    Renumber when the kept exercises' relative order changes, or when any of them changes
+    section (`sections` maps a key to its section after the change) while their current idx,
+    taken in final order, are not strictly increasing — a move on a routine whose idx
+    disagree with its sections would otherwise re-read in a different order. An append
+    counts as "no renumbering" only when the kept idx are exactly 0..n-1 and every add
+    lands after all kept; otherwise the new exercise's idx would collide with an existing one.
     """
     by_key = {f"id:{e.identifier}": e for e in active}
     kept = [k for k in order if k in by_key]
     kept_set = set(kept)
     if kept != [k for k in by_key if k in kept_set]:
         return order
+    idxs = [by_key[k].index for k in kept]
+    moved = (
+        any(sections.get(k, by_key[k].section) != by_key[k].section for k in kept)
+        if sections
+        else False
+    )
+    if moved and any(a >= b for a, b in zip(idxs, idxs[1:], strict=False)):
+        return order
     if not added:
         return None
-    contiguous = [by_key[k].index for k in kept] == list(range(len(kept)))
+    contiguous = idxs == list(range(len(kept)))
     appended = all(a.position >= len(kept) for a in added)
     return None if contiguous and appended else order
 
@@ -386,13 +401,16 @@ def diff_routine(
     updated: list[ExerciseUpdate] = []
     expected: list[ExerciseView] = []
     order: list[str] = []
+    new_sections: dict[str, Section] = {}
     for section in SECTIONS:
         for slot in slots[section]:
             if slot.existing is not None:
                 upd = _exercise_update(slot.existing, slot.want, section)
                 if upd is not None:
                     updated.append(upd)
-                order.append(f"id:{slot.existing.identifier}")
+                key = f"id:{slot.existing.identifier}"
+                order.append(key)
+                new_sections[key] = section
                 expected.append(_expected_existing(slot.existing, slot.want, section))
                 continue
             assert slot.want is not None and slot.resolution is not None
@@ -437,7 +455,7 @@ def diff_routine(
         removed=removed,
         updated=updated,
         order=order,
-        final_order=_final_order(order, added, active),
+        final_order=_final_order(order, added, active, new_sections),
         warnings=warnings,
         expected=RoutineView(
             name=pick("name", current.name) or current.name,
