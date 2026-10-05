@@ -160,3 +160,29 @@ def test_read_decoding_error_raises_api_error() -> None:
 
     with pytest.raises(ApiError):
         _client(handler, max_read_attempts=1).get("routine/all/1/")
+
+
+def test_http_error_passes_server_code_through() -> None:
+    client = _client(lambda _r: httpx.Response(400, json={"code": "TOO_MANY_ROUTINES"}))
+    with pytest.raises(ApiError, match="TOO_MANY_ROUTINES") as exc:
+        client.post("routine/add/", {"routines": "[]"})
+    assert exc.value.code == "TOO_MANY_ROUTINES"
+
+
+def test_auth_error_keeps_code_without_secrets() -> None:
+    client = _client(lambda _r: httpx.Response(401, json={"code": "INVALID_TOKEN"}))
+    with pytest.raises(AuthError) as exc:
+        client.get("user/info/1")
+    assert exc.value.code == "INVALID_TOKEN"
+    assert SECRET not in str(exc.value)
+
+
+def test_missing_code_stays_none() -> None:
+    client = _client(lambda _r: httpx.Response(200, json={"routines": []}))
+    with pytest.raises(ApiError) as exc:
+        client.get("routine/all/1/")
+    assert exc.value.code is None
+
+
+def test_user_id_is_exposed() -> None:
+    assert _client(lambda _r: httpx.Response(200, json={})).user_id == "1"
