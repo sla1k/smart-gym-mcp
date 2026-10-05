@@ -209,6 +209,23 @@ def test_unknown_outcome_rereads_and_reports_whether_it_landed(
     message = str(exc.value)
     assert "Already sent: nothing" in message
     assert "Outcome unknown: routine/update/" in message and verdict in message
+    assert "Not sent" not in message
+
+
+def test_failed_first_request_lists_the_requests_never_sent(tmp_path: Path) -> None:
+    client = FakeClient(
+        {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
+        posts=[ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
+    )
+    build = lambda _r: DesiredRoutine(  # noqa: E731
+        main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
+    )
+    with pytest.raises(ApiError) as exc:
+        _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
+    message = str(exc.value)
+    assert "Already sent: nothing. Failed: routine/update/." in message
+    assert "Not sent: routine/updateExercise/." in message
+    assert [path for path, _ in client.sent] == ["routine/update/"]
 
 
 def test_failed_second_request_keeps_class_code_and_reports_progress(tmp_path: Path) -> None:
@@ -225,6 +242,7 @@ def test_failed_second_request_keeps_class_code_and_reports_progress(tmp_path: P
     message = str(exc.value)
     assert "Already sent: routine/update/" in message
     assert "Failed: routine/updateExercise/" in message
+    assert "Not sent" not in message
     snapshot = next(tmp_path.rglob("routine-3000001.json"))
     assert str(snapshot) in message
 
@@ -325,8 +343,58 @@ def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
 def test_create_rejects_existing_name(tmp_path: Path) -> None:
     client = FakeClient({HISTORY: _account(BEFORE)})
     spec = RoutineSpec(name="zz-svc", exercises=[ExerciseSpec(exercise="Plank")])
-    with pytest.raises(DiffError, match="already exists"):
+    with pytest.raises(DiffError, match="'zz-svc' already exists — rename it."):
         _service(client, tmp_path).create([spec], dry_run=True)
+
+
+ARCHIVED = _raw_routine(
+    ident="3000002", name="ZZ-Old", hashid="2", archived="2026-09-30 10:00:00"
+)
+
+
+def test_create_may_reuse_an_archived_routines_name(tmp_path: Path) -> None:
+    created = _raw_routine(
+        _raw_ex(902, 20, 0, 0, [(903, 30, 0)], pause="0"),
+        ident="3000009",
+        name="ZZ-Old",
+        hashid=str(FIRST_HASH),
+    )
+    created["days"] = ""
+    client = FakeClient({HISTORY: [_account(BEFORE, ARCHIVED), _account(BEFORE, ARCHIVED)]})
+    spec = RoutineSpec(
+        name="zz-old", exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])]
+    )
+    plan = _service(client, tmp_path).create([spec], dry_run=True)
+    assert plan.dry_run and [p.name for p in plan.plan] == ["zz-old"]
+
+    spec = RoutineSpec(
+        name="ZZ-Old", exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])]
+    )
+    client = FakeClient(
+        {HISTORY: [_account(BEFORE, ARCHIVED), _account(BEFORE, ARCHIVED, created)]}
+    )
+    result = _service(client, tmp_path).create([spec], dry_run=False)
+    assert [path for path, _ in client.sent] == ["routine/add/"]
+    assert [(c.identifier, c.name) for c in result.created] == [(3000009, "ZZ-Old")]
+
+
+def test_rename_onto_an_active_routines_name_is_rejected(tmp_path: Path) -> None:
+    two = _raw_routine(ident="3000002", name="ZZ-Two", hashid="2")
+    client = FakeClient({HISTORY: _account(BEFORE, two), SINGLE: _single(BEFORE)})
+    with pytest.raises(DiffError, match="'zz-two' already exists — rename it."):
+        _service(client, tmp_path).edit(
+            "ZZ-Svc", lambda _r: DesiredRoutine(name="zz-two"), dry_run=True
+        )
+    assert client.sent == []
+
+
+@pytest.mark.parametrize("new_name", ["ZZ-Old", "zz-svc"], ids=["archived", "own-name-case"])
+def test_rename_onto_an_archived_or_own_name_is_allowed(tmp_path: Path, new_name: str) -> None:
+    client = FakeClient({HISTORY: _account(BEFORE, ARCHIVED), SINGLE: _single(BEFORE)})
+    result = _service(client, tmp_path).edit(
+        "ZZ-Svc", lambda _r: DesiredRoutine(name=new_name), dry_run=True
+    )
+    assert [c.new for c in result.changes.routine_changes] == [new_name]
 
 
 def test_create_sends_sections_and_verifies(tmp_path: Path) -> None:
@@ -391,16 +459,51 @@ def test_create_with_unknown_outcome_rereads_and_reports(tmp_path: Path) -> None
     assert "Re-read: created 'ZZ-New' (id 3000009)" in message
 
 
+def test_failing_create_verification_read_keeps_class_and_reports_what_was_sent(
+    tmp_path: Path,
+) -> None:
+    client = FakeClient(
+        {HISTORY: [_account(BEFORE), ApiError("SmartGym answered 'FAIL'.", code="FAIL")]}
+    )
+    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    with pytest.raises(ApiError) as exc:
+        _service(client, tmp_path).create([spec], dry_run=False)
+    assert type(exc.value) is ApiError and exc.value.code == "FAIL"
+    message = str(exc.value)
+    assert "routine/add/ was sent and accepted, but re-reading to verify failed" in message
+    assert "'ZZ-New'" in message
+    assert [path for path, _ in client.sent] == ["routine/add/"]
+
+
+@pytest.mark.parametrize("archived", [True, False], ids=["archive", "unarchive"])
+def test_failing_archive_verification_read_keeps_class_and_reports_what_was_sent(
+    tmp_path: Path, archived: bool
+) -> None:
+    routine = BEFORE if archived else ARCHIVED
+    client = FakeClient({HISTORY: [_account(routine), WriteOutcomeUnknown("timeout")]})
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        _service(client, tmp_path).set_archived(
+            [routine["name"]], archived=archived, dry_run=False
+        )
+    path = "routine/archive/" if archived else "routine/unarchive/"
+    message = str(exc.value)
+    assert f"{path} was sent and accepted, but re-reading to verify failed" in message
+    assert f"Sent: {path} ({routine['name']})" in message
+
+
 def test_archive_failure_reports_what_was_already_sent(tmp_path: Path) -> None:
     two = _raw_routine(ident="3000002", name="ZZ-Two", hashid="2")
+    three = _raw_routine(ident="3000003", name="ZZ-Three", hashid="3")
     client = FakeClient(
-        {HISTORY: _account(BEFORE, two)},
+        {HISTORY: _account(BEFORE, two, three)},
         posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
     )
     with pytest.raises(ApiError) as exc:
         _service(client, tmp_path).set_archived(
-            ["ZZ-Svc", "ZZ-Two"], archived=True, dry_run=False
+            ["ZZ-Svc", "ZZ-Two", "ZZ-Three"], archived=True, dry_run=False
         )
     message = str(exc.value)
     assert "Already sent: routine/archive/ (ZZ-Svc)" in message
     assert "Failed: routine/archive/ (ZZ-Two)" in message
+    assert "Not sent: routine/archive/ (ZZ-Three)." in message
+    assert len(client.sent) == 2
