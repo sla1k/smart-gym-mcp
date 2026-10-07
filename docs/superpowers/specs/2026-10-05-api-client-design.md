@@ -1,6 +1,6 @@
 # API client (server-first rebuild) — design
 
-> Status: **design approved 2026-10-05; Phase 0 passed (S1 token lifetime open); §10 routine
+> Status: **design approved 2026-10-05; Phase 0 passed (S1 token valid ≥ 48 h); §10 routine
 > sections added 2026-10-05; S7 passed (in-place section move).** Supersedes the DB-write path of
 > specs 02/03. Until then the shipped DB tools + `smartgym_publish_routines`
 > (re-key + tombstone, spec 02 Part A §8.0) remain the working fallback.
@@ -58,14 +58,17 @@ sets; personal-trainer/student features; working offline.
 
 ### Phase 0 findings (2026-10-05, app 8.0.3) — fixtures in `tests/fixtures/api/`
 
-**S1 auth — passes (token lifetime still open).** `Authorization` is static (same across an
+**S1 auth — passes.** `Authorization` is static (same across an
 app restart). The app recomputes `phrase` for every new `requestDate`, but **the server does
 not check it**: a garbage `phrase`, a stale one with a new date, and no `phrase` at all all
 returned SUCCESS on `user/info/<id>`; `routine/archive/` with a garbage `phrase` returned
 SUCCESS and the iPhone showed the routine archived, then active again after
 `routine/unarchive/`. Requests **must carry the app's `user-agent` / `accept` /
 `accept-language`** — without them the CDN answers a non-JSON HTTP 403 before the API.
-Open: how long `Authorization` stays valid (re-test after ≥ 24 h).
+Lifetime: the `Authorization` captured 2026-10-05 15:23 UTC still returned SUCCESS on
+`user/info/<id>` (no `phrase`) on 2026-10-06 10:08 UTC and 2026-10-07 15:58 UTC — valid
+≥ 48 h; no expiry observed yet. On expiry the tools raise `AuthError` → re-run
+`scripts/capture_credentials.py`.
 
 **S2 edit wire format.** Every in-app Save sends ONE request; routine-level calls carry only
 the changed fields plus `routineID`, `days`, `goal` (always re-sent). Two endpoints:
@@ -124,7 +127,7 @@ user. Findings are recorded back into §3 as verified facts.
 
 | # | Result | Notes |
 |---|---|---|
-| S1 | **pass** (lifetime open) | `Authorization` static across restarts; server ignores `phrase` (garbage / stale / absent all SUCCESS, reads and writes); app `user-agent`/`accept`/`accept-language` required (CDN 403 without). Re-test after ≥ 24 h. |
+| S1 | **pass** (token valid ≥ 48 h) | `Authorization` static across restarts; server ignores `phrase` (garbage / stale / absent all SUCCESS, reads and writes); app `user-agent`/`accept`/`accept-language` required (CDN 403 without). Same token still valid 2026-10-07 (≥ 48 h after capture). |
 | S2 | **pass** | 12 edits captured; two endpoints (`routine/update/`, `routine/updateExercise/`); shapes + fixtures in §3. |
 | S3 | **pass** | Hand-built note + set update, no `phrase`; iPhone and Mac match. |
 | S4 | **pass, no gaps** | Full `history/all/<id>/` returns routines, histories (workout duration/calories/HR + logged sets), equipment lists, custom exercises; exercise/workout history screens make no other calls. Paging via `hasMore` + `lastModified`. |
