@@ -14,6 +14,7 @@ update, extra desired → add, extra current → remove; kept sets are renumbere
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -370,7 +371,7 @@ def _final_order(
         if sections
         else False
     )
-    if moved and any(a >= b for a, b in zip(idxs, idxs[1:], strict=False)):
+    if moved and any(a >= b for a, b in pairwise(idxs)):
         return order
     if not added:
         return None
