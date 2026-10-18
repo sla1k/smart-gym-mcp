@@ -344,3 +344,5 @@ so a custom exercise made in the app is usable within the cache's 30 s.
 Live pass 2026-10-18 (worktree build, `ZZ-F8-MCP` / `ZZ-F8B` / `ZZ-F8`): create with Dead Hang
 + Push Up, add Dead Hang to an existing routine, change Dead Hang's sets and note — each
 "Applied … verified" on the server and confirmed on the iPhone (custom image shown).
+A custom exercise created in the app and used in no routine (`ZZ-F8 Fresh`, absent from
+`history/all/`) resolved through `allCustomExercises` into `ZZ-F8-FRESH`; iPhone confirmed.
