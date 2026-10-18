@@ -185,8 +185,8 @@ Write:
 
 | Tool | Server call |
 |---|---|
-| `smartgym_create_program(routines[])` — each routine: `warmup?`, `exercises` (main), `cooldown?` | `routine/add/` (new hashes; fuzzy matching, all-or-nothing validation as today) |
-| `smartgym_update_routine(routine, name?, days?, goal?, note?)` | `routine/update/` |
+| `smartgym_create_program(routines[])` — each routine: `goal` (required, §8), `warmup?`, `exercises` (main), `cooldown?` | `routine/add/` (new hashes; fuzzy matching, all-or-nothing validation as today) |
+| `smartgym_update_routine(routine, name?, days?, goal?, note?)` — `goal` can't be cleared (§8) | `routine/update/` |
 | `smartgym_add_exercise(routine, exercise, section="main", position?, rest_seconds?, note?, sets?)` — `position` within the section | `routine/update/` |
 | `smartgym_move_exercise(exercise_id, section, position?)` — `position` within the target section, default last | `routine/update/` (S7) |
 | `smartgym_remove_exercise(exercise_id)` | `routine/update/` |
@@ -233,6 +233,12 @@ during the pass: one live history with `workout: null` broke the account parse (
 does); with no days the server stores its default `"0001"` ("Once per week"), so create
 verification skips days when none were given. The 500 on create was reported as "outcome
 unknown", re-read showed it had not landed, nothing was resent.
+
+**Goal is required (verified 2026-10-18):** the server accepts a create without `goal` and
+stores `""`, but the app's editor then refuses to Save the routine ("couldn't find a goal").
+Setting a goal via `routine/update/` fixed it (user Save check on FB-A — Return W3). So
+`create_program` requires a non-blank goal and the edit tools refuse to clear it to `""`; days
+and note stay optional and are still omitted when unset.
 
 ## 9. Migration
 

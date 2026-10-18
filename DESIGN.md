@@ -123,3 +123,15 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   Side Plank / Bird Dog kept in warm-up, user choice); snapshots in
   `~/.smartgym-mcp/backups/`. The older duplicate "Return W2" copies (3681263, 3681262,
   3681264) were archived, keeping 3681294 / 3681296 / 3681295.
+
+## Decision log (2026-10-18, routine goal)
+- **Verified: the app's editor can't save a routine whose goal is empty.** `routine/add/`
+  accepts a routine without `goal` and stores `""`; opening it in the app and tapping Save
+  errors that no goal was found. After `smartgym_update_routine(goal=…)` the same Save works
+  (user check on FB-A — Return W3).
+- **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
+  non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
+  (shared `models.Goal` validator). Changing a goal still works (user choice).
+- **Goal-less routines fixed:** FB-A/B/C — Return W3 (3696575/6/7) got
+  "Muscle Size (Hypertrophy)", FB-A — Light (sick day) (3697397) got "Light day"; snapshots in
+  `~/.smartgym-mcp/backups/20261018-1524*`. ZZ-SETS-TEST / ZZ-SETS-TEST-2 are left goal-less.

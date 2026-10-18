@@ -317,9 +317,16 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
         ("smartgym_create_program", {"routines": []}, "routines"),
         ("smartgym_update_routine", {"routine": "ZZ", "days": "Monday"}, "days"),
         ("smartgym_apply_routine", {"routine": "ZZ", "days": "2,3,"}, "days"),
+        (
+            "smartgym_create_program",
+            {"routines": [{"name": "ZZ", "exercises": [{"exercise": "Plank"}]}]},
+            "goal",
+        ),
+        ("smartgym_update_routine", {"routine": "ZZ", "goal": ""}, "goal"),
+        ("smartgym_apply_routine", {"routine": "ZZ", "goal": " "}, "goal"),
     ],
     ids=["add-negative-position", "move-negative-position", "empty-program", "update-days",
-         "apply-days"],
+         "apply-days", "create-no-goal", "update-blank-goal", "apply-blank-goal"],
 )  # fmt: skip
 def test_write_tools_reject_bad_arguments(
     tool: str, arguments: dict[str, Any], field: str
@@ -391,7 +398,10 @@ DRY_RUN_CALLS: dict[str, WriteCall] = {
         main=[DesiredExercise(exercise_id=40000012), DesiredExercise(exercise="Plank")],
     ),
     "create_program": lambda c: server.smartgym_create_program(
-        c, routines=[RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])]
+        c,
+        routines=[
+            RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
+        ],
     ),
     "archive_routines": lambda c: server.smartgym_archive_routines(c, routines=["ZZ-FB"]),
     "unarchive_routine": lambda c: server.smartgym_unarchive_routine(c, routine="ZZ-Old"),

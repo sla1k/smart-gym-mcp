@@ -25,6 +25,21 @@ Days = Annotated[
 ]
 
 
+def _check_goal(value: str) -> str:
+    if value.strip():
+        return value
+    raise ValueError(
+        "goal must not be blank: the SmartGym app can't save a routine without one."
+    )
+
+
+Goal = Annotated[
+    str,
+    AfterValidator(_check_goal),
+    Field(description='Free text, e.g. "Muscle Size (Hypertrophy)"; must not be blank'),
+]
+
+
 class SetSpec(BaseModel):
     reps: float = Field(gt=0, description="Target reps for this set")
     weight_kg: float = Field(default=0.0, ge=0, description="Target weight; 0 = bodyweight")
@@ -46,7 +61,7 @@ class ExerciseSpec(BaseModel):
 class RoutineSpec(BaseModel):
     name: str = Field(min_length=1)
     days: Days = None
-    goal: str | None = None
+    goal: Goal
     note: str | None = None
     warmup: list[ExerciseSpec] = Field(
         default_factory=list, description="Warm-up section, in order (optional)"
