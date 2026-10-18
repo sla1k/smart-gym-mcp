@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -166,6 +168,49 @@ def test_apply_snapshots_sends_and_verifies(tmp_path: Path) -> None:
     ]
     assert result.snapshot is not None
     assert json.loads(Path(result.snapshot).read_text(encoding="utf-8")) == BEFORE
+
+
+class _GatedClient(FakeClient):
+    """Holds every post until `release` is set; logs each call with its thread's name."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.log: list[tuple[str, str]] = []
+        self.posting = threading.Event()
+        self.release = threading.Event()
+
+    def get(self, path: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.log.append((threading.current_thread().name, path))
+        return super().get(path, *args, **kwargs)
+
+    def post(self, path: str, form: Any) -> dict[str, Any]:
+        self.posting.set()
+        assert self.release.wait(5)
+        self.log.append((threading.current_thread().name, path))
+        return super().post(path, form)
+
+
+def test_a_call_waits_for_the_write_in_flight(tmp_path: Path) -> None:
+    after = _raw_routine(WARM, {**CHEST, "pause": "90"})
+    client = _GatedClient({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)})
+    service = _service(client, tmp_path)
+    results: dict[str, Any] = {}
+
+    def run(name: str, seconds: int, dry_run: bool) -> None:
+        results[name] = service.edit("ZZ-Svc", _rest(seconds), dry_run=dry_run)
+
+    write = threading.Thread(target=run, args=("a", 90, False), name="a")
+    write.start()
+    assert client.posting.wait(5)
+    read = threading.Thread(target=run, args=("b", 120, True), name="b")
+    read.start()
+    time.sleep(0.2)  # unserialized, "b" would re-read the routine during the held post
+    client.release.set()
+    write.join(5)
+    read.join(5)
+    assert set(results) == {"a", "b"}
+    names = [name for name, _ in client.log]
+    assert names == sorted(names), client.log
 
 
 def test_server_ignoring_the_edit_is_a_verify_error(tmp_path: Path) -> None:

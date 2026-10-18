@@ -10,6 +10,7 @@ account is re-read once to report whether the change landed (spec §7).
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -197,6 +198,9 @@ class RoutineService:
         self._now = now
         self._mint = mint
         self._move_in_place = move_in_place
+        # MCPServer runs sync tools on worker threads; each write re-reads the routine it
+        # rewrites, so two at once could lose one. Serializing them keeps v1's ordering.
+        self._writes = threading.Lock()
 
     def _exercises(
         self, *, custom: bool = True
@@ -214,13 +218,15 @@ class RoutineService:
     def edit(
         self, ref: str | int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        return self._edit(self._store.resolve(ref).identifier, build, dry_run=dry_run)
+        with self._writes:
+            return self._edit(self._store.resolve(ref).identifier, build, dry_run=dry_run)
 
     def edit_exercise(
         self, exercise_id: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        routine = self._store.routine_of_exercise(exercise_id)
-        return self._edit(routine.identifier, build, dry_run=dry_run)
+        with self._writes:
+            routine = self._store.routine_of_exercise(exercise_id)
+            return self._edit(routine.identifier, build, dry_run=dry_run)
 
     def _edit(
         self, identifier: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
@@ -337,6 +343,10 @@ class RoutineService:
 
     # ----------------------------------------------------------------- create
     def create(self, specs: Sequence[RoutineSpec], *, dry_run: bool) -> CreateResult:
+        with self._writes:
+            return self._create(specs, dry_run=dry_run)
+
+    def _create(self, specs: Sequence[RoutineSpec], *, dry_run: bool) -> CreateResult:
         if not dry_run:
             self._store.invalidate()
         data = self._store.data()
@@ -452,6 +462,12 @@ class RoutineService:
 
     # ---------------------------------------------------------------- archive
     def set_archived(
+        self, refs: Sequence[str | int], *, archived: bool, dry_run: bool
+    ) -> ArchiveResult:
+        with self._writes:
+            return self._set_archived(refs, archived=archived, dry_run=dry_run)
+
+    def _set_archived(
         self, refs: Sequence[str | int], *, archived: bool, dry_run: bool
     ) -> ArchiveResult:
         if not dry_run:
