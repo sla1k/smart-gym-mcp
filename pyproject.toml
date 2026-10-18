@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    "mcp[cli]>=1.2.0,<2",  # 2.x renames FastMCP; needs a server migration
+    "mcp[cli]>=2,<3",  # 3.x may break the MCPServer API; installs don't read uv.lock
     "pydantic>=2",
     "httpx>=0.27",
 ]
@@ -56,9 +56,3 @@ extend-select = ["I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 files = ["src"]
-
-# FastMCP's Context is generic; annotating the bare type is idiomatic in tool
-# signatures, so relax the generics check for the server module only.
-[[tool.mypy.overrides]]
-module = "smartgym_mcp.server"
-disallow_any_generics = false

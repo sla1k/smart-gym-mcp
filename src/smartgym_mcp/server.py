@@ -1,4 +1,4 @@
-"""FastMCP app over the SmartGym API (API-client spec §5, §6).
+"""MCPServer app over the SmartGym API (API-client spec §5, §6).
 
 Tools are thin: parse input → store / service / reads. Credentials and the API
 client are built on first use, so a missing credentials file becomes a clear
@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager, asynccontextmanager, contextmanag
 from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
@@ -34,16 +34,16 @@ logger = logging.getLogger("smartgym_mcp")
 
 
 def _read_only(title: str) -> ToolAnnotations:
-    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=True)
+    return ToolAnnotations(title=title, read_only_hint=True, open_world_hint=True)
 
 
 def _destructive(title: str) -> ToolAnnotations:
     return ToolAnnotations(
         title=title,
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=False,
-        openWorldHint=True,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=False,
+        open_world_hint=True,
     )
 
 
@@ -121,7 +121,7 @@ class AppContext:
 
 
 @asynccontextmanager
-async def lifespan(_server: FastMCP) -> AsyncIterator[AppContext]:
+async def lifespan(_server: MCPServer[AppContext]) -> AsyncIterator[AppContext]:
     app = AppContext(cfg=load_config())
     logger.info("smartgym_mcp up; credentials=%s", app.cfg.credentials_path)
     try:
@@ -130,15 +130,14 @@ async def lifespan(_server: FastMCP) -> AsyncIterator[AppContext]:
         app.close()
 
 
-mcp = FastMCP("smartgym_mcp", lifespan=lifespan)
+mcp = MCPServer("smartgym_mcp", version=__version__, lifespan=lifespan)
 
 
-def _app(ctx: Context) -> AppContext:
-    app: AppContext = ctx.request_context.lifespan_context
-    return app
+def _app(ctx: Context[AppContext]) -> AppContext:
+    return ctx.request_context.lifespan_context
 
 
-def _services(ctx: Context) -> AbstractContextManager[Services]:
+def _services(ctx: Context[AppContext]) -> AbstractContextManager[Services]:
     """The one way tools reach the services (see AppContext.use)."""
     return _app(ctx).use()
 
@@ -154,7 +153,7 @@ class HealthStatus(BaseModel):
 
 
 @mcp.tool(annotations=_read_only("Health check"))
-def smartgym_health(ctx: Context) -> HealthStatus:
+def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     """Check the credentials file, the SmartGym server, and the installed app version.
 
     ok=true means the server answered with your account data. `problem` explains
@@ -196,7 +195,7 @@ def smartgym_health(ctx: Context) -> HealthStatus:
 
 @mcp.tool(annotations=_read_only("List routines"))
 def smartgym_list_routines(
-    ctx: Context, include_archived: bool = False
+    ctx: Context[AppContext], include_archived: bool = False
 ) -> reads.RoutineListResult:
     """List routines: id, name, days, and exercise counts per section (warm-up/main/cool-down).
 
@@ -210,7 +209,7 @@ def smartgym_list_routines(
 
 @mcp.tool(annotations=_read_only("Get routine detail"))
 def smartgym_get_routine(
-    ctx: Context, routine: str, history_depth: Annotated[int, Field(ge=0)] = 5
+    ctx: Context[AppContext], routine: str, history_depth: Annotated[int, Field(ge=0)] = 5
 ) -> reads.RoutineDetail:
     """Get a routine split into warmup, main and cooldown sections.
 
@@ -228,7 +227,7 @@ def smartgym_get_routine(
 
 @mcp.tool(annotations=_read_only("Get workout history"))
 def smartgym_get_workout_history(
-    ctx: Context,
+    ctx: Context[AppContext],
     days: Literal[7, 14, 30] = 7,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -256,7 +255,9 @@ def smartgym_get_workout_history(
 
 
 @mcp.tool(annotations=_read_only("Get equipment"))
-def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> reads.EquipmentListResult:
+def smartgym_get_equipment(
+    ctx: Context[AppContext], owned_only: bool = True
+) -> reads.EquipmentListResult:
     """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
     with _services(ctx) as services:
         return reads.equipment(
@@ -266,7 +267,7 @@ def smartgym_get_equipment(ctx: Context, owned_only: bool = True) -> reads.Equip
 
 @mcp.tool(annotations=_destructive("Create program"))
 def smartgym_create_program(
-    ctx: Context,
+    ctx: Context[AppContext],
     routines: Annotated[list[RoutineSpec], Field(min_length=1)],
     dry_run: bool = True,
 ) -> CreateResult:
@@ -289,7 +290,7 @@ def smartgym_create_program(
 
 @mcp.tool(annotations=_destructive("Update routine"))
 def smartgym_update_routine(
-    ctx: Context,
+    ctx: Context[AppContext],
     routine: str,
     name: str | None = None,
     days: Days = None,
@@ -313,7 +314,7 @@ def smartgym_update_routine(
 
 @mcp.tool(annotations=_destructive("Add exercise"))
 def smartgym_add_exercise(
-    ctx: Context,
+    ctx: Context[AppContext],
     routine: str,
     exercise: str,
     section: Section = "main",
@@ -348,7 +349,7 @@ def smartgym_add_exercise(
 
 @mcp.tool(annotations=_destructive("Move exercise"))
 def smartgym_move_exercise(
-    ctx: Context,
+    ctx: Context[AppContext],
     exercise_id: int,
     section: Section,
     position: Annotated[int | None, Field(ge=0)] = None,
@@ -371,7 +372,7 @@ def smartgym_move_exercise(
 
 @mcp.tool(annotations=_destructive("Remove exercise"))
 def smartgym_remove_exercise(
-    ctx: Context, exercise_id: int, dry_run: bool = True
+    ctx: Context[AppContext], exercise_id: int, dry_run: bool = True
 ) -> EditResult:
     """Remove an exercise from its routine (logged history is kept).
 
@@ -385,7 +386,7 @@ def smartgym_remove_exercise(
 
 @mcp.tool(annotations=_destructive("Reorder routine"))
 def smartgym_reorder_routine(
-    ctx: Context,
+    ctx: Context[AppContext],
     routine: str,
     warmup: list[int] | None = None,
     main: list[int] | None = None,
@@ -408,7 +409,7 @@ def smartgym_reorder_routine(
 
 @mcp.tool(annotations=_destructive("Update exercise"))
 def smartgym_update_exercise(
-    ctx: Context,
+    ctx: Context[AppContext],
     exercise_id: int,
     rest_seconds: int | None = None,
     note: str | None = None,
@@ -433,7 +434,7 @@ def smartgym_update_exercise(
 
 @mcp.tool(annotations=_destructive("Apply routine"))
 def smartgym_apply_routine(
-    ctx: Context,
+    ctx: Context[AppContext],
     routine: str,
     name: str | None = None,
     days: Days = None,
@@ -463,7 +464,7 @@ def smartgym_apply_routine(
 
 @mcp.tool(annotations=_destructive("Archive routines"))
 def smartgym_archive_routines(
-    ctx: Context, routines: list[str], dry_run: bool = True
+    ctx: Context[AppContext], routines: list[str], dry_run: bool = True
 ) -> ArchiveResult:
     """Archive routines (names or ids) on every device.
 
@@ -475,7 +476,7 @@ def smartgym_archive_routines(
 
 @mcp.tool(annotations=_destructive("Unarchive routine"))
 def smartgym_unarchive_routine(
-    ctx: Context, routine: str, dry_run: bool = True
+    ctx: Context[AppContext], routine: str, dry_run: bool = True
 ) -> ArchiveResult:
     """Bring an archived routine back to the active list. dry_run=true sends NOTHING."""
     with _services(ctx) as services:

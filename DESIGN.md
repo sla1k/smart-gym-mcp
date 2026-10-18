@@ -1,6 +1,6 @@
 # SmartGym MCP — Design Index
 
-Python + FastMCP · stdio · single-user local server that edits SmartGym routines through SmartGym's own server API.
+Python + MCP SDK 2.x (`MCPServer`) · stdio · single-user local server that edits SmartGym routines through SmartGym's own server API.
 Notion stays on its own MCP; a thin `smartgym-sync` skill orchestrates both and holds personal config.
 
 The technical design is split into specs by risk profile:
@@ -149,6 +149,6 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 - **Versions come from git tags** (hatch-vcs): main builds are `0.(minor+1).0.devN`
   (`0.1.0.devN` before the first tag); only `vX.Y.Z` tags become GitHub Releases, so the page
   isn't flooded by a dev release per merge (immutable releases can't be replaced, only added).
-  Dev builds install from `@main` or `@<sha>`. `mcp` is capped below 2 in `pyproject.toml`,
-  since installs don't read `uv.lock`.
+  Dev builds install from `@main` or `@<sha>`. `mcp` is pinned to major 2 (`>=2,<3`) in
+  `pyproject.toml`, since installs don't read `uv.lock`.
 - **No rc tags:** dev builds of `main` are the testing period before a stable tag.
