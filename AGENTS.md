@@ -46,5 +46,5 @@ uv run ruff check src tests && uv run ruff format src tests
 uv run mypy src
 uv run smartgym-mcp            # stdio server
 uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>   # install a release
-uv run mcp dev src/smartgym_mcp/server.py   # MCP Inspector
+npx @modelcontextprotocol/inspector uv run smartgym-mcp   # MCP Inspector
 ```

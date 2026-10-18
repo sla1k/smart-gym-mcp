@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from fakes import FakeClient, account_client
 from smartgym_mcp import server
@@ -102,10 +102,10 @@ def test_all_tools_registered() -> None:
 
 def test_every_write_tool_defaults_to_dry_run() -> None:
     tools = asyncio.run(server.mcp.list_tools())
-    writes = [t for t in tools if t.annotations and not t.annotations.readOnlyHint]
+    writes = [t for t in tools if t.annotations and not t.annotations.read_only_hint]
     assert len(writes) == 10
     for tool in writes:
-        assert tool.inputSchema["properties"]["dry_run"]["default"] is True, tool.name
+        assert tool.input_schema["properties"]["dry_run"]["default"] is True, tool.name
 
 
 # ----------------------------------------------------------------- credentials
@@ -343,7 +343,7 @@ def test_days_format_is_documented_in_the_tool_schemas() -> None:
         tool = tools[name]
         assert "1 = Sunday, 2 = Monday" in (tool.description or ""), name
     for name in ("smartgym_update_routine", "smartgym_apply_routine"):
-        days = tools[name].inputSchema["properties"]["days"]
+        days = tools[name].input_schema["properties"]["days"]
         assert "1 = Sunday" in days["description"], name
 
 
