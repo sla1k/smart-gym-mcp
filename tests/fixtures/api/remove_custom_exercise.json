@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/v1.1/exercise/removeCustomExercise/",
+  "query": {},
+  "form": {
+    "requestDate": "2026-10-18T13:27:25",
+    "exerciseID": "419937",
+    "appVersion": "8.0.3",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS"
+  }
+}

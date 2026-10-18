@@ -1,0 +1,57 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/add/",
+  "query": {},
+  "form": {
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "routines": "[{\"number\":31,\"reference\":1,\"uniqueHashID\":26101819977190,\"goal\":\"asd\",\"hasSynced\":0,\"dateCreated\":\"2026-10-17T22:00:00\",\"migratedSets\":1,\"identifier\":3697398,\"exercises\":[{\"totalRealSets\":2,\"idx\":0,\"index\":0,\"isStretch\":false,\"genericID\":397744,\"uniqueHashID\":26101815174031,\"listGroup\":0,\"category\":3,\"pause\":90,\"isSingleWeight\":0,\"routineID\":3697398,\"name\":\"Dead Hang\",\"type\":2,\"sets\":[{\"index\":0,\"uniqueHashID\":26101886204919,\"dateAdded\":\"2026-10-18T13:17:42\",\"firstValue\":1,\"type\":0,\"secondValue\":35,\"thirdValue\":0},{\"index\":1,\"uniqueHashID\":26101854235857,\"dateAdded\":\"2026-10-18T13:17:42\",\"firstValue\":1,\"type\":0,\"secondValue\":35,\"thirdValue\":0}],\"totalSets\":2,\"id\":397744,\"identifier\":224520682,\"twoSides\":0,\"isCustom\":1,\"note\":\"Seconds. Stop on left-wrist pain. W2: 30 -> 35 s\",\"dateAdded\":\"2026-10-18T13:18:16\",\"firstImage\":\"deadhang1\",\"requiresBands\":false},{\"totalRealSets\":1,\"stretch\":0,\"idx\":1,\"index\":1,\"genericID\":194,\"secondImage\":\"0194-2\",\"thirdImage\":\"\",\"uniqueHashID\":26101815180296,\"category\":11,\"isSingleWeight\":0,\"pause\":0,\"name\":\"Push Up\",\"listGroup\":0,\"type\":1,\"subCategories\":\"9,12\",\"routineID\":3697398,\"id\":194,\"identifier\":224520683,\"isStretch\":false,\"twoSides\":0,\"isCustom\":0,\"sixthImage\":\"\",\"sets\":[{\"index\":0,\"uniqueHashID\":26101812232574,\"dateAdded\":\"2026-10-18T13:18:13\",\"firstValue\":1,\"type\":0,\"secondValue\":10,\"thirdValue\":0}],\"fourthImage\":\"\",\"totalSets\":1,\"firstImage\":\"0194-1\",\"fifthImage\":\"\",\"dateAdded\":\"2026-10-18T13:18:16\",\"requiresBands\":false}],\"name\":\"ZZ-F8\"}]",
+    "requestDate": "2026-10-18T13:18:16",
+    "timezone": "Europe/Madrid"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routines": [
+      {
+        "original_id": 26101819977190,
+        "server_id": "3698443",
+        "userID": "1",
+        "smartTrainerWorkoutID": null
+      }
+    ],
+    "exercises": [
+      {
+        "original_id": 26101815174031,
+        "server_id": "34215243",
+        "userID": "1",
+        "routineID": "3698443"
+      },
+      {
+        "original_id": 26101815180296,
+        "server_id": "34215244",
+        "userID": "1",
+        "routineID": "3698443"
+      }
+    ],
+    "sets": [
+      {
+        "server_id": "149982290",
+        "original_id": "26101886204919",
+        "uniqueExerciseID": "34215243",
+        "routineID": "3698443"
+      },
+      {
+        "server_id": "149982291",
+        "original_id": "26101854235857",
+        "uniqueExerciseID": "34215243",
+        "routineID": "3698443"
+      },
+      {
+        "server_id": "149982292",
+        "original_id": "26101812232574",
+        "uniqueExerciseID": "34215244",
+        "routineID": "3698443"
+      }
+    ]
+  }
+}
