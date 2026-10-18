@@ -406,6 +406,9 @@ def test_blank_goal_is_rejected_on_create_and_edit(goal: str) -> None:
         DesiredRoutine(goal=goal)
 
 
-def test_edit_may_leave_the_goal_out_or_change_it() -> None:
-    assert DesiredRoutine().goal is None
-    assert DesiredRoutine(goal="Muscle Size (Hypertrophy)").goal == "Muscle Size (Hypertrophy)"
+def test_goal_less_routine_gets_a_goal() -> None:
+    cs = diff_routine(_routine(), DesiredRoutine(goal="Muscle Size (Hypertrophy)"), CATALOG)
+    assert [(c.field, c.old, c.new) for c in cs.routine_changes] == [
+        ("goal", None, "Muscle Size (Hypertrophy)")
+    ]
+    assert cs.expected.goal == "Muscle Size (Hypertrophy)"

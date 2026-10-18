@@ -306,7 +306,7 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
 
 # ---------------------------------------------------------------------- writes
 @pytest.mark.parametrize(
-    ("tool", "arguments", "field"),
+    ("tool", "arguments", "pattern"),
     [
         (
             "smartgym_add_exercise",
@@ -320,18 +320,18 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
         (
             "smartgym_create_program",
             {"routines": [{"name": "ZZ", "exercises": [{"exercise": "Plank"}]}]},
-            "goal",
+            r"goal\s+Field required",
         ),
-        ("smartgym_update_routine", {"routine": "ZZ", "goal": ""}, "goal"),
-        ("smartgym_apply_routine", {"routine": "ZZ", "goal": " "}, "goal"),
+        ("smartgym_update_routine", {"routine": "ZZ", "goal": ""}, "goal must not be blank"),
+        ("smartgym_apply_routine", {"routine": "ZZ", "goal": " "}, "goal must not be blank"),
     ],
     ids=["add-negative-position", "move-negative-position", "empty-program", "update-days",
          "apply-days", "create-no-goal", "update-blank-goal", "apply-blank-goal"],
 )  # fmt: skip
 def test_write_tools_reject_bad_arguments(
-    tool: str, arguments: dict[str, Any], field: str
+    tool: str, arguments: dict[str, Any], pattern: str
 ) -> None:
-    with pytest.raises(ToolError, match=field):
+    with pytest.raises(ToolError, match=pattern):
         asyncio.run(server.mcp.call_tool(tool, arguments))
 
 
