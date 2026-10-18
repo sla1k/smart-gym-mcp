@@ -49,7 +49,7 @@ Re-run the capture if tools report an authentication error.
 
 ## Quick start
 
-Requirements: macOS with SmartGym, Python ≥ 3.11, [`uv`](https://docs.astral.sh/uv/).
+Requirements: macOS with SmartGym, Python ≥ 3.12, [`uv`](https://docs.astral.sh/uv/).
 
 ```sh
 git clone https://github.com/sla1k/smart-gym-mcp
