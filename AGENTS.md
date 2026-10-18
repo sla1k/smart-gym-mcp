@@ -1,0 +1,43 @@
+# AGENTS.md
+
+Project knowledge lives in shared docs — read them, don't rediscover:
+- [`DESIGN.md`](DESIGN.md) — **start here**: status table, verified facts (settled — do not
+  re-derive or re-litigate them), architecture invariants, decision log
+- [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md)
+  — source of truth for the API client (module layering §5, tool surface §6, sections §10);
+  `specs/` holds the superseded DB-era specs
+- [`FEATURES.md`](FEATURES.md) — backlog
+
+## Working rules for this repo
+- Follow the architecture invariants in DESIGN.md exactly — especially: thin tools, every write
+  through `service.RoutineService`, every edit of an existing routine through `diff_routine`.
+- The SmartGym account is the user's **live personal training data**. Live checks only on
+  `ZZ-`prefixed throwaway routines, with the user confirming on the iPhone. Snapshots land in
+  `~/.smartgym-mcp/backups/<ts>/`.
+- Before trusting a NEW kind of server write, capture the app doing it first (golden fixture in
+  `tests/fixtures/api/`) instead of assuming the wire shape.
+- Tests never touch the network or the account — use the fixtures and `tests/fakes.FakeClient`.
+- `main` takes no direct pushes: every change lands through a PR that is up to date with `main`
+  and has a green `ci` check, merged by rebase (linear history, no merge commits).
+
+## Branches and PRs
+- One task per branch, worktree and PR.
+- Before the first push, name the branch `type/short-description`: type is one of `feat`, `fix`,
+  `docs`, `ci`, `refactor`, `test`, `chore`; lowercase, words joined by hyphens; no agent or tool
+  prefix. CI fails other names.
+- Rename the branch before opening the PR: a PR stays on the branch it was opened from, so a
+  rename afterwards leaves it behind.
+- Before pushing, run `uv run ruff check src tests`, `uv run ruff format --check src tests`,
+  `uv run mypy src` and `uv run pytest`.
+- The PR description says what changed, why, and how it was verified.
+- Update the branch from `main` before merging; rebase merge only.
+
+## Commands
+```sh
+uv run pytest
+uv run ruff check src tests && uv run ruff format src tests
+uv run mypy src
+uv run smartgym-mcp            # stdio server
+scripts/build.sh               # PyInstaller build + codesign + install
+uv run mcp dev src/smartgym_mcp/server.py   # MCP Inspector
+```
