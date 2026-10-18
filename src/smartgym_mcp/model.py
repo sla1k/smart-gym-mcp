@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from .catalog import CatalogExercise
+
 Section = Literal["warmup", "main", "cooldown"]
 SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")
 LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}
@@ -101,6 +103,7 @@ class AccountData(BaseModel):
     routines: list[Routine]
     workouts: list[Workout]
     equipment_lists: list[EquipmentList]
+    custom_exercises: list[CatalogExercise]
     last_modified: str | None
 
 
@@ -254,6 +257,28 @@ def _parse_equipment_list(raw: Mapping[str, Any]) -> EquipmentList:
     )
 
 
+def _parse_custom_exercise(raw: Mapping[str, Any]) -> CatalogExercise:
+    return CatalogExercise(
+        id=_int(raw, "id"),
+        name=str(_req(raw, "name")),
+        type=_int(raw, "type"),
+        category=_int(raw, "category"),
+        sub_categories=str(raw.get("subCategories") or ""),
+        two_sides=_int_value("twoSides", raw.get("twoSides") or 0),
+        stretch=_int_value("stretch", raw.get("stretch") or 0),
+        equipment_ids=tuple(x for x in str(raw.get("equipments") or "").split(",") if x),
+        images=(
+            str(raw.get("firstImage") or ""),
+            str(raw.get("secondImage") or ""),
+            str(raw.get("thirdImage") or ""),
+            "",
+            "",
+            "",
+        ),
+        is_custom=True,
+    )
+
+
 def _has_workout_start(history: Mapping[str, Any]) -> bool:
     workout = history.get("workout")
     return isinstance(workout, Mapping) and _present(workout.get("startDate"))
@@ -274,6 +299,11 @@ def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
             if not _present(h.get("dateRemoved")) and _has_workout_start(h)
         ],
         equipment_lists=[_parse_equipment_list(e) for e in raw.get("equipmentLists") or []],
+        custom_exercises=[
+            _parse_custom_exercise(c)
+            for c in raw.get("customExercises") or []
+            if not _present(c.get("dateRemoved"))
+        ],
         last_modified=_text(raw.get("lastModified")),
     )
 

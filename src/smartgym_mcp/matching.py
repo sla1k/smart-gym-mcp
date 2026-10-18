@@ -1,4 +1,5 @@
-"""Deterministic exercise-name resolution against the app-bundle catalog.
+"""Deterministic exercise-name resolution against the exercise catalog: the app bundle
+plus the account's custom exercises.
 
 Numeric → catalog id; else exact case-insensitive name; else normalized
 token-set fuzzy match with threshold 0.85. Anything below threshold fails with
@@ -8,7 +9,7 @@ top candidates — nothing silently wrong is ever resolved. No LLM.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
@@ -63,8 +64,7 @@ class ExerciseCatalog:
         self._by_lower_name = {e.name.lower(): e for e in self._entries}
 
     @classmethod
-    def from_bundle(cls, exercises: Sequence[CatalogExercise]) -> ExerciseCatalog:
-        """Catalog from the app bundle."""
+    def from_exercises(cls, exercises: Iterable[CatalogExercise]) -> ExerciseCatalog:
         return cls([(e.id, e.name) for e in exercises])
 
     def resolve(self, ref: str) -> ExerciseResolution:

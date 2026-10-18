@@ -25,7 +25,6 @@ from .api.client import ApiClient, ApiError, AuthError
 from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
-from .matching import ExerciseCatalog
 from .model import Section
 from .models import Days, RoutineSpec, SetSpec
 from .payloads import local_timezone_name
@@ -67,7 +66,6 @@ def build_services(cfg: Config) -> Services:
         service = RoutineService(
             client,
             store,
-            ExerciseCatalog.from_bundle(exercises),
             {e.id: e for e in exercises},
             backup_dir=cfg.backup_dir,
             timezone=local_timezone_name(),
@@ -276,8 +274,8 @@ def smartgym_create_program(
 
     Each routine: name (must not match an active routine), optional days/goal/note, and
     three ordered sections — `warmup` (optional), `exercises` (= main, required),
-    `cooldown` (optional). Exercises are catalog names (fuzzy-matched, deterministic) or
-    catalog ids, with optional rest_seconds, note and template sets (reps + weight_kg;
+    `cooldown` (optional). Exercises are catalog names — built-in or the account's custom
+    exercises (fuzzy-matched, deterministic) — or catalog ids, with optional rest_seconds, note and template sets (reps + weight_kg;
     omitted = one 1x10 set, flagged). `days` is comma-separated weekday numbers,
     1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6"). Validation is all-or-nothing.
     dry_run=true (default) returns the plan and sends NOTHING; dry_run=false creates the
@@ -322,7 +320,7 @@ def smartgym_add_exercise(
     sets: list[SetSpec] | None = None,
     dry_run: bool = True,
 ) -> EditResult:
-    """Add a catalog exercise to a routine section (warmup / main / cooldown).
+    """Add a catalog exercise (built-in or custom) to a routine section (warmup / main / cooldown).
 
     `position` counts within the section (0 = first; omitted = last). Optional rest,
     note and template sets (omitted = one 1x10 set, flagged). dry_run=true (default)
@@ -446,7 +444,7 @@ def smartgym_apply_routine(
 
     Each section you pass is the complete ordered list for that section: existing
     exercises by exercise_id (optionally with new rest/note/sets), new ones by catalog
-    name. An existing exercise listed under another section moves there; one you leave
+    name (built-in or custom). An existing exercise listed under another section moves there; one you leave
     out of a passed section is removed. Omitted sections stay as they are. `days` is
     comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6").
     dry_run=true (default) shows the full plan and sends NOTHING.

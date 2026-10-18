@@ -103,11 +103,9 @@ def exercise_payload(
         "pause": rest_seconds,
         "type": cat.type,
         "category": cat.category,
-        "subCategories": cat.sub_categories,
         "twoSides": cat.two_sides,
-        "stretch": cat.stretch,
         "isStretch": cat.stretch == 1,
-        "isCustom": 0,
+        "isCustom": int(cat.is_custom),
         "requiresBands": _BAND_EQUIPMENT_ID in cat.equipment_ids,
         "isSingleWeight": 0,
         "listGroup": LIST_GROUP_BY_SECTION[section],
@@ -115,14 +113,20 @@ def exercise_payload(
         "totalSets": len(sets),
         "totalRealSets": len(sets),
         "firstImage": first,
-        "secondImage": second,
-        "thirdImage": third,
-        "fourthImage": fourth,
-        "fifthImage": fifth,
-        "sixthImage": sixth,
         "uniqueHashID": mint(now),
         "dateAdded": added,
     }
+    # The app sends a custom exercise without these (captured add_routine_custom).
+    if not cat.is_custom:
+        ex |= {
+            "subCategories": cat.sub_categories,
+            "stretch": cat.stretch,
+            "secondImage": second,
+            "thirdImage": third,
+            "fourthImage": fourth,
+            "fifthImage": fifth,
+            "sixthImage": sixth,
+        }
     if routine_identifier is not None:
         ex["routineID"] = routine_identifier
     if note:
@@ -251,7 +255,10 @@ def _structure(
         for a in cs.added:
             cat = catalog.get(a.catalog_id)
             if cat is None:
-                raise ValueError(f"Catalog exercise {a.catalog_id} is not in the app bundle.")
+                raise ValueError(
+                    f"Catalog exercise {a.catalog_id} is neither built in nor one of the "
+                    "account's custom exercises."
+                )
             p = exercise_payload(
                 cat,
                 section=a.section,

@@ -14,7 +14,6 @@ from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore, RoutineNotFound
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
-from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.service import RoutineService, WriteVerifyError
 
@@ -43,7 +42,6 @@ BUNDLE = {
     207: _cat(207, "Cable Chest Press"),
     20: _cat(20, "Plank"),
 }
-CATALOG = ExerciseCatalog([(i, c.name) for i, c in BUNDLE.items()])
 
 
 def _raw_ex(
@@ -135,7 +133,6 @@ def _service(
     return RoutineService(
         client,
         AccountStore(client),
-        CATALOG,
         BUNDLE,
         backup_dir=tmp_path,
         timezone="Europe/Madrid",

@@ -72,8 +72,8 @@ def test_load_bundle_exercises_coerces_fields(bundle_cfg: Config) -> None:
     assert push_up.images == ("0194-1", "0194-2", "", "", "", "")
 
 
-def test_from_bundle_resolves_to_catalog_id(bundle_cfg: Config) -> None:
-    catalog = ExerciseCatalog.from_bundle(load_bundle_exercises(bundle_cfg))
+def test_from_exercises_resolves_bundle_names_to_catalog_id(bundle_cfg: Config) -> None:
+    catalog = ExerciseCatalog.from_exercises(load_bundle_exercises(bundle_cfg))
     assert catalog.resolve("push up").catalog_id == 194
     assert catalog.resolve("363").resolved_name == "Resistance Band Pull Apart"
     with pytest.raises(UnresolvedExercise):

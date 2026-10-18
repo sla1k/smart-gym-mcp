@@ -23,7 +23,6 @@ from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
-from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.service import RoutineService
 
@@ -77,9 +76,8 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
 def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
     def factory(cfg: Config) -> server.Services:
         store = AccountStore(client)
-        catalog = ExerciseCatalog([(i, c.name) for i, c in BUNDLE.items()])
         service = RoutineService(
-            client, store, catalog, BUNDLE, backup_dir=cfg.backup_dir, timezone="Europe/Madrid"
+            client, store, BUNDLE, backup_dir=cfg.backup_dir, timezone="Europe/Madrid"
         )
         return server.Services(client=client, store=store, service=service, equipment=[])  # type: ignore[arg-type]
 

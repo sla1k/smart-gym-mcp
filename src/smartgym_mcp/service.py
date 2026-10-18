@@ -34,7 +34,7 @@ from .diff import (
     view_of,
 )
 from .matching import ExerciseCatalog, UnresolvedExercise
-from .model import SECTION_BY_LIST_GROUP, ApiPayloadError, Routine, parse_routine
+from .model import SECTION_BY_LIST_GROUP, AccountData, ApiPayloadError, Routine, parse_routine
 from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
     SECTION_MOVE_IN_PLACE,
@@ -180,7 +180,6 @@ class RoutineService:
         self,
         client: ApiCalls,
         store: AccountStore,
-        catalog: ExerciseCatalog,
         bundle: Mapping[int, CatalogExercise],
         *,
         backup_dir: Path,
@@ -191,13 +190,19 @@ class RoutineService:
     ) -> None:
         self._client = client
         self._store = store
-        self._catalog = catalog
         self._bundle = bundle
         self._backup_dir = backup_dir
         self._tz = timezone
         self._now = now
         self._mint = mint
         self._move_in_place = move_in_place
+
+    def _exercises(
+        self, data: AccountData
+    ) -> tuple[ExerciseCatalog, dict[int, CatalogExercise]]:
+        """The app bundle plus the account's custom exercises, by catalog id."""
+        by_id = {**self._bundle, **{c.id: c for c in data.custom_exercises}}
+        return ExerciseCatalog.from_exercises(by_id.values()), by_id
 
     # ------------------------------------------------------------------ edits
     def edit(
@@ -217,10 +222,12 @@ class RoutineService:
         raw = self._store.routine_raw(identifier)
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
-        cs = diff_routine(current, build(current), self._catalog)
+        data = self._store.data()
+        catalog, exercises = self._exercises(data)
+        cs = diff_routine(current, build(current), catalog)
         renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
-            self._store.data().routines, besides=current.identifier
+            data.routines, besides=current.identifier
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         if not self._move_in_place:
@@ -236,7 +243,7 @@ class RoutineService:
             )
         now = self._now()
         enc = encode_change(
-            cs, current, self._bundle, timezone=self._tz, now=now, mint=self._mint
+            cs, current, exercises, timezone=self._tz, now=now, mint=self._mint
         )
         requests = [
             (path, form)
@@ -317,6 +324,7 @@ class RoutineService:
         if not dry_run:
             self._store.invalidate()
         data = self._store.data()
+        catalog, exercises = self._exercises(data)
         taken = _active_names(data.routines)
         problems: list[str] = []
         plans: list[CreatePlan] = []
@@ -335,17 +343,11 @@ class RoutineService:
             warnings: list[str] = []
             for section, ex in entries:
                 try:
-                    res = self._catalog.resolve(ex.exercise)
+                    res = catalog.resolve(ex.exercise)
                 except UnresolvedExercise as exc:
                     problems.append(f"{spec.name} / {section}: {exc}")
                     continue
-                cat = self._bundle.get(res.catalog_id)
-                if cat is None:
-                    problems.append(
-                        f"{spec.name} / {section}: {res.resolved_name!r} is not in the app's "
-                        "exercise catalog."
-                    )
-                    continue
+                cat = exercises[res.catalog_id]
                 warnings.extend(resolution_warnings(res, ex.sets))
                 resolutions.append(res)
                 cats.append(cat)
