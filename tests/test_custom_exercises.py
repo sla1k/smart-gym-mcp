@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from fakes import CUSTOM_EXERCISES, FakeClient
+from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
@@ -121,6 +122,17 @@ def test_removed_custom_exercises_are_skipped() -> None:
     gone.update(id="397800", name="Old Custom", dateRemoved="2026-10-01 10:00:00")
     raw["exercises"].append(gone)
     assert [c.name for c in parse_custom_exercises(raw)] == ["Dead Hang"]
+
+
+def test_a_malformed_custom_exercise_is_skipped_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    raw = _customs()
+    bad = copy.deepcopy(raw["exercises"][0])
+    bad.update(id="397801", name="Broken Custom", type=None)
+    raw["exercises"].insert(0, bad)
+    assert [c.name for c in parse_custom_exercises(raw)] == ["Dead Hang"]
+    assert "id=397801 name='Broken Custom'" in caplog.text
 
 
 def test_custom_exercises_answer_must_be_success() -> None:
@@ -276,7 +288,9 @@ def test_custom_exercise_rest_and_added_set_match_the_app() -> None:
 # ------------------------------------------------------------------------ service
 
 
-def _service(client: FakeClient, tmp_path: Path) -> RoutineService:
+def _service(
+    client: FakeClient, tmp_path: Path, *, move_in_place: bool = True
+) -> RoutineService:
     return RoutineService(
         client,
         AccountStore(client),
@@ -285,6 +299,7 @@ def _service(client: FakeClient, tmp_path: Path) -> RoutineService:
         timezone=TZ,
         now=lambda: NOW,
         mint=_mint(),
+        move_in_place=move_in_place,
     )
 
 
@@ -357,7 +372,8 @@ def test_editing_a_routine_with_a_custom_exercise_leaves_it_untouched(tmp_path: 
     client = FakeClient(
         {
             HISTORY: _account(),
-            CUSTOM_EXERCISES: _customs(),
+            # An edit that adds nothing never reads the custom exercises.
+            CUSTOM_EXERCISES: ApiError("custom exercise list unavailable"),
             single: [{"code": "SUCCESS", "routines": [before]}, {"routines": [after]}],
         }
     )
@@ -378,3 +394,41 @@ def test_editing_a_routine_with_a_custom_exercise_leaves_it_untouched(tmp_path: 
     assert json.loads(form["updateExercises"]) == [{"pause": "45", "exerciseID": 34215244}]
     assert "exercises" not in form and "removeExercises" not in form
     assert result.notice.startswith("Applied")
+    assert CUSTOM_EXERCISES not in client.get_calls
+
+
+def test_a_custom_exercise_named_like_a_built_in_one_is_ambiguous(tmp_path: Path) -> None:
+    customs = _customs()
+    customs["exercises"][0]["name"] = "Push Up"
+    account = _account()
+    account["routines"] = []
+    client = FakeClient({HISTORY: account, CUSTOM_EXERCISES: customs})
+    spec = RoutineSpec(name="ZZ-F8", goal="g", exercises=[ExerciseSpec(exercise="push up")])
+    with pytest.raises(DiffError, match=r"several exercises .*id=194.*id=397744"):
+        _service(client, tmp_path).create([spec], dry_run=True)
+    by_id = RoutineSpec(name="ZZ-F8", goal="g", exercises=[ExerciseSpec(exercise="397744")])
+    (res,) = _service(client, tmp_path).create([by_id], dry_run=True).plan[0].resolutions
+    assert res.catalog_id == DEAD_HANG_ID
+
+
+def test_re_adding_a_deleted_custom_exercise_is_rejected_not_crashed(tmp_path: Path) -> None:
+    raw = _raw_routine("ZZ-F8")
+    client = FakeClient(
+        {
+            HISTORY: _account(),
+            CUSTOM_EXERCISES: {"code": "SUCCESS", "exercises": []},
+            "routine/single/3698443/": {"code": "SUCCESS", "routines": [raw]},
+        }
+    )
+
+    def dead_hang_to_warmup(r):  # type: ignore[no-untyped-def]
+        dh, pu = r.active_exercises()
+        return DesiredRoutine(
+            warmup=[DesiredExercise(exercise_id=dh.identifier)],
+            main=[DesiredExercise(exercise_id=pu.identifier)],
+        )
+
+    service = _service(client, tmp_path, move_in_place=False)
+    with pytest.raises(DiffError, match=r"'Dead Hang' \(catalog id 397744\)"):
+        service.edit("ZZ-F8", dead_hang_to_warmup, dry_run=True)
+    assert client.sent == []

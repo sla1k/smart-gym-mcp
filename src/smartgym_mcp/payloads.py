@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .catalog import CatalogExercise
-from .diff import DEFAULT_SET, ChangeSet, ExerciseUpdate
+from .diff import DEFAULT_SET, ChangeSet, DiffError, ExerciseUpdate
 from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet
 from .models import ExerciseSpec, RoutineSpec, SetSpec
 
@@ -255,9 +255,10 @@ def _structure(
         for a in cs.added:
             cat = catalog.get(a.catalog_id)
             if cat is None:
-                raise ValueError(
-                    f"Catalog exercise {a.catalog_id} is neither built in nor one of the "
-                    "account's custom exercises."
+                raise DiffError(
+                    f"Rejected — {a.name!r} (catalog id {a.catalog_id}) is neither built in "
+                    "nor one of the account's custom exercises any more, so it cannot be "
+                    "added (back). Leave it where it is or remove it."
                 )
             p = exercise_payload(
                 cat,

@@ -34,7 +34,7 @@ from .diff import (
     view_of,
 )
 from .matching import ExerciseCatalog, UnresolvedExercise
-from .model import SECTION_BY_LIST_GROUP, ApiPayloadError, Routine, parse_routine
+from .model import SECTION_BY_LIST_GROUP, SECTIONS, ApiPayloadError, Routine, parse_routine
 from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
     SECTION_MOVE_IN_PLACE,
@@ -191,16 +191,24 @@ class RoutineService:
         self._client = client
         self._store = store
         self._bundle = bundle
+        self._bundle_catalog = ExerciseCatalog.from_exercises(bundle.values())
         self._backup_dir = backup_dir
         self._tz = timezone
         self._now = now
         self._mint = mint
         self._move_in_place = move_in_place
 
-    def _exercises(self) -> tuple[ExerciseCatalog, dict[int, CatalogExercise]]:
-        """The app bundle plus the account's custom exercises, by catalog id."""
-        by_id = {**self._bundle, **{c.id: c for c in self._store.custom_exercises()}}
-        return ExerciseCatalog.from_exercises(by_id.values()), by_id
+    def _exercises(
+        self, *, custom: bool = True
+    ) -> tuple[ExerciseCatalog, Mapping[int, CatalogExercise]]:
+        """The app bundle plus (with `custom`) the account's custom exercises, by id."""
+        if not custom:
+            return self._bundle_catalog, self._bundle
+        customs = self._store.custom_exercises()
+        return self._bundle_catalog.extended(customs), {
+            **self._bundle,
+            **{c.id: c for c in customs},
+        }
 
     # ------------------------------------------------------------------ edits
     def edit(
@@ -220,8 +228,15 @@ class RoutineService:
         raw = self._store.routine_raw(identifier)
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
-        catalog, exercises = self._exercises()
-        cs = diff_routine(current, build(current), catalog)
+        desired = build(current)
+        # Catalog entries are needed only to add an exercise: by name, or the §10.4 re-add.
+        adds_by_name = any(
+            want.exercise is not None
+            for section in SECTIONS
+            for want in desired.section_list(section) or []
+        )
+        catalog, exercises = self._exercises(custom=adds_by_name or not self._move_in_place)
+        cs = diff_routine(current, desired, catalog)
         renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
             self._store.data().routines, besides=current.identifier

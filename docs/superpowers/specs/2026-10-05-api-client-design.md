@@ -337,9 +337,15 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 | The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note`, `update_custom_remove_set` |
 | Removing a custom exercise from a routine = plain `removeExercises` | `update_remove_custom_exercise` |
 
-Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed ones skipped,
-cached like the account read); `RoutineService` merges them over the bundle on every write,
-so a custom exercise made in the app is usable within the cache's 30 s.
+Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed and malformed
+ones skipped — a malformed one is logged — cached like the account read). `RoutineService`
+reads them only when a change adds an exercise (by name, or the §10.4 re-add) and extends
+the bundle catalog with them, so a custom exercise made in the app is usable within the
+cache's 30 s and edits that add nothing don't depend on that read. A name shared by several
+exercises (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm
+Cable Triceps Pushdown") is rejected with their ids, never picked silently. Custom
+exercises carry no `stretch` on the server (F9, §12), so they are sent with
+`isStretch: false`, as the app does.
 
 Live pass 2026-10-18 (worktree build, `ZZ-F8-MCP` / `ZZ-F8B` / `ZZ-F8`): create with Dead Hang
 + Push Up, add Dead Hang to an existing routine, change Dead Hang's sets and note — each
