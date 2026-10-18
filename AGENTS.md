@@ -25,8 +25,8 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 - Before the first push, name the branch `type/short-description`: type is one of `feat`, `fix`,
   `docs`, `ci`, `refactor`, `test`, `chore`; lowercase, words joined by hyphens; no agent or tool
   prefix. CI fails other names.
-- Rename the branch before opening the PR: a PR stays on the branch it was opened from, so a
-  rename afterwards leaves it behind.
+- Name the branch before opening the PR; renaming it afterwards, locally or on GitHub, closes or
+  orphans the PR.
 - Before pushing, run `uv run ruff check src tests`, `uv run ruff format --check src tests`,
   `uv run mypy src` and `uv run pytest`.
 - The PR description says what changed, why, and how it was verified.
