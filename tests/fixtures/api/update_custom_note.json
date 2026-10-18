@@ -1,0 +1,24 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3698443",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "days": "0001",
+    "requestDate": "2026-10-18T13:32:50",
+    "timezone": "Europe/Madrid",
+    "updateExercises": "[{\"exerciseID\":34215243,\"note\":\"Seconds. Stop on left-wrist pain. W2: 30 -> 35 s\\n\\nF8 note\"}]",
+    "goal": "asd"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3698443",
+    "updateExercises": [
+      {
+        "exerciseID": 34215243
+      }
+    ]
+  }
+}
