@@ -52,3 +52,16 @@ class FakeClient:
 
     def close(self) -> None:
         self.closed = True
+
+
+CUSTOM_EXERCISES = "exercise/allCustomExercises/"
+NO_CUSTOM_EXERCISES: dict[str, Any] = {"code": "SUCCESS", "exercises": []}
+
+
+def account_client(
+    gets: Mapping[str, dict[str, Any] | Exception | list[dict[str, Any] | Exception]]
+    | None = None,
+    posts: list[dict[str, Any] | Exception] | None = None,
+) -> FakeClient:
+    """A FakeClient whose account has no custom exercises unless `gets` scripts them."""
+    return FakeClient({CUSTOM_EXERCISES: NO_CUSTOM_EXERCISES, **(gets or {})}, posts)

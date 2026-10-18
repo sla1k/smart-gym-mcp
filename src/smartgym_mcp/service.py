@@ -34,7 +34,7 @@ from .diff import (
     view_of,
 )
 from .matching import ExerciseCatalog, UnresolvedExercise
-from .model import SECTION_BY_LIST_GROUP, AccountData, ApiPayloadError, Routine, parse_routine
+from .model import SECTION_BY_LIST_GROUP, ApiPayloadError, Routine, parse_routine
 from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
     SECTION_MOVE_IN_PLACE,
@@ -197,11 +197,9 @@ class RoutineService:
         self._mint = mint
         self._move_in_place = move_in_place
 
-    def _exercises(
-        self, data: AccountData
-    ) -> tuple[ExerciseCatalog, dict[int, CatalogExercise]]:
+    def _exercises(self) -> tuple[ExerciseCatalog, dict[int, CatalogExercise]]:
         """The app bundle plus the account's custom exercises, by catalog id."""
-        by_id = {**self._bundle, **{c.id: c for c in data.custom_exercises}}
+        by_id = {**self._bundle, **{c.id: c for c in self._store.custom_exercises()}}
         return ExerciseCatalog.from_exercises(by_id.values()), by_id
 
     # ------------------------------------------------------------------ edits
@@ -222,12 +220,11 @@ class RoutineService:
         raw = self._store.routine_raw(identifier)
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
-        data = self._store.data()
-        catalog, exercises = self._exercises(data)
+        catalog, exercises = self._exercises()
         cs = diff_routine(current, build(current), catalog)
         renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
-            data.routines, besides=current.identifier
+            self._store.data().routines, besides=current.identifier
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         if not self._move_in_place:
@@ -324,7 +321,7 @@ class RoutineService:
         if not dry_run:
             self._store.invalidate()
         data = self._store.data()
-        catalog, exercises = self._exercises(data)
+        catalog, exercises = self._exercises()
         taken = _active_names(data.routines)
         problems: list[str] = []
         plans: list[CreatePlan] = []

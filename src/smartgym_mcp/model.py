@@ -103,7 +103,6 @@ class AccountData(BaseModel):
     routines: list[Routine]
     workouts: list[Workout]
     equipment_lists: list[EquipmentList]
-    custom_exercises: list[CatalogExercise]
     last_modified: str | None
 
 
@@ -279,6 +278,17 @@ def _parse_custom_exercise(raw: Mapping[str, Any]) -> CatalogExercise:
     )
 
 
+def parse_custom_exercises(raw: Mapping[str, Any]) -> list[CatalogExercise]:
+    """`exercise/allCustomExercises/` → the account's live custom exercises. (`history/all/`
+    lists only those already used in a routine.)"""
+    _check_success(raw)
+    return [
+        _parse_custom_exercise(c)
+        for c in raw.get("exercises") or []
+        if not _present(c.get("dateRemoved"))
+    ]
+
+
 def _has_workout_start(history: Mapping[str, Any]) -> bool:
     workout = history.get("workout")
     return isinstance(workout, Mapping) and _present(workout.get("startDate"))
@@ -299,11 +309,6 @@ def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
             if not _present(h.get("dateRemoved")) and _has_workout_start(h)
         ],
         equipment_lists=[_parse_equipment_list(e) for e in raw.get("equipmentLists") or []],
-        custom_exercises=[
-            _parse_custom_exercise(c)
-            for c in raw.get("customExercises") or []
-            if not _present(c.get("dateRemoved"))
-        ],
         last_modified=_text(raw.get("lastModified")),
     )
 
@@ -321,6 +326,7 @@ __all__ = [
     "Section",
     "TemplateSet",
     "Workout",
+    "parse_custom_exercises",
     "parse_history_all",
     "parse_routine",
     "parse_routines_response",

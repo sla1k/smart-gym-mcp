@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from fakes import FakeClient
+from fakes import FakeClient, account_client
 from smartgym_mcp import server
 from smartgym_mcp.api.auth import CredentialsError, FileCredentials
 from smartgym_mcp.api.client import AuthError
@@ -150,7 +150,7 @@ def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
 
 def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None:
     attempts: list[int] = []
-    good = _fake_app(tmp_path, FakeClient({HISTORY: ACCOUNT}))
+    good = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
 
     def flaky(cfg: Config) -> server.Services:
         attempts.append(1)
@@ -267,7 +267,7 @@ def test_build_services_closes_the_client_when_a_later_step_fails(
 def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     tmp_path: Path,
 ) -> None:
-    app = _fake_app(tmp_path, FakeClient({HISTORY: ACCOUNT}))
+    app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
     contents = app.cfg.app_bundle / "Contents"
     contents.mkdir(parents=True)
     with (contents / "Info.plist").open("wb") as f:
@@ -281,13 +281,13 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
 
 # ----------------------------------------------------------------------- reads
 def test_list_routines_through_injected_services(tmp_path: Path) -> None:
-    app = _fake_app(tmp_path, FakeClient({HISTORY: ACCOUNT}))
+    app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
     result = server.smartgym_list_routines(_ctx(app))
     assert [r.name for r in result.routines] == ["ZZ-FB — Test"]
 
 
 def test_get_routine_splits_sections(tmp_path: Path) -> None:
-    app = _fake_app(tmp_path, FakeClient({HISTORY: ACCOUNT}))
+    app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
     detail = server.smartgym_get_routine(_ctx(app), routine="zz-fb")
     assert [e.exercise_id for e in detail.warmup] == [40000010]
     assert [e.exercise_id for e in detail.main] == [40000012]
@@ -341,7 +341,7 @@ def test_days_format_is_documented_in_the_tool_schemas() -> None:
 
 
 def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:
-    client = FakeClient({HISTORY: ACCOUNT, SINGLE: _single()})
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
     result = server.smartgym_update_exercise(
         _ctx(_fake_app(tmp_path, client)), exercise_id=40000012, rest_seconds=120
     )
@@ -350,7 +350,7 @@ def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:
 
 
 def test_add_exercise_builds_on_the_fresh_routine(tmp_path: Path) -> None:
-    client = FakeClient({HISTORY: ACCOUNT, SINGLE: _single()})
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
     result = server.smartgym_add_exercise(
         _ctx(_fake_app(tmp_path, client)),
         routine="ZZ-FB",
@@ -400,7 +400,7 @@ DRY_RUN_CALLS: dict[str, WriteCall] = {
 def test_write_tools_dry_run_by_default_and_send_nothing(
     tmp_path: Path, call: WriteCall
 ) -> None:
-    client = FakeClient({HISTORY: ACCOUNT, SINGLE: _single()})
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
     result = call(_ctx(_fake_app(tmp_path, client)))
     assert result.dry_run
     assert client.sent == []
@@ -410,7 +410,7 @@ def test_write_tools_dry_run_by_default_and_send_nothing(
 def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
     archived = copy.deepcopy(ACCOUNT)
     archived["routines"][0]["dateArchived"] = "2026-10-06 10:00:00"
-    client = FakeClient({HISTORY: [ACCOUNT, archived]})
+    client = account_client({HISTORY: [ACCOUNT, archived]})
     result = server.smartgym_archive_routines(
         _ctx(_fake_app(tmp_path, client)), routines=["ZZ-FB"], dry_run=False
     )

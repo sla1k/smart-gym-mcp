@@ -1,7 +1,8 @@
 """F8: the account's custom exercises, against the app's captured requests (2026-10-18).
 
-Fixtures: `history_all_custom` (ZZ-F8 = Dead Hang + Push Up, ZZ-F8B = Push Up + Dead Hang,
-one custom exercise), `add_routine_custom` (app creates ZZ-F8), `update_add_custom_exercise`
+Fixtures: `all_custom_exercises` (the account's custom exercises: Dead Hang),
+`history_all_custom` (ZZ-F8 = Dead Hang + Push Up, ZZ-F8B = Push Up + Dead Hang),
+`add_routine_custom` (app creates ZZ-F8), `update_add_custom_exercise`
 (app adds Dead Hang to ZZ-F8B), `update_custom_*` (app edits Dead Hang inside ZZ-F8).
 """
 
@@ -16,12 +17,12 @@ from typing import Any
 
 import pytest
 
-from fakes import FakeClient
+from fakes import CUSTOM_EXERCISES, FakeClient
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.model import parse_history_all, parse_routine
+from smartgym_mcp.model import ApiPayloadError, parse_custom_exercises, parse_routine
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import encode_change, new_routine_payload
 from smartgym_mcp.service import RoutineService
@@ -56,12 +57,16 @@ def _account() -> dict[str, Any]:
     return dict(_fixture("history_all_custom")["response"])
 
 
+def _customs() -> dict[str, Any]:
+    return dict(_fixture("all_custom_exercises")["response"])
+
+
 def _raw_routine(name: str) -> dict[str, Any]:
     return next(r for r in _account()["routines"] if r["name"] == name)
 
 
 def _dead_hang() -> CatalogExercise:
-    (custom,) = parse_history_all(_account()).custom_exercises
+    (custom,) = parse_custom_exercises(_customs())
     return custom
 
 
@@ -95,7 +100,7 @@ def _encoded(form: dict[str, str] | None) -> dict[str, Any]:
 # ------------------------------------------------------------------ parse + resolve
 
 
-def test_history_all_custom_exercises_become_catalog_entries() -> None:
+def test_all_custom_exercises_become_catalog_entries() -> None:
     assert _dead_hang() == CatalogExercise(
         id=DEAD_HANG_ID,
         name="Dead Hang",
@@ -111,11 +116,16 @@ def test_history_all_custom_exercises_become_catalog_entries() -> None:
 
 
 def test_removed_custom_exercises_are_skipped() -> None:
-    raw = _account()
-    gone = copy.deepcopy(raw["customExercises"][0])
+    raw = _customs()
+    gone = copy.deepcopy(raw["exercises"][0])
     gone.update(id="397800", name="Old Custom", dateRemoved="2026-10-01 10:00:00")
-    raw["customExercises"].append(gone)
-    assert [c.name for c in parse_history_all(raw).custom_exercises] == ["Dead Hang"]
+    raw["exercises"].append(gone)
+    assert [c.name for c in parse_custom_exercises(raw)] == ["Dead Hang"]
+
+
+def test_custom_exercises_answer_must_be_success() -> None:
+    with pytest.raises(ApiPayloadError, match="INVALID_TOKEN"):
+        parse_custom_exercises({"code": "INVALID_TOKEN"})
 
 
 def test_routine_exercise_of_a_custom_exercise_parses_with_its_custom_id() -> None:
@@ -285,7 +295,7 @@ def test_create_resolves_and_sends_the_custom_exercise(tmp_path: Path) -> None:
     created["uniqueHashID"] = str(FIRST_HASH)
     after = _account()
     after["routines"] = [created]
-    client = FakeClient({HISTORY: [before, after]})
+    client = FakeClient({HISTORY: [before, after], CUSTOM_EXERCISES: _customs()})
     spec = RoutineSpec(
         name="ZZ-F8",
         goal="asd",
@@ -310,11 +320,29 @@ def test_create_resolves_and_sends_the_custom_exercise(tmp_path: Path) -> None:
     assert [c.name for c in result.created] == ["ZZ-F8"]
 
 
+def test_a_custom_exercise_in_no_routine_yet_resolves(tmp_path: Path) -> None:
+    # history/all lists only custom exercises already used in a routine (live 2026-10-18);
+    # allCustomExercises lists every one.
+    customs = _customs()
+    fresh = copy.deepcopy(customs["exercises"][0])
+    fresh.update(id="419945", name="ZZ-F9 Live 2", type="0")
+    customs["exercises"].append(fresh)
+    account = _account()
+    assert [c["name"] for c in account["customExercises"]] == ["Dead Hang"]
+    account["routines"] = []
+    client = FakeClient({HISTORY: account, CUSTOM_EXERCISES: customs})
+    spec = RoutineSpec(name="ZZ-F9", exercises=[ExerciseSpec(exercise="ZZ-F9 Live 2")])
+    result = _service(client, tmp_path).create([spec], dry_run=True)
+    (res,) = result.plan[0].resolutions
+    assert (res.catalog_id, res.fuzzy) == (419945, False)
+
+
 def test_a_removed_custom_exercise_does_not_resolve(tmp_path: Path) -> None:
     account = _account()
     account["routines"] = []
-    account["customExercises"][0]["dateRemoved"] = "2026-10-18 13:00:00"
-    client = FakeClient({HISTORY: account})
+    customs = _customs()
+    customs["exercises"][0]["dateRemoved"] = "2026-10-18 13:00:00"
+    client = FakeClient({HISTORY: account, CUSTOM_EXERCISES: customs})
     spec = RoutineSpec(name="ZZ-F8", exercises=[ExerciseSpec(exercise="Dead Hang")])
     with pytest.raises(DiffError, match="Could not resolve exercise 'Dead Hang'"):
         _service(client, tmp_path).create([spec], dry_run=True)
@@ -329,6 +357,7 @@ def test_editing_a_routine_with_a_custom_exercise_leaves_it_untouched(tmp_path: 
     client = FakeClient(
         {
             HISTORY: _account(),
+            CUSTOM_EXERCISES: _customs(),
             single: [{"code": "SUCCESS", "routines": [before]}, {"routines": [after]}],
         }
     )

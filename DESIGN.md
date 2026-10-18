@@ -125,7 +125,7 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   3681264) were archived, keeping 3681294 / 3681296 / 3681295.
 
 ## Decision log (2026-10-18, custom exercises)
-- **F8 — custom exercises in routines:** the account's `customExercises` (from `history/all/`)
-  resolve by name with the bundle catalog and are sent in the app's captured shape (spec §11);
+- **F8 — custom exercises in routines:** the account's custom exercises (from
+  `exercise/allCustomExercises/` — `history/all/` lists only those used in a routine) resolve by name with the bundle catalog and are sent in the app's captured shape (spec §11);
   live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is split off as
   F9 (user choice).

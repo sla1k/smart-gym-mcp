@@ -331,15 +331,15 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 
 | Fact | Evidence (fixture) |
 |---|---|
-| `history/all/` returns `customExercises[]`: `id` (≥ 397744, beyond the bundle's ids), `name`, `type`, `category`, `subCategories`, `equipments`, `twoSides`, `isCustom: "1"`, `dateRemoved`, image fields; removed ones carry `dateRemoved` | `history_all_custom` |
+| `exercise/allCustomExercises/` (GET, no params) lists every custom exercise: `id` (≥ 397744, beyond the bundle's ids), `name`, `type`, `category`, `subCategories`, `equipments`, `twoSides`, `isCustom: "1"`, `dateRemoved`, image fields. `history/all/`'s `customExercises[]` has the same shape but **only the ones already used in a routine** (live 2026-10-18: a new, unused one was missing), so it is not used | `all_custom_exercises`, `history_all_custom` |
 | A routine exercise of a custom exercise is an ordinary routine exercise: `id` = the custom id, `isCustom: "1"`; edits address it by its routine-exercise `identifier` like any other | `history_all_custom`, `update_custom_*` |
 | Create / add: the app sends `id` = `genericID` = custom id, `isCustom: 1`, and **no** `stretch`, `subCategories`, `secondImage`…`sixthImage`; `firstImage` is a local name ("deadhang1") — the server keeps the custom exercise's own empty one, so the MCP sends that | `add_routine_custom`, `update_add_custom_exercise` |
 | The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note`, `update_custom_remove_set` |
 | Removing a custom exercise from a routine = plain `removeExercises` | `update_remove_custom_exercise` |
 
-Model: `CatalogExercise.is_custom`; `AccountData.custom_exercises` (removed ones skipped);
-`RoutineService` merges them over the bundle on every write, so a custom exercise made in
-the app is usable within the account cache's 30 s.
+Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed ones skipped,
+cached like the account read); `RoutineService` merges them over the bundle on every write,
+so a custom exercise made in the app is usable within the cache's 30 s.
 
 Live pass 2026-10-18 (worktree build, `ZZ-F8-MCP` / `ZZ-F8B` / `ZZ-F8`): create with Dead Hang
 + Push Up, add Dead Hang to an existing routine, change Dead Hang's sets and note — each

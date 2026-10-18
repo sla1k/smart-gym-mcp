@@ -1,8 +1,9 @@
-"""Account reads over the SmartGym API (API-client spec §5).
+"""Account reads over the SmartGym API (API-client spec §5, §11).
 
 `history/all/<id>/` returns every routine, workout and equipment list in one
-answer (S4); it is cached briefly and dropped after every write. Writes always
-work on a fresh `routine/single/<id>/` instead.
+answer (S4); `exercise/allCustomExercises/` the account's custom exercises. Both
+are cached briefly and dropped after every write. Writes always work on a fresh
+`routine/single/<id>/` instead.
 """
 
 from __future__ import annotations
@@ -12,7 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from ..model import AccountData, Routine, parse_history_all
+from ..catalog import CatalogExercise
+from ..model import AccountData, Routine, parse_custom_exercises, parse_history_all
 from .client import ApiCalls
 
 
@@ -38,6 +40,8 @@ class AccountStore:
         self._lock = threading.Lock()
         self._cached: AccountData | None = None
         self._at = 0.0
+        self._customs: list[CatalogExercise] | None = None
+        self._customs_at = 0.0
 
     def data(self) -> AccountData:
         with self._lock:
@@ -47,9 +51,19 @@ class AccountStore:
                 self._at = self._clock()
             return self._cached
 
+    def custom_exercises(self) -> list[CatalogExercise]:
+        with self._lock:
+            if self._customs is None or self._clock() - self._customs_at > self._ttl:
+                self._customs = parse_custom_exercises(
+                    self._client.get("exercise/allCustomExercises/")
+                )
+                self._customs_at = self._clock()
+            return self._customs
+
     def invalidate(self) -> None:
         with self._lock:
             self._cached = None
+            self._customs = None
 
     def routine_raw(self, identifier: int) -> dict[str, Any]:
         body = self._client.get(f"routine/single/{identifier}/")
