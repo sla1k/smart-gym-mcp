@@ -44,3 +44,12 @@ jobs:
     steps:
       - if: needs.check.result != 'success'
         run: exit 1
+      - name: Branch is named type/short-description
+        if: github.event_name == 'pull_request'
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          if [[ ! "$BRANCH" =~ ^((feat|fix|docs|ci|refactor|test|chore)/[a-z0-9._/-]+|dependabot/.+)$ ]]; then
+            echo "::error::Branch '$BRANCH' must be named type/short-description, type one of feat, fix, docs, ci, refactor, test, chore"
+            exit 1
+          fi
