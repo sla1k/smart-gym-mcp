@@ -11,7 +11,7 @@ The technical design is split into specs by risk profile:
 | [`specs/01-read-data.md`](specs/01-read-data.md) | Read tools + catalog resources | — | superseded by the API client (reads come from `history/all`) |
 | [`specs/02-write-and-sync.md`](specs/02-write-and-sync.md) | Write tools + sync model (DB era) | — | superseded by the API client (DB write path removed) |
 | [`specs/03-create-program.md`](specs/03-create-program.md) | Full program creation via the DB (DB era) | — | superseded by the API client (DB write path removed) |
-| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections | high — Phase 0 + S7 verified | ✅ implemented (Plan 2) |
+| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections, custom exercises in routines (§11) | high — Phase 0 + S7 + F8 verified | ✅ implemented (Plan 2, F8) |
 
 Backlog and deferred work: [`FEATURES.md`](FEATURES.md).
 
@@ -123,3 +123,9 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   Side Plank / Bird Dog kept in warm-up, user choice); snapshots in
   `~/.smartgym-mcp/backups/`. The older duplicate "Return W2" copies (3681263, 3681262,
   3681264) were archived, keeping 3681294 / 3681296 / 3681295.
+
+## Decision log (2026-10-18, custom exercises)
+- **F8 — custom exercises in routines:** the account's `customExercises` (from `history/all/`)
+  resolve by name with the bundle catalog and are sent in the app's captured shape (spec §11);
+  live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is split off as
+  F9 (user choice).
