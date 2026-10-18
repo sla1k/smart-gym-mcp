@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         # requires-python floor (ruff and mypy target it) and the newest release
-        python: ["3.11", "3.14"]
+        python: ["3.12", "3.15"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
