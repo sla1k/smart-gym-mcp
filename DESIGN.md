@@ -140,7 +140,6 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 - **Versions come from git tags** (hatch-vcs): main builds are `0.(minor+1).0.devN`
   (`0.1.0.devN` before the first tag); only `vX.Y.Z` tags become GitHub Releases, so the page
   isn't flooded by a dev release per merge (immutable releases can't be replaced, only added).
-  Dev builds install from `@main` or `@<sha>`. `v0.1.0.dev55` is the one dev release published
-  before this; its tag can't be deleted, so the version rule ignores `*.dev*` tags. `mcp` is capped below 2 in `pyproject.toml`,
+  Dev builds install from `@main` or `@<sha>`. `mcp` is capped below 2 in `pyproject.toml`,
   since installs don't read `uv.lock`.
 - **No rc tags:** dev builds of `main` are the testing period before a stable tag.
