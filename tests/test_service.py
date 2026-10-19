@@ -182,7 +182,7 @@ def test_failure_after_first_request_keeps_class_and_reports_progress(tmp_path: 
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[{"code": "SUCCESS"}, WriteOutcomeUnknown("timeout")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(WriteOutcomeUnknown) as exc:
@@ -218,7 +218,7 @@ def test_failed_first_request_lists_the_requests_never_sent(tmp_path: Path) -> N
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(ApiError) as exc:
@@ -234,7 +234,7 @@ def test_failed_second_request_keeps_class_code_and_reports_progress(tmp_path: P
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(ApiError) as exc:
@@ -254,7 +254,7 @@ def test_unknown_outcome_reports_partial_landing(tmp_path: Path) -> None:
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)},
         posts=[{"code": "SUCCESS"}, WriteOutcomeUnknown("timeout")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(
@@ -282,7 +282,7 @@ def test_mid_routine_add_sends_order_in_the_same_update(tmp_path: Path) -> None:
             {"code": "SUCCESS", "exercises": [{"original_id": FIRST_HASH, "server_id": "555"}]}
         ],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[
             DesiredExercise(exercise_id=10),
             DesiredExercise(exercise="Plank", sets=[SetSpec(reps=30)]),
@@ -301,7 +301,7 @@ def test_pure_reorder_sends_order_in_the_structure_update(tmp_path: Path) -> Non
     before = _raw_routine(WARM, CHEST, row)
     after = _raw_routine(WARM, {**CHEST, "idx": "2"}, {**row, "idx": "1"})
     client = FakeClient({HISTORY: _account(before), SINGLE: _single(before, after)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=12), DesiredExercise(exercise_id=11)]
     )
     result = _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
@@ -313,7 +313,7 @@ def test_pure_reorder_sends_order_in_the_structure_update(tmp_path: Path) -> Non
 def test_section_move_is_sent_in_place(tmp_path: Path) -> None:
     after = _raw_routine(WARM, {**CHEST, "listGroup": "1"})
     client = FakeClient({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise_id=11)], main=[]
     )
     result = _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
@@ -331,7 +331,7 @@ def test_nothing_to_change_sends_nothing(tmp_path: Path) -> None:
 
 def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
     client = FakeClient({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise_id=11)]
     )
     result = _service(client, tmp_path, move_in_place=False).edit(

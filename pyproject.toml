@@ -3,7 +3,7 @@ name = "smart-gym-mcp"
 version = "0.2.0"
 description = "Local stdio MCP server for SmartGym routines over the SmartGym HTTP API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
     "mcp[cli]>=1.2.0",
@@ -33,7 +33,7 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 95
 src = ["src", "tests"]
 
@@ -41,7 +41,7 @@ src = ["src", "tests"]
 extend-select = ["I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 files = ["src"]
 
