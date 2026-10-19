@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/v1.1/exercise/addCustomExercise/",
+  "query": {},
+  "form": {
+    "requestDate": "2026-10-18T13:27:19",
+    "exercises": "[{\"genericID\":397745,\"category\":1,\"subCategories\":\"107\",\"id\":397745,\"stretch\":0,\"equipments\":\"4\",\"type\":0,\"isCustom\":1,\"name\":\"Test custom exercise\",\"isSingleWeight\":0}]",
+    "appVersion": "8.0.3",
+    "authID": "1"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "exercises": [
+      {
+        "original_id": 397745,
+        "server_id": 419937
+      }
+    ]
+  }
+}

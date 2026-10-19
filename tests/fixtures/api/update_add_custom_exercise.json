@@ -1,0 +1,40 @@
+{
+  "method": "POST",
+  "path": "/v1.1/routine/update/",
+  "query": {},
+  "form": {
+    "routineID": "3696589",
+    "appVersion": "8.0.3",
+    "authID": "1",
+    "days": "0001",
+    "requestDate": "2026-10-18T13:18:43",
+    "timezone": "Europe/Madrid",
+    "goal": "asd",
+    "exercises": "[{\"totalRealSets\":2,\"idx\":1,\"index\":1,\"isStretch\":false,\"genericID\":397744,\"uniqueHashID\":26101815183053,\"listGroup\":0,\"category\":3,\"pause\":90,\"isSingleWeight\":0,\"routineID\":3696589,\"name\":\"Dead Hang\",\"type\":2,\"sets\":[{\"index\":0,\"uniqueHashID\":26101835788740,\"dateAdded\":\"2026-10-18T13:18:36\",\"firstValue\":1,\"type\":0,\"secondValue\":35,\"thirdValue\":0},{\"index\":1,\"uniqueHashID\":26101875985036,\"dateAdded\":\"2026-10-18T13:18:36\",\"firstValue\":1,\"type\":0,\"secondValue\":35,\"thirdValue\":0}],\"totalSets\":2,\"id\":397744,\"identifier\":224520682,\"twoSides\":0,\"isCustom\":1,\"note\":\"Seconds. Stop on left-wrist pain. W2: 30 -> 35 s\",\"dateAdded\":\"2026-10-18T13:18:43\",\"firstImage\":\"deadhang1\",\"requiresBands\":false}]"
+  },
+  "response": {
+    "code": "SUCCESS",
+    "routineID": "3696589",
+    "exercises": [
+      {
+        "original_id": 26101815183053,
+        "server_id": 34215246,
+        "routineID": "3696589",
+        "sets": [
+          {
+            "server_id": "149982304",
+            "original_id": "26101835788740",
+            "uniqueExerciseID": "34215246",
+            "routineID": "3696589"
+          },
+          {
+            "server_id": "149982305",
+            "original_id": "26101875985036",
+            "uniqueExerciseID": "34215246",
+            "routineID": "3696589"
+          }
+        ]
+      }
+    ]
+  }
+}
