@@ -384,7 +384,9 @@ def test_moves_as_readd_is_identity_without_moves() -> None:
 @pytest.mark.parametrize("days", ["1", "2,3", "1,2,3,4,5,6,7", "", "  ", None])
 def test_days_accepts_weekday_numbers_or_empty(days: str | None) -> None:
     assert DesiredRoutine(days=days).days == days
-    spec = RoutineSpec(name="ZZ", days=days, exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(
+        name="ZZ", goal="G", days=days, exercises=[ExerciseSpec(exercise="Plank")]
+    )
     assert spec.days == days
 
 
@@ -393,4 +395,20 @@ def test_days_rejects_anything_else_naming_the_format(days: str) -> None:
     with pytest.raises(ValidationError, match="1 = Sunday, 2 = Monday"):
         DesiredRoutine(days=days)
     with pytest.raises(ValidationError, match="comma-separated weekday numbers"):
-        RoutineSpec(name="ZZ", days=days, exercises=[ExerciseSpec(exercise="Plank")])
+        RoutineSpec(name="ZZ", goal="G", days=days, exercises=[ExerciseSpec(exercise="Plank")])
+
+
+@pytest.mark.parametrize("goal", ["", "  "])
+def test_blank_goal_is_rejected_on_create_and_edit(goal: str) -> None:
+    with pytest.raises(ValidationError, match="app can't save a routine without one"):
+        RoutineSpec(name="ZZ", goal=goal, exercises=[ExerciseSpec(exercise="Plank")])
+    with pytest.raises(ValidationError, match="app can't save a routine without one"):
+        DesiredRoutine(goal=goal)
+
+
+def test_goal_less_routine_gets_a_goal() -> None:
+    cs = diff_routine(_routine(), DesiredRoutine(goal="Strength"), CATALOG)
+    assert [(c.field, c.old, c.new) for c in cs.routine_changes] == [
+        ("goal", None, "Strength")
+    ]
+    assert cs.expected.goal == "Strength"
