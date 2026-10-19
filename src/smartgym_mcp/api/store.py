@@ -1,8 +1,9 @@
-"""Account reads over the SmartGym API (API-client spec §5).
+"""Account reads over the SmartGym API (API-client spec §5, §11).
 
 `history/all/<id>/` returns every routine, workout and equipment list in one
-answer (S4); it is cached briefly and dropped after every write. Writes always
-work on a fresh `routine/single/<id>/` instead.
+answer (S4); `exercise/allCustomExercises/` the account's custom exercises. Both
+are cached briefly and dropped after every write. Writes always work on a fresh
+`routine/single/<id>/` instead.
 """
 
 from __future__ import annotations
@@ -10,9 +11,11 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
-from ..model import AccountData, Routine, parse_history_all
+from ..catalog import CatalogExercise
+from ..model import AccountData, Routine, parse_custom_exercises, parse_history_all
 from .client import ApiCalls
 
 
@@ -22,6 +25,12 @@ class RoutineNotFound(ValueError):
 
 class AmbiguousRoutine(ValueError):
     pass
+
+
+@dataclass
+class _Slot[T]:
+    value: T | None = None
+    at: float = 0.0
 
 
 class AccountStore:
@@ -36,20 +45,34 @@ class AccountStore:
         self._ttl = ttl_s
         self._clock = clock
         self._lock = threading.Lock()
-        self._cached: AccountData | None = None
-        self._at = 0.0
+        self._account = _Slot[AccountData]()
+        self._customs = _Slot[list[CatalogExercise]]()
+
+    def _read[T](self, slot: _Slot[T], load: Callable[[], T]) -> T:
+        with self._lock:
+            if slot.value is None or self._clock() - slot.at > self._ttl:
+                slot.value = load()
+                slot.at = self._clock()
+            return slot.value
 
     def data(self) -> AccountData:
-        with self._lock:
-            if self._cached is None or self._clock() - self._at > self._ttl:
-                raw = self._client.get(f"history/all/{self._client.user_id}/")
-                self._cached = parse_history_all(raw)
-                self._at = self._clock()
-            return self._cached
+        return self._read(
+            self._account,
+            lambda: parse_history_all(
+                self._client.get(f"history/all/{self._client.user_id}/")
+            ),
+        )
+
+    def custom_exercises(self) -> list[CatalogExercise]:
+        return self._read(
+            self._customs,
+            lambda: parse_custom_exercises(self._client.get("exercise/allCustomExercises/")),
+        )
 
     def invalidate(self) -> None:
         with self._lock:
-            self._cached = None
+            self._account.value = None
+            self._customs.value = None
 
     def routine_raw(self, identifier: int) -> dict[str, Any]:
         body = self._client.get(f"routine/single/{identifier}/")

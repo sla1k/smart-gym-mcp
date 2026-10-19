@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from fakes import FakeClient
+from fakes import CUSTOM_EXERCISES, FakeClient
 from smartgym_mcp.api.store import AccountStore, AmbiguousRoutine, RoutineNotFound
 from smartgym_mcp.model import ApiPayloadError
 
@@ -40,6 +40,20 @@ def test_data_is_cached_until_ttl_or_invalidate() -> None:
     store.invalidate()
     store.data()
     assert client.get_calls == [HISTORY] * 3
+
+
+def test_custom_exercises_are_cached_until_ttl_or_invalidate() -> None:
+    customs = json.loads((FIX / "all_custom_exercises.json").read_text(encoding="utf-8"))
+    client, clock = FakeClient({CUSTOM_EXERCISES: customs["response"]}), Clock()
+    store = _store(client, clock)
+    assert [c.name for c in store.custom_exercises()] == ["Dead Hang"]
+    store.custom_exercises()
+    assert client.get_calls == [CUSTOM_EXERCISES]
+    clock.t = 31
+    store.custom_exercises()
+    store.invalidate()
+    store.custom_exercises()
+    assert client.get_calls == [CUSTOM_EXERCISES] * 3
 
 
 def test_resolve_by_id_exact_name_and_substring() -> None:
