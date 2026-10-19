@@ -124,8 +124,17 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   `~/.smartgym-mcp/backups/`. The older duplicate "Return W2" copies (3681263, 3681262,
   3681264) were archived, keeping 3681294 / 3681296 / 3681295.
 
+## Decision log (2026-10-18, routine goal)
+- **Verified: the app's editor can't save a routine whose goal is empty.** `routine/add/`
+  accepts a routine without `goal` and stores `""`; opening it in the app and tapping Save
+  errors that no goal was found. After `smartgym_update_routine(goal=…)` the same Save works.
+- **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
+  non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
+  (shared `models.Goal` validator). Changing a goal still works (user choice).
+
 ## Decision log (2026-10-18, custom exercises)
 - **F8 — custom exercises in routines:** the account's custom exercises (from
-  `exercise/allCustomExercises/` — `history/all/` lists only those used in a routine) resolve by name with the bundle catalog and are sent in the app's captured shape (spec §11);
-  live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is split off as
+  `exercise/allCustomExercises/` — `history/all/` lists only those used in a routine)
+  resolve by name with the bundle catalog and are sent in the app's captured shape
+  (spec §11); live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is split off as
   F9 (user choice).

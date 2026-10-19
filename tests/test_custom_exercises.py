@@ -346,7 +346,9 @@ def test_a_custom_exercise_in_no_routine_yet_resolves(tmp_path: Path) -> None:
     assert [c["name"] for c in account["customExercises"]] == ["Dead Hang"]
     account["routines"] = []
     client = FakeClient({HISTORY: account, CUSTOM_EXERCISES: customs})
-    spec = RoutineSpec(name="ZZ-F9", exercises=[ExerciseSpec(exercise="ZZ-F9 Live 2")])
+    spec = RoutineSpec(
+        name="ZZ-F9", goal="g", exercises=[ExerciseSpec(exercise="ZZ-F9 Live 2")]
+    )
     result = _service(client, tmp_path).create([spec], dry_run=True)
     (res,) = result.plan[0].resolutions
     assert (res.catalog_id, res.fuzzy) == (419945, False)
@@ -358,7 +360,7 @@ def test_a_removed_custom_exercise_does_not_resolve(tmp_path: Path) -> None:
     customs = _customs()
     customs["exercises"][0]["dateRemoved"] = "2026-10-18 13:00:00"
     client = FakeClient({HISTORY: account, CUSTOM_EXERCISES: customs})
-    spec = RoutineSpec(name="ZZ-F8", exercises=[ExerciseSpec(exercise="Dead Hang")])
+    spec = RoutineSpec(name="ZZ-F8", goal="g", exercises=[ExerciseSpec(exercise="Dead Hang")])
     with pytest.raises(DiffError, match="Could not resolve exercise 'Dead Hang'"):
         _service(client, tmp_path).create([spec], dry_run=True)
     assert client.sent == []

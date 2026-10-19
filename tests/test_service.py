@@ -87,6 +87,7 @@ def _raw_routine(
     ident: str = "3000001",
     name: str = "ZZ-Svc",
     hashid: str = "26100500000001",
+    goal: str = "",
     archived: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -94,7 +95,7 @@ def _raw_routine(
         "uniqueHashID": hashid,
         "name": name,
         "days": "2,4,6",
-        "goal": "",
+        "goal": goal,
         "note": None,
         "number": "5",
         "dateArchived": archived,
@@ -178,7 +179,7 @@ def test_failure_after_first_request_keeps_class_and_reports_progress(tmp_path: 
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[{"code": "SUCCESS"}, WriteOutcomeUnknown("timeout")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(WriteOutcomeUnknown) as exc:
@@ -214,7 +215,7 @@ def test_failed_first_request_lists_the_requests_never_sent(tmp_path: Path) -> N
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(ApiError) as exc:
@@ -230,7 +231,7 @@ def test_failed_second_request_keeps_class_code_and_reports_progress(tmp_path: P
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
         posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(ApiError) as exc:
@@ -250,7 +251,7 @@ def test_unknown_outcome_reports_partial_landing(tmp_path: Path) -> None:
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)},
         posts=[{"code": "SUCCESS"}, WriteOutcomeUnknown("timeout")],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(
@@ -278,7 +279,7 @@ def test_mid_routine_add_sends_order_in_the_same_update(tmp_path: Path) -> None:
             {"code": "SUCCESS", "exercises": [{"original_id": FIRST_HASH, "server_id": "555"}]}
         ],
     )
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[
             DesiredExercise(exercise_id=10),
             DesiredExercise(exercise="Plank", sets=[SetSpec(reps=30)]),
@@ -297,7 +298,7 @@ def test_pure_reorder_sends_order_in_the_structure_update(tmp_path: Path) -> Non
     before = _raw_routine(WARM, CHEST, row)
     after = _raw_routine(WARM, {**CHEST, "idx": "2"}, {**row, "idx": "1"})
     client = account_client({HISTORY: _account(before), SINGLE: _single(before, after)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=12), DesiredExercise(exercise_id=11)]
     )
     result = _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
@@ -309,7 +310,7 @@ def test_pure_reorder_sends_order_in_the_structure_update(tmp_path: Path) -> Non
 def test_section_move_is_sent_in_place(tmp_path: Path) -> None:
     after = _raw_routine(WARM, {**CHEST, "listGroup": "1"})
     client = account_client({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE, after)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise_id=11)], main=[]
     )
     result = _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
@@ -327,7 +328,7 @@ def test_nothing_to_change_sends_nothing(tmp_path: Path) -> None:
 
 def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
     client = account_client({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)})
-    build = lambda _r: DesiredRoutine(  # noqa: E731
+    build = lambda _r: DesiredRoutine(
         warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise_id=11)]
     )
     result = _service(client, tmp_path, move_in_place=False).edit(
@@ -339,7 +340,7 @@ def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
 
 def test_create_rejects_existing_name(tmp_path: Path) -> None:
     client = account_client({HISTORY: _account(BEFORE)})
-    spec = RoutineSpec(name="zz-svc", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(name="zz-svc", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     with pytest.raises(DiffError, match="'zz-svc' already exists — rename it."):
         _service(client, tmp_path).create([spec], dry_run=True)
 
@@ -355,19 +356,24 @@ def test_create_may_reuse_an_archived_routines_name(tmp_path: Path) -> None:
         ident="3000009",
         name="ZZ-Old",
         hashid=str(FIRST_HASH),
+        goal="G",
     )
     created["days"] = ""
     client = account_client(
         {HISTORY: [_account(BEFORE, ARCHIVED), _account(BEFORE, ARCHIVED)]}
     )
     spec = RoutineSpec(
-        name="zz-old", exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])]
+        name="zz-old",
+        goal="G",
+        exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])],
     )
     plan = _service(client, tmp_path).create([spec], dry_run=True)
     assert plan.dry_run and [p.name for p in plan.plan] == ["zz-old"]
 
     spec = RoutineSpec(
-        name="ZZ-Old", exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])]
+        name="ZZ-Old",
+        goal="G",
+        exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])],
     )
     client = account_client(
         {HISTORY: [_account(BEFORE, ARCHIVED), _account(BEFORE, ARCHIVED, created)]}
@@ -403,11 +409,13 @@ def test_create_sends_sections_and_verifies(tmp_path: Path) -> None:
         ident="3000009",
         name="ZZ-New",
         hashid=str(FIRST_HASH),
+        goal="G",
     )
     created["days"] = ""
     client = account_client({HISTORY: [_account(BEFORE), _account(BEFORE, created)]})
     spec = RoutineSpec(
         name="ZZ-New",
+        goal="G",
         warmup=[ExerciseSpec(exercise="Shoulder Circling", sets=[SetSpec(reps=10)])],
         exercises=[ExerciseSpec(exercise="Plank", sets=[SetSpec(reps=30)])],
     )
@@ -425,6 +433,7 @@ def _created_with_days(server_days: str) -> dict[str, Any]:
         ident="3000009",
         name="ZZ-New",
         hashid=str(FIRST_HASH),
+        goal="G",
     )
     created["days"] = server_days
     return created
@@ -434,7 +443,7 @@ def test_create_without_days_accepts_the_servers_default_days(tmp_path: Path) ->
     client = account_client(
         {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
     )
-    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     result = _service(client, tmp_path).create([spec], dry_run=False)
     ((_, form),) = client.sent
     (payload,) = json.loads(form["routines"])
@@ -446,7 +455,9 @@ def test_create_with_blank_days_accepts_the_servers_default_days(tmp_path: Path)
     client = account_client(
         {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
     )
-    spec = RoutineSpec(name="ZZ-New", days="", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(
+        name="ZZ-New", goal="G", days="", exercises=[ExerciseSpec(exercise="Plank")]
+    )
     result = _service(client, tmp_path).create([spec], dry_run=False)
     assert [c.name for c in result.created] == ["ZZ-New"]
 
@@ -455,7 +466,9 @@ def test_create_with_days_still_verifies_them(tmp_path: Path) -> None:
     client = account_client(
         {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
     )
-    spec = RoutineSpec(name="ZZ-New", days="2,4", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(
+        name="ZZ-New", goal="G", days="2,4", exercises=[ExerciseSpec(exercise="Plank")]
+    )
     with pytest.raises(WriteVerifyError, match="days: expected '2,4', got '0001'"):
         _service(client, tmp_path).create([spec], dry_run=False)
 
@@ -464,7 +477,7 @@ def test_create_without_days_still_verifies_the_other_fields(tmp_path: Path) -> 
     created = _created_with_days("0001")
     created["name"] = "ZZ-Other"
     client = account_client({HISTORY: [_account(BEFORE), _account(BEFORE, created)]})
-    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     with pytest.raises(WriteVerifyError, match="name: expected 'ZZ-New'") as exc:
         _service(client, tmp_path).create([spec], dry_run=False)
     assert "days" not in str(exc.value)
@@ -509,12 +522,13 @@ def test_create_with_unknown_outcome_rereads_and_reports(tmp_path: Path) -> None
         ident="3000009",
         name="ZZ-New",
         hashid=str(FIRST_HASH),
+        goal="G",
     )
     client = account_client(
         {HISTORY: [_account(BEFORE), _account(BEFORE, created)]},
         posts=[WriteOutcomeUnknown("timeout")],
     )
-    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     with pytest.raises(WriteOutcomeUnknown) as exc:
         _service(client, tmp_path).create([spec], dry_run=False)
     message = str(exc.value)
@@ -528,7 +542,7 @@ def test_failing_create_verification_read_keeps_class_and_reports_what_was_sent(
     client = account_client(
         {HISTORY: [_account(BEFORE), ApiError("SmartGym answered 'FAIL'.", code="FAIL")]}
     )
-    spec = RoutineSpec(name="ZZ-New", exercises=[ExerciseSpec(exercise="Plank")])
+    spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     with pytest.raises(ApiError) as exc:
         _service(client, tmp_path).create([spec], dry_run=False)
     assert type(exc.value) is ApiError and exc.value.code == "FAIL"

@@ -14,12 +14,13 @@ update, extra desired → add, extra current → remove; kept sets are renumbere
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from pydantic import BaseModel, Field, model_validator
 
 from .matching import ExerciseCatalog, UnresolvedExercise
 from .model import SECTIONS, Routine, RoutineExercise, Section
-from .models import Days, ExerciseResolution, FieldChange, SetSpec
+from .models import Days, ExerciseResolution, FieldChange, Goal, SetSpec
 
 DEFAULT_SET = SetSpec(reps=10, weight_kg=0.0)
 
@@ -48,7 +49,7 @@ class DesiredExercise(BaseModel):
 class DesiredRoutine(BaseModel):
     name: str | None = None
     days: Days = None
-    goal: str | None = None
+    goal: Goal | None = None
     note: str | None = None
     warmup: list[DesiredExercise] | None = None
     main: list[DesiredExercise] | None = None
@@ -370,7 +371,7 @@ def _final_order(
         if sections
         else False
     )
-    if moved and any(a >= b for a, b in zip(idxs, idxs[1:], strict=False)):
+    if moved and any(a >= b for a, b in pairwise(idxs)):
         return order
     if not added:
         return None

@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from ..catalog import CatalogExercise
 from ..model import AccountData, Routine, parse_custom_exercises, parse_history_all
@@ -27,11 +27,8 @@ class AmbiguousRoutine(ValueError):
     pass
 
 
-T = TypeVar("T")
-
-
 @dataclass
-class _Slot(Generic[T]):
+class _Slot[T]:
     value: T | None = None
     at: float = 0.0
 
@@ -51,7 +48,7 @@ class AccountStore:
         self._account = _Slot[AccountData]()
         self._customs = _Slot[list[CatalogExercise]]()
 
-    def _read(self, slot: _Slot[T], load: Callable[[], T]) -> T:
+    def _read[T](self, slot: _Slot[T], load: Callable[[], T]) -> T:
         with self._lock:
             if slot.value is None or self._clock() - slot.at > self._ttl:
                 slot.value = load()
