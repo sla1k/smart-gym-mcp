@@ -107,7 +107,7 @@ def exercise_payload(
         "isStretch": cat.stretch == 1,
         "isCustom": int(cat.is_custom),
         "requiresBands": _BAND_EQUIPMENT_ID in cat.equipment_ids,
-        "isSingleWeight": 0,
+        "isSingleWeight": cat.single_weight,
         "listGroup": LIST_GROUP_BY_SECTION[section],
         "mode": 0,
         "totalSets": len(sets),

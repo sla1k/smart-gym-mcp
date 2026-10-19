@@ -267,7 +267,7 @@ def _parse_custom_exercise(raw: Mapping[str, Any]) -> CatalogExercise:
         category=_int(raw, "category"),
         sub_categories=str(raw.get("subCategories") or ""),
         two_sides=_int_value("twoSides", raw.get("twoSides") or 0),
-        stretch=_int_value("stretch", raw.get("stretch") or 0),
+        stretch=0,  # the server keeps no stretch flag for custom exercises (spec §11)
         equipment_ids=tuple(x for x in str(raw.get("equipments") or "").split(",") if x),
         images=(
             str(raw.get("firstImage") or ""),
@@ -278,6 +278,7 @@ def _parse_custom_exercise(raw: Mapping[str, Any]) -> CatalogExercise:
             "",
         ),
         is_custom=True,
+        single_weight=_int_value("isSingleWeight", raw.get("isSingleWeight") or 0),
     )
 
 

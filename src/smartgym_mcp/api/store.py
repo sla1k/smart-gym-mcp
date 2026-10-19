@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..catalog import CatalogExercise
@@ -29,8 +29,11 @@ class AmbiguousRoutine(ValueError):
 
 @dataclass
 class _Slot[T]:
+    """One cached read, with its own lock: a slow read never waits on another one."""
+
     value: T | None = None
     at: float = 0.0
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class AccountStore:
@@ -44,12 +47,11 @@ class AccountStore:
         self._client = client
         self._ttl = ttl_s
         self._clock = clock
-        self._lock = threading.Lock()
         self._account = _Slot[AccountData]()
         self._customs = _Slot[list[CatalogExercise]]()
 
     def _read[T](self, slot: _Slot[T], load: Callable[[], T]) -> T:
-        with self._lock:
+        with slot.lock:
             if slot.value is None or self._clock() - slot.at > self._ttl:
                 slot.value = load()
                 slot.at = self._clock()
@@ -70,9 +72,9 @@ class AccountStore:
         )
 
     def invalidate(self) -> None:
-        with self._lock:
-            self._account.value = None
-            self._customs.value = None
+        for slot in (self._account, self._customs):
+            with slot.lock:
+                slot.value = None
 
     def routine_raw(self, identifier: int) -> dict[str, Any]:
         body = self._client.get(f"routine/single/{identifier}/")
