@@ -32,12 +32,18 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 - The PR description says what changed, why, and how it was verified.
 - Update the branch from `main` before merging; rebase merge only.
 
+## Releases
+- Every merge to `main` publishes a dev pre-release `vX.Y.Z.devN` (`.github/workflows/release.yml`).
+- A stable release = push tag `vX.Y.Z` on a `main` commit, then approve the `release`
+  environment. The version comes from the tag (hatch-vcs); never edit it by hand.
+- Release notes are grouped by the PR label the branch type sets (`.github/labeler.yml`).
+
 ## Commands
 ```sh
 uv run pytest
 uv run ruff check src tests && uv run ruff format src tests
 uv run mypy src
 uv run smartgym-mcp            # stdio server
-scripts/build.sh               # PyInstaller build + codesign + install
+uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>   # install a release
 uv run mcp dev src/smartgym_mcp/server.py   # MCP Inspector
 ```

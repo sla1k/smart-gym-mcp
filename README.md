@@ -49,34 +49,35 @@ Re-run the capture if tools report an authentication error.
 
 ## Quick start
 
-Requirements: macOS with SmartGym, Python ≥ 3.12, [`uv`](https://docs.astral.sh/uv/).
+Requirements: macOS with SmartGym and [`uv`](https://docs.astral.sh/uv/).
+
+Pick a tag from [Releases](https://github.com/sla1k/smart-gym-mcp/releases) — `vX.Y.Z` is
+stable, `vX.Y.Z.devN` is a dev build of `main` — and install it as `~/.local/bin/smartgym-mcp`:
 
 ```sh
-git clone https://github.com/sla1k/smart-gym-mcp
-cd smart-gym-mcp
-uv sync
+uv tool install git+https://github.com/sla1k/smart-gym-mcp@v0.1.0
 ```
 
-Add it to your MCP client — e.g. Claude Code:
+Run the same command with another tag to switch versions. Add the server to your MCP client —
+e.g. Claude Code:
 
 ```sh
-claude mcp add smartgym -- uv run --directory /path/to/smart-gym-mcp smartgym-mcp
+claude mcp add -s user smartgym -- ~/.local/bin/smartgym-mcp
 ```
 
-or Claude Desktop (`claude_desktop_config.json`):
+or Claude Desktop (`claude_desktop_config.json`; use the absolute path):
 
 ```json
 {
   "mcpServers": {
-    "smartgym": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/smart-gym-mcp", "smartgym-mcp"]
-    }
+    "smartgym": { "command": "/Users/<you>/.local/bin/smartgym-mcp" }
   }
 }
 ```
 
-Then ask your assistant to call `smartgym_health` — `{ ok: true, ... }` means you're connected.
+Then ask your assistant to call `smartgym_health` — `{ ok: true, ... }` means you're connected,
+and `version` is the installed release. To run from a checkout instead, use
+`uv run --directory /path/to/smart-gym-mcp smartgym-mcp` as the command.
 
 ## Configuration
 
