@@ -229,13 +229,14 @@ class RoutineService:
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
         desired = build(current)
-        # Catalog entries are needed only to add an exercise: by name, or the §10.4 re-add.
+        # Custom exercises are read only when a change adds one: by name here, or as a §10.4
+        # re-add below.
         adds_by_name = any(
             want.exercise is not None
             for section in SECTIONS
             for want in desired.section_list(section) or []
         )
-        catalog, exercises = self._exercises(custom=adds_by_name or not self._move_in_place)
+        catalog, exercises = self._exercises(custom=adds_by_name)
         cs = diff_routine(current, desired, catalog)
         renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
@@ -243,7 +244,10 @@ class RoutineService:
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         if not self._move_in_place:
-            cs = moves_as_readd(cs, current)
+            readd = moves_as_readd(cs, current)
+            if readd is not cs:
+                _, exercises = self._exercises()
+            cs = readd
         if cs.is_empty:
             return EditResult(
                 dry_run=dry_run,

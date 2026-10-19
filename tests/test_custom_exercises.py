@@ -434,3 +434,38 @@ def test_re_adding_a_deleted_custom_exercise_is_rejected_not_crashed(tmp_path: P
     with pytest.raises(DiffError, match=r"'Dead Hang' \(catalog id 397744\)"):
         service.edit("ZZ-F8", dead_hang_to_warmup, dry_run=True)
     assert client.sent == []
+
+
+def test_custom_single_weight_flag_is_sent_from_its_record() -> None:
+    raw = _customs()
+    raw["exercises"][0]["isSingleWeight"] = "1"
+    (custom,) = parse_custom_exercises(raw)
+    spec = RoutineSpec(name="ZZ-F8", goal="g", exercises=[ExerciseSpec(exercise="Dead Hang")])
+    payload = new_routine_payload(spec, [custom], number=1, now=NOW, mint=_mint())
+    assert payload["exercises"][0]["isSingleWeight"] == 1
+    assert _dead_hang().single_weight == 0  # as captured
+
+
+def test_fallback_mode_reads_custom_exercises_only_for_a_real_re_add(tmp_path: Path) -> None:
+    raw = _raw_routine("ZZ-F8")
+    client = FakeClient(
+        {
+            HISTORY: _account(),
+            CUSTOM_EXERCISES: ApiError("custom exercise list unavailable"),
+            "routine/single/3698443/": {"code": "SUCCESS", "routines": [raw]},
+        }
+    )
+
+    def rest_on_dead_hang(r):  # type: ignore[no-untyped-def]
+        dh, pu = r.active_exercises()
+        return DesiredRoutine(
+            main=[
+                DesiredExercise(exercise_id=dh.identifier, rest_seconds=60),
+                DesiredExercise(exercise_id=pu.identifier),
+            ]
+        )
+
+    service = _service(client, tmp_path, move_in_place=False)
+    result = service.edit("ZZ-F8", rest_on_dead_hang, dry_run=True)
+    assert result.requests == ["routine/update/"]
+    assert CUSTOM_EXERCISES not in client.get_calls

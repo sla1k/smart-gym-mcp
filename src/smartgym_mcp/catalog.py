@@ -56,6 +56,7 @@ class CatalogExercise:
     equipment_ids: tuple[str, ...]
     images: tuple[str, str, str, str, str, str]
     is_custom: bool = False
+    single_weight: int = 0
 
 
 def load_bundle_exercises(cfg: Config) -> list[CatalogExercise]:

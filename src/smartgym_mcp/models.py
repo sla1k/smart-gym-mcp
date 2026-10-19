@@ -41,7 +41,11 @@ Goal = Annotated[
 
 
 class SetSpec(BaseModel):
-    reps: float = Field(gt=0, description="Target reps for this set")
+    reps: float = Field(
+        gt=0,
+        description="Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) "
+        "the duration in seconds",
+    )
     weight_kg: float = Field(default=0.0, ge=0, description="Target weight; 0 = bodyweight")
 
 
