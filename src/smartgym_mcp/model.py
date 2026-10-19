@@ -8,15 +8,20 @@ Sections: listGroup 1 = warm-up, 0 = main, 2 = cool-down (spec §10.1).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from .catalog import CatalogExercise
+
 Section = Literal["warmup", "main", "cooldown"]
 SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")
 LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}
 SECTION_BY_LIST_GROUP: dict[int, Section] = {g: s for s, g in LIST_GROUP_BY_SECTION.items()}
+
+logger = logging.getLogger("smartgym_mcp.model")
 
 
 class ApiPayloadError(ValueError):
@@ -254,6 +259,46 @@ def _parse_equipment_list(raw: Mapping[str, Any]) -> EquipmentList:
     )
 
 
+def _parse_custom_exercise(raw: Mapping[str, Any]) -> CatalogExercise:
+    return CatalogExercise(
+        id=_int(raw, "id"),
+        name=str(_req(raw, "name")),
+        type=_int(raw, "type"),
+        category=_int(raw, "category"),
+        sub_categories=str(raw.get("subCategories") or ""),
+        two_sides=_int_value("twoSides", raw.get("twoSides") or 0),
+        stretch=_int_value("stretch", raw.get("stretch") or 0),
+        equipment_ids=tuple(x for x in str(raw.get("equipments") or "").split(",") if x),
+        images=(
+            str(raw.get("firstImage") or ""),
+            str(raw.get("secondImage") or ""),
+            str(raw.get("thirdImage") or ""),
+            "",
+            "",
+            "",
+        ),
+        is_custom=True,
+    )
+
+
+def parse_custom_exercises(raw: Mapping[str, Any]) -> list[CatalogExercise]:
+    """`exercise/allCustomExercises/` → the account's live custom exercises. (`history/all/`
+    lists only those already used in a routine.) A malformed record is skipped and logged,
+    so one bad exercise cannot block every write."""
+    _check_success(raw)
+    out: list[CatalogExercise] = []
+    for c in raw.get("exercises") or []:
+        if _present(c.get("dateRemoved")):
+            continue
+        try:
+            out.append(_parse_custom_exercise(c))
+        except ApiPayloadError as exc:
+            logger.warning(
+                "Skipping custom exercise id=%s name=%r: %s", c.get("id"), c.get("name"), exc
+            )
+    return out
+
+
 def _has_workout_start(history: Mapping[str, Any]) -> bool:
     workout = history.get("workout")
     return isinstance(workout, Mapping) and _present(workout.get("startDate"))
@@ -291,6 +336,7 @@ __all__ = [
     "Section",
     "TemplateSet",
     "Workout",
+    "parse_custom_exercises",
     "parse_history_all",
     "parse_routine",
     "parse_routines_response",

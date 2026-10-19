@@ -43,7 +43,8 @@ def installed_app_version(cfg: Config) -> str | None:
 
 @dataclass(frozen=True)
 class CatalogExercise:
-    """One bundle catalog exercise; `id` is the server's exercise `id`/`genericID`."""
+    """One catalog exercise — from the app bundle, or one of the account's custom exercises
+    (`is_custom`); `id` is the server's exercise `id`/`genericID`."""
 
     id: int
     name: str
@@ -54,6 +55,7 @@ class CatalogExercise:
     stretch: int
     equipment_ids: tuple[str, ...]
     images: tuple[str, str, str, str, str, str]
+    is_custom: bool = False
 
 
 def load_bundle_exercises(cfg: Config) -> list[CatalogExercise]:

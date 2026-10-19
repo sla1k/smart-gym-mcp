@@ -30,3 +30,34 @@ def test_alias_expansion_gives_a_fuzzy_match() -> None:
 def test_unresolvable_lists_candidates() -> None:
     with pytest.raises(UnresolvedExercise, match="Closest"):
         CATALOG.resolve("Zercher carry")
+
+
+def test_a_name_shared_by_several_exercises_is_rejected_with_their_ids() -> None:
+    catalog = ExerciseCatalog([(194, "Push Up"), (419950, "Push Up"), (20, "Plank")])
+    with pytest.raises(UnresolvedExercise, match=r"id=194.*id=419950"):
+        catalog.resolve("push up")
+    with pytest.raises(UnresolvedExercise, match="several exercises"):
+        catalog.resolve("pushup")  # fuzzy hit on the shared name
+    assert catalog.resolve("419950").catalog_id == 419950
+
+
+def test_extended_catalog_resolves_old_and_new_entries() -> None:
+    from smartgym_mcp.catalog import CatalogExercise
+
+    custom = CatalogExercise(
+        id=397744,
+        name="Dead Hang",
+        type=2,
+        category=3,
+        sub_categories="",
+        two_sides=0,
+        stretch=0,
+        equipment_ids=(),
+        images=("", "", "", "", "", ""),
+        is_custom=True,
+    )
+    extended = CATALOG.extended([custom])
+    assert extended.resolve("dead hang").catalog_id == 397744
+    assert extended.resolve("Plank").catalog_id == 20
+    with pytest.raises(UnresolvedExercise):
+        CATALOG.resolve("dead hang")
