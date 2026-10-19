@@ -329,3 +329,32 @@ drills and stretches) plus the catalog `stretch` flag; the dry run shows the spl
 approves each routine; the user checks it on the iPhone. One routine at a time, after the
 live `ZZ-` pass of §8 has covered every section operation.
 
+
+## 11. Custom exercises in routines (F8, verified 2026-10-18, app 8.0.3)
+
+The account's own exercises resolve by name next to the bundle catalog and go into create /
+add-exercise payloads. Creating or editing the custom exercise definitions themselves is F9.
+
+| Fact | Evidence (fixture) |
+|---|---|
+| `exercise/allCustomExercises/` (GET, no params) lists every custom exercise: `id` (≥ 397744, beyond the bundle's ids), `name`, `type`, `category`, `subCategories`, `equipments`, `twoSides`, `isCustom: "1"`, `dateRemoved`, image fields. `history/all/`'s `customExercises[]` has the same shape but **only the ones already used in a routine** (live 2026-10-18: a new, unused one was missing), so it is not used | `all_custom_exercises`, `history_all_custom` |
+| A routine exercise of a custom exercise is an ordinary routine exercise: `id` = the custom id, `isCustom: "1"`; edits address it by its routine-exercise `identifier` like any other | `history_all_custom`, `update_custom_*` |
+| Create / add: the app sends `id` = `genericID` = custom id, `isCustom: 1`, and **no** `stretch`, `subCategories`, `secondImage`…`sixthImage`; `firstImage` is a local name ("deadhang1") — the server keeps the custom exercise's own empty one, so the MCP sends that | `add_routine_custom`, `update_add_custom_exercise` |
+| The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note`, `update_custom_remove_set` |
+| Removing a custom exercise from a routine = plain `removeExercises` | `update_remove_custom_exercise` |
+
+Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed and malformed
+ones skipped — a malformed one is logged — cached like the account read). `RoutineService`
+reads them only when a change adds an exercise (by name, or the §10.4 re-add) and extends
+the bundle catalog with them, so a custom exercise made in the app is usable within the
+cache's 30 s and edits that add nothing don't depend on that read. A name shared by several
+exercises (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm
+Cable Triceps Pushdown") is rejected with their ids, never picked silently. Custom
+exercises carry no `stretch` on the server (F9, §12), so they are sent with
+`isStretch: false`, as the app does.
+
+Live pass 2026-10-18 (worktree build, `ZZ-F8-MCP` / `ZZ-F8B` / `ZZ-F8`): create with Dead Hang
++ Push Up, add Dead Hang to an existing routine, change Dead Hang's sets and note — each
+"Applied … verified" on the server and confirmed on the iPhone (custom image shown).
+A custom exercise created in the app and used in no routine (`ZZ-F8 Fresh`, absent from
+`history/all/`) resolved through `allCustomExercises` into `ZZ-F8-FRESH`; iPhone confirmed.
