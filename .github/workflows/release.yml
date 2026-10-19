@@ -1,7 +1,8 @@
 name: Release
 
-# A push to main publishes a dev pre-release (vX.Y.Z.devN); a vX.Y.Z tag publishes a
-# stable release after approval in the `release` environment.
+# Every push to main builds and smoke-tests the wheel (a dev build, installed from @main or
+# @<sha>); a vX.Y.Z tag also publishes it as a release after approval in the `release`
+# environment.
 on:
   push:
     branches: [main]
@@ -9,9 +10,6 @@ on:
 
 permissions:
   contents: read
-
-# No concurrency group: each run publishes its own tag, and a group would keep only one
-# pending run, dropping the dev release of a commit merged in between.
 
 jobs:
   checks:
@@ -23,8 +21,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
-      previous-stable: ${{ steps.version.outputs.previous-stable }}
-      publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,24 +35,13 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          wheel=$(ls dist/*.whl)
-          version=$(basename "$wheel" | cut -d- -f2)
+          version=$(basename dist/*.whl | cut -d- -f2)
           if [[ "$REF_TYPE" == tag && "$REF_NAME" != "v$version" ]]; then
             echo "::error::Tag $REF_NAME does not match the built version $version"
             exit 1
           fi
-          publish=true
-          if [[ "$REF_TYPE" == branch && "$version" != *.dev* ]]; then
-            echo "::notice::main is at stable tag v$version; its tag run publishes it"
-            publish=false
-          fi
-          previous=$(git describe --tags --abbrev=0 --match 'v*' --exclude '*.dev*' HEAD^ 2>/dev/null || true)
-          {
-            echo "version=$version"
-            echo "previous-stable=$previous"
-            echo "publish=$publish"
-          } >> "$GITHUB_OUTPUT"
-      - name: Require approval for stable releases
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Require approval for releases
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,7 +49,7 @@ jobs:
           reviewers=$(gh api "repos/$GITHUB_REPOSITORY/environments/release" \
             --jq '[.protection_rules[] | select(.type == "required_reviewers")] | length')
           if [[ "$reviewers" -eq 0 ]]; then
-            echo "::error::The release environment has no required reviewers; stable releases need approval"
+            echo "::error::The release environment has no required reviewers; releases need approval"
             exit 1
           fi
       - name: Smoke-test the wheel over stdio
@@ -80,10 +65,10 @@ jobs:
 
   publish:
     needs: build
-    if: needs.build.outputs.publish == 'true'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ github.ref_type == 'tag' && 'release' || 'dev' }}
+    environment: release
     permissions:
       contents: write
       id-token: write
@@ -102,14 +87,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ needs.build.outputs.version }}
-          PREVIOUS: ${{ needs.build.outputs.previous-stable }}
+          TAG: ${{ github.ref_name }}
         run: |
-          args=(--draft --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes)
-          if [[ "$VERSION" == *.dev* ]]; then
-            args+=(--prerelease)
-          elif [[ -n "$PREVIOUS" ]]; then
-            args+=(--notes-start-tag "$PREVIOUS")
-          fi
-          gh release create "v$VERSION" "${args[@]}" dist/*
-          gh release edit "v$VERSION" --draft=false
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes dist/*
+          gh release edit "$TAG" --draft=false

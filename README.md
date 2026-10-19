@@ -51,14 +51,15 @@ Re-run the capture if tools report an authentication error.
 
 Requirements: macOS with SmartGym and [`uv`](https://docs.astral.sh/uv/).
 
-Pick a tag from [Releases](https://github.com/sla1k/smart-gym-mcp/releases) — `vX.Y.Z` is
-stable, `vX.Y.Z.devN` is a dev build of `main` — and install it as `~/.local/bin/smartgym-mcp`:
+Install a release from [Releases](https://github.com/sla1k/smart-gym-mcp/releases) as
+`~/.local/bin/smartgym-mcp`:
 
 ```sh
 uv tool install git+https://github.com/sla1k/smart-gym-mcp@v0.1.0
 ```
 
-Run the same command with another tag to switch versions. Add the server to your MCP client —
+For a dev build of unreleased work, use `@main` or a commit SHA instead of the tag; its version
+reads `X.Y.Z.devN`. Run the command again with another ref to switch versions. Add the server to your MCP client —
 e.g. Claude Code:
 
 ```sh

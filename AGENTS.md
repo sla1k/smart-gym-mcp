@@ -33,7 +33,8 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 - Update the branch from `main` before merging; rebase merge only.
 
 ## Releases
-- Every merge to `main` publishes a dev pre-release `vX.Y.Z.devN` (`.github/workflows/release.yml`).
+- Every merge to `main` is built and smoke-tested as dev build `X.Y.Z.devN`, but not published
+  (`.github/workflows/release.yml`); install it from `@main` or `@<sha>`.
 - A stable release = push tag `vX.Y.Z` on a `main` commit, then approve the `release`
   environment. The version comes from the tag (hatch-vcs); never edit it by hand.
 - Release notes are grouped by the PR label the branch type sets (`.github/labeler.yml`).
