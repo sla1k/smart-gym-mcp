@@ -27,7 +27,8 @@ build-backend = "hatchling.build"
 source = "vcs"
 
 # main builds are 0.(minor+1).0.devN, N = commits since the last release tag (0.1.0.devN
-# before the first one). Dev tags are excluded so they never become the base version.
+# before the first one). v0.1.0.dev55, published before dev releases were dropped, is excluded
+# so it never becomes the base version; the tag ruleset keeps it from being deleted.
 [tool.hatch.version.raw-options]
 version_scheme = "release-branch-semver"
 local_scheme = "no-local-version"
