@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .matching import ExerciseCatalog, UnresolvedExercise
 from .model import SECTIONS, Routine, RoutineExercise, Section
-from .models import Days, ExerciseResolution, FieldChange, SetSpec
+from .models import Days, ExerciseResolution, FieldChange, Goal, SetSpec
 
 DEFAULT_SET = SetSpec(reps=10, weight_kg=0.0)
 
@@ -49,7 +49,7 @@ class DesiredExercise(BaseModel):
 class DesiredRoutine(BaseModel):
     name: str | None = None
     days: Days = None
-    goal: str | None = None
+    goal: Goal | None = None
     note: str | None = None
     warmup: list[DesiredExercise] | None = None
     main: list[DesiredExercise] | None = None

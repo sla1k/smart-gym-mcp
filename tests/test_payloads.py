@@ -65,6 +65,7 @@ def _counter() -> object:
 def test_new_routine_payload_matches_captured_shape() -> None:
     spec = RoutineSpec(
         name="ZZ-FB — Test",
+        goal="G",
         days="2,3",
         note="note",
         exercises=[
@@ -83,6 +84,7 @@ def test_new_routine_payload_matches_captured_shape() -> None:
         for k in (
             "name",
             "days",
+            "goal",
             "note",
             "number",
             "reference",
@@ -94,6 +96,7 @@ def test_new_routine_payload_matches_captured_shape() -> None:
     } == {
         "name": "ZZ-FB — Test",
         "days": "2,3",
+        "goal": "G",
         "note": "note",
         "number": 21,
         "reference": 0,
@@ -103,7 +106,6 @@ def test_new_routine_payload_matches_captured_shape() -> None:
         "dateCreated": "2026-10-04T22:00:00",  # local midnight, sent as UTC
     }
     assert "identifier" not in p
-    assert "goal" not in p
 
     push, band = p["exercises"]
     assert {
@@ -455,6 +457,7 @@ def test_cleared_routine_note_is_sent_as_empty_string() -> None:
 def test_create_payload_sections_set_list_group_and_global_idx() -> None:
     spec = RoutineSpec(
         name="ZZ-Sections",
+        goal="G",
         warmup=[ExerciseSpec(exercise="band")],
         exercises=[ExerciseSpec(exercise="Push Up")],
         cooldown=[ExerciseSpec(exercise="band")],
@@ -467,19 +470,19 @@ def test_create_payload_sections_set_list_group_and_global_idx() -> None:
     ]
 
 
-def test_create_payload_omits_unset_days_goal_and_note() -> None:
-    spec = RoutineSpec(name="ZZ", exercises=[ExerciseSpec(exercise="Push Up")])
+def test_create_payload_omits_unset_days_and_note() -> None:
+    spec = RoutineSpec(name="ZZ", goal="G", exercises=[ExerciseSpec(exercise="Push Up")])
     p = new_routine_payload(spec, [PUSH_UP], number=1, now=NOW, mint=_counter())
-    assert not {"days", "goal", "note"} & p.keys()
+    assert not {"days", "note"} & p.keys()
     assert "null" not in json.dumps(p)
 
 
-def test_create_payload_omits_blank_days_goal_and_note() -> None:
+def test_create_payload_omits_blank_days_and_note() -> None:
     spec = RoutineSpec(
-        name="ZZ", days="", goal="  ", note="", exercises=[ExerciseSpec(exercise="Push Up")]
+        name="ZZ", days="", goal="G", note="", exercises=[ExerciseSpec(exercise="Push Up")]
     )
     p = new_routine_payload(spec, [PUSH_UP], number=1, now=NOW, mint=_counter())
-    assert not {"days", "goal", "note"} & p.keys()
+    assert not {"days", "note"} & p.keys()
 
 
 def test_create_payload_carries_days_goal_and_note_when_set() -> None:
@@ -495,7 +498,7 @@ def test_create_payload_carries_days_goal_and_note_when_set() -> None:
 
 
 def test_create_payload_rejects_misaligned_catalog_entries() -> None:
-    spec = RoutineSpec(name="ZZ", exercises=[ExerciseSpec(exercise="Push Up")])
+    spec = RoutineSpec(name="ZZ", goal="G", exercises=[ExerciseSpec(exercise="Push Up")])
     with pytest.raises(ValueError, match="catalog entries"):
         new_routine_payload(spec, [PUSH_UP, BAND], number=1, now=NOW)
 

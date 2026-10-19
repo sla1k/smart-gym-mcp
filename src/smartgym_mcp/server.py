@@ -27,7 +27,7 @@ from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .matching import ExerciseCatalog
 from .model import Section
-from .models import Days, RoutineSpec, SetSpec
+from .models import Days, Goal, RoutineSpec, SetSpec
 from .payloads import local_timezone_name
 from .service import ArchiveResult, CreateResult, EditResult, RoutineService
 
@@ -274,8 +274,9 @@ def smartgym_create_program(
 ) -> CreateResult:
     """Create one or more routines (a program) on the SmartGym server — all devices get them.
 
-    Each routine: name (must not match an active routine), optional days/goal/note, and
-    three ordered sections — `warmup` (optional), `exercises` (= main, required),
+    Each routine: name (must not match an active routine), goal (required free text, e.g.
+    "Strength" — the app can't save a routine without one), optional
+    days/note, and three ordered sections — `warmup` (optional), `exercises` (= main, required),
     `cooldown` (optional). Exercises are catalog names (fuzzy-matched, deterministic) or
     catalog ids, with optional rest_seconds, note and template sets (reps + weight_kg;
     omitted = one 1x10 set, flagged). `days` is comma-separated weekday numbers,
@@ -293,12 +294,13 @@ def smartgym_update_routine(
     routine: str,
     name: str | None = None,
     days: Days = None,
-    goal: str | None = None,
+    goal: Goal | None = None,
     note: str | None = None,
     dry_run: bool = True,
 ) -> EditResult:
     """Edit a routine's name, days, goal or note (only the fields you pass; "" clears).
 
+    The goal can be changed but not cleared (the app can't save a routine without one).
     `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
     (e.g. "2,4,6"). A new name must not match another active routine.
 
@@ -435,7 +437,7 @@ def smartgym_apply_routine(
     routine: str,
     name: str | None = None,
     days: Days = None,
-    goal: str | None = None,
+    goal: Goal | None = None,
     note: str | None = None,
     warmup: list[DesiredExercise] | None = None,
     main: list[DesiredExercise] | None = None,
