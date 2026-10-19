@@ -9,7 +9,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Build artifacts (PyInstaller)
+# Build artifacts (uv build)
 build/
 dist/
 

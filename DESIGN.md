@@ -131,3 +131,13 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 - **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
   non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
   (shared `models.Goal` validator). Changing a goal still works (user choice).
+
+## Decision log (2026-10-19, delivery)
+- **Releases are GitHub tags + Releases, installed with
+  `uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>`**. The signed PyInstaller
+  binary is gone: it was signed only to keep the macOS TCC grant for the container DB, which
+  nothing reads any more.
+- **Versions come from git tags** (hatch-vcs): main builds are `0.(minor+1).0.devN` dev
+  pre-releases (`0.1.0.devN` before the first tag); `vX.Y.Z` tags are stable. `mcp` is capped
+  below 2 in `pyproject.toml`, since installs don't read `uv.lock`.
+- **No rc tags:** dev builds of `main` are the testing period before a stable tag.
