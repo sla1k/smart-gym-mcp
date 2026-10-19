@@ -1,3 +1,5 @@
-"""SmartGym MCP — local stdio server wrapping SmartGym's Core Data SQLite DB."""
+"""SmartGym MCP — local stdio server for SmartGym routines over the SmartGym HTTP API."""
 
-__version__ = "0.2.0"
+from importlib.metadata import version
+
+__version__ = version("smart-gym-mcp")

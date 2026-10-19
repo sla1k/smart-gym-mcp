@@ -1,12 +1,12 @@
 [project]
 name = "smart-gym-mcp"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Local stdio MCP server for SmartGym routines over the SmartGym HTTP API"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    "mcp[cli]>=1.2.0",
+    "mcp[cli]>=1.2.0,<2",  # 2.x renames FastMCP; needs a server migration
     "pydantic>=2",
     "httpx>=0.27",
 ]
@@ -20,11 +20,24 @@ classifiers = [
 smartgym-mcp = "smartgym_mcp.server:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+# main builds are 0.(minor+1).0.devN, N = commits since the last release tag (0.1.0.devN
+# before the first one). Dev tags are excluded so they never become the base version.
+[tool.hatch.version.raw-options]
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
+scm.git.describe_command = "git describe --dirty --tags --long --match v* --exclude *.dev*"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smartgym_mcp"]
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
