@@ -1,0 +1,14 @@
+# Groups the generated release notes by the PR labels that labeler.yml sets from the
+# branch type.
+changelog:
+  categories:
+    - title: Features
+      labels: [feat]
+    - title: Fixes
+      labels: [fix]
+    - title: Docs
+      labels: [docs]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other
+      labels: ["*"]
