@@ -11,7 +11,7 @@ The technical design is split into specs by risk profile:
 | [`specs/01-read-data.md`](specs/01-read-data.md) | Read tools + catalog resources | — | superseded by the API client (reads come from `history/all`) |
 | [`specs/02-write-and-sync.md`](specs/02-write-and-sync.md) | Write tools + sync model (DB era) | — | superseded by the API client (DB write path removed) |
 | [`specs/03-create-program.md`](specs/03-create-program.md) | Full program creation via the DB (DB era) | — | superseded by the API client (DB write path removed) |
-| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections | high — Phase 0 + S7 verified | ✅ implemented (Plan 2) |
+| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections, custom exercises in routines (§11) | high — Phase 0 + S7 + F8 verified | ✅ implemented (Plan 2, F8) |
 
 Backlog and deferred work: [`FEATURES.md`](FEATURES.md).
 
@@ -131,6 +131,13 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 - **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
   non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
   (shared `models.Goal` validator). Changing a goal still works (user choice).
+
+## Decision log (2026-10-18, custom exercises)
+- **F8 — custom exercises in routines:** the account's custom exercises (from
+  `exercise/allCustomExercises/` — `history/all/` lists only those used in a routine)
+  resolve by name with the bundle catalog and are sent in the app's captured shape
+  (spec §11); live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is
+  split off as F9 (user choice).
 
 ## Decision log (2026-10-19, delivery)
 - **Releases are GitHub tags + Releases, installed with
