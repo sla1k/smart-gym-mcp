@@ -41,9 +41,9 @@ async def smoke(version: str) -> None:
             if "smartgym_health" not in tools:
                 raise SystemExit(f"smartgym_health missing from {sorted(tools)}")
             result = await session.call_tool("smartgym_health", {})
-            if result.isError:
+            if result.is_error:
                 raise SystemExit(f"smartgym_health failed: {result.content}")
-            health = result.structuredContent or json.loads(result.content[0].text)  # type: ignore[union-attr]
+            health = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
     if health.get("ok") is not False or health.get("version") != version:
         raise SystemExit(f"unexpected health {health}, expected version {version}")
     print(f"ok: {len(tools)} tools, version {version}")
