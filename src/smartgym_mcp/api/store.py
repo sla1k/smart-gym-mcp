@@ -83,8 +83,10 @@ class AccountStore:
             raise RoutineNotFound(f"SmartGym has no routine with id {identifier}.")
         return dict(routines[0])
 
-    def resolve(self, ref: str | int) -> Routine:
-        live = [r for r in self.data().routines if not r.removed]
+    def resolve(self, ref: str | int, *, data: AccountData | None = None) -> Routine:
+        """`data` resolves against an account snapshot the caller already holds."""
+        account = self.data() if data is None else data
+        live = [r for r in account.routines if not r.removed]
         s = str(ref).strip()
         if s.isdigit():
             for r in live:

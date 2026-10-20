@@ -75,8 +75,10 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 5. Credentials only via `api/auth.py`; never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`).
-7. Writes run one at a time (`RoutineService` lock): MCP SDK 2 runs sync tools on worker
-   threads, and each write re-reads then rewrites its routine.
+7. Tool calls run one at a time (`AppContext.use` lock): MCP SDK 2 runs sync tools on worker
+   threads, but the account cache, the API client's lifetime and each write's re-read → rewrite
+   assume calls don't overlap. A call that can't start within 60 s fails before sending
+   anything; shutdown closes the client only after the call in flight.
 
 ## Decision log (2026-07-10)
 - **Write mechanism:** direct DB write + managed relaunch (primary); crafted `.gym` share file
