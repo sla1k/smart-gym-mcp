@@ -3,6 +3,7 @@
 Tools are thin: parse input → store / service / reads. Credentials and the API
 client are built on first use, so a missing credentials file becomes a clear
 tool error (and a smartgym_health report) instead of a server that won't start.
+Tool calls run one at a time (DESIGN invariant 7).
 """
 
 from __future__ import annotations
@@ -88,43 +89,65 @@ def build_services(cfg: Config) -> Services:
         raise
 
 
+# Covers a slow write: each request has a 30 s timeout and reads retry.
+CALL_WAIT_S = 60.0
+
+
+class ServerBusy(RuntimeError):
+    """Another tool call held the services for longer than the wait allows."""
+
+
 @dataclass
 class AppContext:
     cfg: Config
     factory: Callable[[Config], Services] = build_services
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    call_wait_s: float = CALL_WAIT_S
+    _calls: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _services: Services | None = field(default=None, init=False, repr=False)
-
-    def services(self) -> Services:
-        """Built on first use; a failed build is not cached, so the next call retries."""
-        with self._lock:
-            if self._services is None:
-                self._services = self.factory(self.cfg)
-            return self._services
 
     @contextmanager
     def use(self) -> Iterator[Services]:
-        """Services for one tool call. An AuthError drops them (closing the client) so the
-        next call re-reads the credentials file — a re-captured session takes effect without
-        restarting the server. The error itself propagates unchanged."""
-        services = self.services()
-        try:
-            yield services
-        except AuthError:
-            self._drop(services)
-            raise
+        """Services for one tool call, one call at a time.
 
-    def _drop(self, services: Services) -> None:
-        with self._lock:
-            if self._services is services:
+        MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
+        lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
+        can't start within `call_wait_s` fails with ServerBusy before sending anything.
+
+        Services are built on first use; a failed build is not cached, so the next call
+        retries. An AuthError drops them (closing the client) so the next call re-reads the
+        credentials file — a re-captured session takes effect without restarting the
+        server. The error itself propagates unchanged.
+        """
+        if not self._calls.acquire(timeout=self.call_wait_s):
+            raise ServerBusy(
+                f"Another SmartGym call has been running for over {self.call_wait_s:.0f} s; "
+                "nothing was sent. Try again once it finishes."
+            )
+        try:
+            if self._services is None:
+                self._services = self.factory(self.cfg)
+            services = self._services
+            try:
+                yield services
+            except AuthError:
                 self._services = None
-        services.client.close()
+                services.client.close()
+                raise
+        finally:
+            self._calls.release()
 
     def close(self) -> None:
-        with self._lock:
+        """Close the client once the call in flight (if any) is done. If it is still running
+        after `call_wait_s`, the client is left open rather than closed under its requests."""
+        if not self._calls.acquire(timeout=self.call_wait_s):
+            logger.warning("a tool call is still running; leaving its client open")
+            return
+        try:
             services, self._services = self._services, None
-        if services is not None:
-            services.client.close()
+            if services is not None:
+                services.client.close()
+        finally:
+            self._calls.release()
 
 
 @asynccontextmanager
@@ -147,7 +170,7 @@ def _app(ctx: Context[AppContext]) -> AppContext:
 # Failures whose message tells the model what to do next (fix the credentials, pick another
 # name, re-read before retrying a write of unknown outcome). MCP SDK 2 replaces the message
 # of any other exception with "Error executing tool <name>", so these become ToolError.
-_ANTICIPATED = (ApiError, CredentialsError, WriteVerifyError, ValueError, OSError)
+_ANTICIPATED = (ApiError, CredentialsError, WriteVerifyError, ServerBusy, ValueError, OSError)
 
 
 @contextmanager
@@ -191,7 +214,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     try:
         with app.use() as services:
             data = services.store.data()
-    except (CredentialsError, ApiError, ValueError, KeyError, OSError) as exc:
+    except (CredentialsError, ApiError, ServerBusy, ValueError, KeyError, OSError) as exc:
         return HealthStatus(
             ok=False,
             routines=None,
@@ -238,9 +261,9 @@ def smartgym_get_routine(
     latest session's top set and total volume.
     """
     with _services(ctx) as services:
-        store = services.store
+        data = services.store.data()
         return reads.routine_detail(
-            store.resolve(routine), store.data(), history_depth=history_depth
+            services.store.resolve(routine, data=data), data, history_depth=history_depth
         )
 
 
@@ -261,13 +284,13 @@ def smartgym_get_workout_history(
     id). Paginated: total, has_more, next_offset.
     """
     with _services(ctx) as services:
-        store = services.store
+        data = services.store.data()
         return reads.workout_history(
-            store.data(),
+            data,
             days=days,
             date_from=date_from,
             date_to=date_to,
-            routine=store.resolve(routine) if routine else None,
+            routine=services.store.resolve(routine, data=data) if routine else None,
             limit=limit,
             offset=offset,
         )

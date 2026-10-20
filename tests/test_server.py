@@ -6,7 +6,9 @@ import asyncio
 import copy
 import json
 import plistlib
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -478,3 +480,79 @@ def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
     assert not result.dry_run
     assert [r.identifier for r in result.routines] == [3000001]
     assert [path for path, _ in client.sent] == ["routine/archive/"]
+
+
+# ----------------------------------------------------------- one call at a time
+CALLS: dict[str, WriteCall] = {
+    "list_routines": lambda c: server.smartgym_list_routines(c),
+    "get_routine": lambda c: server.smartgym_get_routine(c, routine="ZZ-FB"),
+    "workout_history": lambda c: server.smartgym_get_workout_history(c),
+    "equipment": lambda c: server.smartgym_get_equipment(c),
+}
+
+
+ALL_CALLS = {**CALLS, **DRY_RUN_CALLS}
+
+
+@pytest.mark.parametrize("call", ALL_CALLS.values(), ids=ALL_CALLS.keys())
+def test_every_tool_waits_for_the_call_in_flight(tmp_path: Path, call: WriteCall) -> None:
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
+    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
+    with app.use(), pytest.raises(ToolError, match="nothing was sent") as exc:
+        call(_ctx(app))
+    assert isinstance(exc.value.__cause__, server.ServerBusy)
+    assert client.get_calls == [] and client.sent == []
+    assert call(_ctx(app))  # free again once the other call is done
+
+
+def test_health_reports_a_busy_server(tmp_path: Path) -> None:
+    app = replace(_fake_app(tmp_path, account_client({HISTORY: ACCOUNT})), call_wait_s=0)
+    with app.use():
+        status = server.smartgym_health(_ctx(app))
+    assert (
+        not status.ok and status.problem is not None and "nothing was sent" in status.problem
+    )
+
+
+class _GatedClient(FakeClient):
+    """Holds every post until `release` is set."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.posting = threading.Event()
+        self.release = threading.Event()
+
+    def post(self, path: str, form: Any) -> dict[str, Any]:
+        self.posting.set()
+        assert self.release.wait(5), "the test never released the post"
+        return super().post(path, form)
+
+
+def test_a_read_cannot_overlap_a_write_in_flight(tmp_path: Path) -> None:
+    archived = copy.deepcopy(ACCOUNT)
+    archived["routines"][0]["dateArchived"] = "2026-10-06 10:00:00"
+    client = _GatedClient({HISTORY: [ACCOUNT, archived, archived]})
+    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        write = pool.submit(
+            server.smartgym_archive_routines, _ctx(app), routines=["ZZ-FB"], dry_run=False
+        )
+        assert client.posting.wait(5)
+        reads_before = len(client.get_calls)
+        with pytest.raises(ToolError, match="nothing was sent"):
+            server.smartgym_list_routines(_ctx(app))
+        assert len(client.get_calls) == reads_before
+        client.release.set()
+        assert not write.result(timeout=5).dry_run
+    assert [path for path, _ in client.sent] == ["routine/archive/"]
+    assert server.smartgym_list_routines(_ctx(app)).routines == []  # free again; FB archived
+
+
+def test_close_waits_for_the_call_in_flight(tmp_path: Path) -> None:
+    client = account_client({HISTORY: ACCOUNT})
+    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
+    with app.use():
+        app.close()
+        assert not client.closed
+    app.close()
+    assert client.closed
