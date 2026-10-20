@@ -33,9 +33,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src
+      - run: uv run ruff check src tests scripts/smoke_stdio.py
+      - run: uv run ruff format --check src tests scripts/smoke_stdio.py
+      - run: uv run mypy src scripts/smoke_stdio.py
       - run: uv run pytest
 
   # Single stable check name for the main ruleset, independent of the matrix.
