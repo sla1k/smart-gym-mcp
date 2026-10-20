@@ -13,12 +13,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp import Client
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 
 from fakes import FakeClient, account_client
 from smartgym_mcp import server
 from smartgym_mcp.api.auth import CredentialsError, FileCredentials
-from smartgym_mcp.api.client import AuthError
+from smartgym_mcp.api.client import AuthError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.config import Config, load_config
@@ -135,8 +136,9 @@ def test_health_reports_credentials_problem(
 def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     app = server.AppContext(cfg=cfg)
-    with pytest.raises(CredentialsError, match="capture_credentials.py") as exc:
+    with pytest.raises(ToolError, match="capture_credentials.py") as exc:
         server.smartgym_list_routines(_ctx(app))
+    assert isinstance(exc.value.__cause__, CredentialsError)
     assert str(cfg.credentials_path) in str(exc.value)
 
     _write_credentials(
@@ -144,7 +146,7 @@ def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
         {"authorization": SECRET, "authID": "42", "app_headers": APP},
         0o644,
     )
-    with pytest.raises(CredentialsError, match="chmod 600"):
+    with pytest.raises(ToolError, match="chmod 600"):
         server.smartgym_update_routine(_ctx(app), routine="ZZ", note="x")
 
 
@@ -190,8 +192,9 @@ def test_recaptured_credentials_take_effect_after_an_auth_error(tmp_path: Path) 
     app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
     creds = {"authID": "1", "app_headers": APP}
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer expired"})
-    with pytest.raises(AuthError, match="rejected the credentials"):
+    with pytest.raises(ToolError, match="rejected the credentials") as exc:
         server.smartgym_list_routines(_ctx(app))
+    assert isinstance(exc.value.__cause__, AuthError)
     assert built[0].closed
 
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer fresh"})
@@ -215,6 +218,54 @@ def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
     assert not status.ok and status.problem is not None and "rejected" in status.problem
     assert server.smartgym_health(_ctx(app)).ok
     assert len(built) == 2 and built[0].closed
+
+
+# ---------------------------------------------------------------- tool errors
+class _UnknownOutcomeClient(FakeClient):
+    def post(self, path: str, form: Any) -> dict[str, Any]:
+        raise WriteOutcomeUnknown(
+            f"SmartGym did not answer {path} — the change may or may not have landed — "
+            "re-fetch before retrying."
+        )
+
+
+def test_anticipated_errors_reach_the_model_with_their_message(tmp_path: Path) -> None:
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
+    app = _fake_app(tmp_path, client)
+    with pytest.raises(ToolError, match="No routine matching 'nope'") as exc:
+        asyncio.run(
+            server.mcp.call_tool(
+                "smartgym_get_routine", {"routine": "nope"}, context=_ctx(app)
+            )
+        )
+    assert not isinstance(exc.value, UnexpectedToolError)
+
+    app = _fake_app(tmp_path, _UnknownOutcomeClient({HISTORY: ACCOUNT, SINGLE: _single()}))
+    arguments = {"exercise_id": 40000012, "rest_seconds": 120, "dry_run": False}
+    with pytest.raises(ToolError) as exc:
+        asyncio.run(
+            server.mcp.call_tool("smartgym_update_exercise", arguments, context=_ctx(app))
+        )
+    assert "re-fetch before retrying" in str(exc.value)
+    assert "Snapshot of the routine before this edit" in str(exc.value)
+
+
+def test_missing_credentials_reach_an_mcp_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(cfg.app_bundle))
+    monkeypatch.setenv("SMARTGYM_BACKUP_DIR", str(cfg.backup_dir))
+    monkeypatch.setenv("SMARTGYM_CREDENTIALS", str(cfg.credentials_path))
+
+    async def call() -> Any:
+        async with Client(server.mcp) as client:
+            return await client.call_tool("smartgym_list_routines", {})
+
+    result = asyncio.run(call())
+    assert result.is_error
+    text = result.content[0].text
+    assert "capture_credentials.py" in text and str(cfg.credentials_path) in text
 
 
 def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> None:

@@ -11,11 +11,12 @@ import logging
 import sys
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
@@ -28,7 +29,13 @@ from .diff import DesiredExercise, DesiredRoutine
 from .model import Section
 from .models import Days, Goal, RoutineSpec, SetSpec
 from .payloads import local_timezone_name
-from .service import ArchiveResult, CreateResult, EditResult, RoutineService
+from .service import (
+    ArchiveResult,
+    CreateResult,
+    EditResult,
+    RoutineService,
+    WriteVerifyError,
+)
 
 logger = logging.getLogger("smartgym_mcp")
 
@@ -137,9 +144,21 @@ def _app(ctx: Context[AppContext]) -> AppContext:
     return ctx.request_context.lifespan_context
 
 
-def _services(ctx: Context[AppContext]) -> AbstractContextManager[Services]:
-    """The one way tools reach the services (see AppContext.use)."""
-    return _app(ctx).use()
+# Failures whose message tells the model what to do next (fix the credentials, pick another
+# name, re-read before retrying a write of unknown outcome). MCP SDK 2 replaces the message
+# of any other exception with "Error executing tool <name>", so these become ToolError.
+_ANTICIPATED = (ApiError, CredentialsError, WriteVerifyError, ValueError, OSError)
+
+
+@contextmanager
+def _services(ctx: Context[AppContext]) -> Iterator[Services]:
+    """The one way tools reach the services (see AppContext.use). Keep the whole tool body
+    inside it, so its anticipated errors reach the model with their message."""
+    try:
+        with _app(ctx).use() as services:
+            yield services
+    except _ANTICIPATED as exc:
+        raise ToolError(str(exc)) from exc
 
 
 class HealthStatus(BaseModel):
@@ -307,8 +326,8 @@ def smartgym_update_routine(
     dry_run=true (default) shows old → new and sends NOTHING; dry_run=false snapshots the
     routine, sends the edit, and verifies it on the server.
     """
-    desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
     with _services(ctx) as services:
+        desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
@@ -455,10 +474,16 @@ def smartgym_apply_routine(
     (e.g. "2,4,6").
     dry_run=true (default) shows the full plan and sends NOTHING.
     """
-    desired = DesiredRoutine(
-        name=name, days=days, goal=goal, note=note, warmup=warmup, main=main, cooldown=cooldown
-    )
     with _services(ctx) as services:
+        desired = DesiredRoutine(
+            name=name,
+            days=days,
+            goal=goal,
+            note=note,
+            warmup=warmup,
+            main=main,
+            cooldown=cooldown,
+        )
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
