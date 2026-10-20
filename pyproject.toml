@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    "mcp[cli]>=2,<3",  # 3.x may break the MCPServer API; installs don't read uv.lock
+    "mcp>=2.3,<3",  # the tested 2.x API; installs don't read uv.lock
     "pydantic>=2",
     "httpx>=0.27",
 ]

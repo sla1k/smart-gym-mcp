@@ -151,6 +151,6 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 - **Versions come from git tags** (hatch-vcs): main builds are `0.(minor+1).0.devN`
   (`0.1.0.devN` before the first tag); only `vX.Y.Z` tags become GitHub Releases, so the page
   isn't flooded by a dev release per merge (immutable releases can't be replaced, only added).
-  Dev builds install from `@main` or `@<sha>`. `mcp` is pinned to major 2 (`>=2,<3`) in
-  `pyproject.toml`, since installs don't read `uv.lock`.
+  Dev builds install from `@main` or `@<sha>`. `mcp` is pinned to the tested 2.x API
+  (`>=2.3,<3`) in `pyproject.toml`, since installs don't read `uv.lock`.
 - **No rc tags:** dev builds of `main` are the testing period before a stable tag.
