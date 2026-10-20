@@ -16,7 +16,12 @@ from typing import Any
 
 import pytest
 from mcp import Client
-from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
+from mcp.server.mcpserver.exceptions import (
+    ResourceError,
+    ToolError,
+    UnexpectedResourceError,
+    UnexpectedToolError,
+)
 
 from fakes import FakeClient, account_client
 from smartgym_mcp import server
@@ -483,7 +488,7 @@ def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------- one call at a time
-CALLS: dict[str, WriteCall] = {
+READ_CALLS: dict[str, WriteCall] = {
     "list_routines": lambda c: server.smartgym_list_routines(c),
     "get_routine": lambda c: server.smartgym_get_routine(c, routine="ZZ-FB"),
     "workout_history": lambda c: server.smartgym_get_workout_history(c),
@@ -491,7 +496,7 @@ CALLS: dict[str, WriteCall] = {
 }
 
 
-ALL_CALLS = {**CALLS, **DRY_RUN_CALLS}
+ALL_CALLS = {**READ_CALLS, **DRY_RUN_CALLS}
 
 
 @pytest.mark.parametrize("call", ALL_CALLS.values(), ids=ALL_CALLS.keys())
@@ -556,3 +561,12 @@ def test_close_waits_for_the_call_in_flight(tmp_path: Path) -> None:
         assert not client.closed
     app.close()
     assert client.closed
+
+
+def test_missing_catalog_resource_keeps_its_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(tmp_path / "nowhere.app"))
+    with pytest.raises(ResourceError, match="SMARTGYM_APP_BUNDLE") as exc:
+        asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
+    assert not isinstance(exc.value, UnexpectedResourceError)

@@ -8,6 +8,7 @@ Tool calls run one at a time (DESIGN invariant 7).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import threading
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
@@ -120,7 +121,7 @@ class AppContext:
         """
         if not self._calls.acquire(timeout=self.call_wait_s):
             raise ServerBusy(
-                f"Another SmartGym call has been running for over {self.call_wait_s:.0f} s; "
+                f"Another SmartGym call was still running after waiting {self.call_wait_s:.0f} s; "
                 "nothing was sent. Try again once it finishes."
             )
         try:
@@ -157,7 +158,8 @@ async def lifespan(_server: MCPServer[AppContext]) -> AsyncIterator[AppContext]:
     try:
         yield app
     finally:
-        app.close()
+        # close() may wait for the call in flight; keep the event loop free meanwhile.
+        await asyncio.to_thread(app.close)
 
 
 mcp = MCPServer("smartgym_mcp", version=__version__, lifespan=lifespan)
@@ -531,22 +533,31 @@ def smartgym_unarchive_routine(
         return services.service.set_archived([routine], archived=False, dry_run=dry_run)
 
 
+def _read_catalog(name: str) -> str:
+    """MCP SDK 2 hides the message of any non-ResourceError, so a missing bundle file
+    surfaces as one (its message says where SmartGym was looked for)."""
+    try:
+        return catalog.read_catalog(load_config(), name)
+    except OSError as exc:
+        raise ResourceError(str(exc)) from exc
+
+
 @mcp.resource("smartgym://catalog/exercises", mime_type="application/json")
 def catalog_exercises() -> str:
     """Read-only exercise catalog from the SmartGym app bundle (Exercises.json)."""
-    return catalog.read_catalog(load_config(), "exercises")
+    return _read_catalog("exercises")
 
 
 @mcp.resource("smartgym://catalog/equipment", mime_type="application/json")
 def catalog_equipment() -> str:
     """Read-only equipment catalog from the SmartGym app bundle (Equipments.json)."""
-    return catalog.read_catalog(load_config(), "equipment")
+    return _read_catalog("equipment")
 
 
 @mcp.resource("smartgym://catalog/categories", mime_type="application/json")
 def catalog_categories() -> str:
     """Read-only category catalog from the SmartGym app bundle (Categories.json)."""
-    return catalog.read_catalog(load_config(), "categories")
+    return _read_catalog("categories")
 
 
 def main() -> None:
