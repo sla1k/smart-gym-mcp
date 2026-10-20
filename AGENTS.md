@@ -27,8 +27,11 @@ Project knowledge lives in shared docs — read them, don't rediscover:
   prefix. CI fails other names.
 - Name the branch before opening the PR; renaming it afterwards, locally or on GitHub, closes or
   orphans the PR.
-- Before pushing, run `uv run ruff check src tests`, `uv run ruff format --check src tests`,
-  `uv run mypy src` and `uv run pytest`.
+- Before pushing, run `uv run ruff check src tests scripts/smoke_stdio.py`,
+  `uv run ruff format --check src tests scripts/smoke_stdio.py`,
+  `uv run mypy src scripts/smoke_stdio.py` and `uv run pytest` — the same steps as CI.
+  `scripts/smoke_stdio.py` otherwise runs only in the release build after the merge;
+  `scripts/spike/` holds throwaway capture scripts and stays unchecked.
 - The PR description says what changed, why, and how it was verified.
 - Update the branch from `main` before merging; rebase merge only.
 
@@ -42,8 +45,8 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 ## Commands
 ```sh
 uv run pytest
-uv run ruff check src tests && uv run ruff format src tests
-uv run mypy src
+uv run ruff check src tests scripts/smoke_stdio.py && uv run ruff format src tests scripts/smoke_stdio.py
+uv run mypy src scripts/smoke_stdio.py
 uv run smartgym-mcp            # stdio server
 uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>   # install a release
 npx @modelcontextprotocol/inspector uv run smartgym-mcp   # MCP Inspector

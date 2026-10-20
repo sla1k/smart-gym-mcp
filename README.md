@@ -97,7 +97,7 @@ Issues and PRs welcome. Design notes live in [`DESIGN.md`](DESIGN.md), ideas in
 
 ```sh
 uv run pytest                                  # tests never touch your real data
-uv run ruff check src tests && uv run mypy src
+uv run ruff check src tests scripts/smoke_stdio.py && uv run mypy src scripts/smoke_stdio.py
 ```
 
 ## Disclaimer
