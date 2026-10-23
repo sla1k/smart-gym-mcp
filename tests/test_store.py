@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import threading
 from pathlib import Path
 
 import pytest
@@ -55,36 +54,6 @@ def test_custom_exercises_are_cached_until_ttl_or_invalidate() -> None:
     store.invalidate()
     store.custom_exercises()
     assert client.get_calls == [CUSTOM_EXERCISES] * 3
-
-
-def test_a_slow_account_read_does_not_block_the_custom_exercise_read() -> None:
-    customs = json.loads((FIX / "all_custom_exercises.json").read_text(encoding="utf-8"))
-    entered, release = threading.Event(), threading.Event()
-
-    class SlowHistory(FakeClient):
-        def get(self, path, params=None, *, require_success=True):  # type: ignore[no-untyped-def]
-            if path == HISTORY:
-                entered.set()
-                release.wait(5)
-            return super().get(path, params, require_success=require_success)
-
-    client = SlowHistory({HISTORY: ACCOUNT, CUSTOM_EXERCISES: customs["response"]})
-    store = _store(client)
-    reader = threading.Thread(target=store.data)
-    reader.start()
-    names: list[str] = []
-    custom = threading.Thread(
-        target=lambda: names.extend(c.name for c in store.custom_exercises())
-    )
-    try:
-        assert entered.wait(5)
-        custom.start()
-        custom.join(2)
-        assert names == ["Dead Hang"], "custom read waited for the account read"
-    finally:
-        release.set()
-        reader.join(5)
-        custom.join(5)
 
 
 def test_resolve_by_id_exact_name_and_substring() -> None:

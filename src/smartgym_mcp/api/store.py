@@ -8,10 +8,9 @@ are cached briefly and dropped after every write. Writes always work on a fresh
 
 from __future__ import annotations
 
-import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ..catalog import CatalogExercise
@@ -29,14 +28,15 @@ class AmbiguousRoutine(ValueError):
 
 @dataclass
 class _Slot[T]:
-    """One cached read, with its own lock: a slow read never waits on another one."""
+    """One cached read."""
 
     value: T | None = None
     at: float = 0.0
-    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class AccountStore:
+    """Not thread-safe: the server runs tool calls one at a time (DESIGN invariant 7)."""
+
     def __init__(
         self,
         client: ApiCalls,
@@ -51,11 +51,10 @@ class AccountStore:
         self._customs = _Slot[list[CatalogExercise]]()
 
     def _read[T](self, slot: _Slot[T], load: Callable[[], T]) -> T:
-        with slot.lock:
-            if slot.value is None or self._clock() - slot.at > self._ttl:
-                slot.value = load()
-                slot.at = self._clock()
-            return slot.value
+        if slot.value is None or self._clock() - slot.at > self._ttl:
+            slot.value = load()
+            slot.at = self._clock()
+        return slot.value
 
     def data(self) -> AccountData:
         return self._read(
@@ -73,8 +72,7 @@ class AccountStore:
 
     def invalidate(self) -> None:
         for slot in (self._account, self._customs):
-            with slot.lock:
-                slot.value = None
+            slot.value = None
 
     def routine_raw(self, identifier: int) -> dict[str, Any]:
         body = self._client.get(f"routine/single/{identifier}/")

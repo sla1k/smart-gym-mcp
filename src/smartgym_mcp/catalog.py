@@ -27,7 +27,10 @@ def read_catalog(cfg: Config, name: str) -> str:
             f"Catalog {filename} not found at {path}. "
             "Is SmartGym installed at SMARTGYM_APP_BUNDLE?"
         )
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Catalog {filename} at {path} is not valid UTF-8: {exc}") from exc
 
 
 def installed_app_version(cfg: Config) -> str | None:

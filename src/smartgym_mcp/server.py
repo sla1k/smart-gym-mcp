@@ -12,11 +12,13 @@ import asyncio
 import logging
 import sys
 import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
+import anyio.from_thread
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ToolAnnotations
@@ -90,12 +92,30 @@ def build_services(cfg: Config) -> Services:
         raise
 
 
-# Covers a slow write: each request has a 30 s timeout and reads retry.
-CALL_WAIT_S = 60.0
+# Longer than a write can run: one read is up to 3 attempts × 30 s plus backoff (~92 s),
+# and an edit makes up to five reads and one 30 s post (~8 min). A call whose client
+# cancels it or disconnects stops waiting at once (see _stop_if_cancelled).
+CALL_WAIT_S = 600.0
+_POLL_S = 0.2  # how often a waiting call checks whether it was cancelled
 
 
 class ServerBusy(RuntimeError):
     """Another tool call held the services for longer than the wait allows."""
+
+
+class ServerClosed(RuntimeError):
+    """The server is shutting down; no new call may start."""
+
+
+def _stop_if_cancelled() -> None:
+    """Raise if the client cancelled this tool call or disconnected.
+
+    MCP SDK 2 runs sync tools via anyio.to_thread.run_sync, which can't stop the thread:
+    cancelling the call only cancels the host task's scope, and the thread runs on. A call
+    waiting for the lock checks that scope, so a call nobody waits for never sends anything.
+    """
+    with suppress(RuntimeError):  # not on an AnyIO worker thread (e.g. a direct call)
+        anyio.from_thread.check_cancelled()
 
 
 @dataclass
@@ -105,6 +125,30 @@ class AppContext:
     call_wait_s: float = CALL_WAIT_S
     _calls: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _services: Services | None = field(default=None, init=False, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    def _acquire(self) -> None:
+        """Take the call lock, or raise before anything is sent: ServerBusy after
+        `call_wait_s`, ServerClosed after close(), or the cancellation of this call."""
+        deadline = time.monotonic() + self.call_wait_s
+        while not self._calls.acquire(
+            timeout=max(0.0, min(_POLL_S, deadline - time.monotonic()))
+        ):
+            _stop_if_cancelled()
+            if time.monotonic() >= deadline:
+                raise ServerBusy(
+                    "Another SmartGym call was still running after waiting "
+                    f"{self.call_wait_s:.0f} s; nothing was sent. Try again once it finishes."
+                )
+        try:
+            _stop_if_cancelled()
+            if self._closed:
+                raise ServerClosed(
+                    "The SmartGym MCP server is shutting down; nothing was sent."
+                )
+        except BaseException:
+            self._calls.release()
+            raise
 
     @contextmanager
     def use(self) -> Iterator[Services]:
@@ -112,18 +156,14 @@ class AppContext:
 
         MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
         lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
-        can't start within `call_wait_s` fails with ServerBusy before sending anything.
+        can't start (see _acquire) fails before sending anything.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the
         credentials file — a re-captured session takes effect without restarting the
         server. The error itself propagates unchanged.
         """
-        if not self._calls.acquire(timeout=self.call_wait_s):
-            raise ServerBusy(
-                f"Another SmartGym call was still running after waiting {self.call_wait_s:.0f} s; "
-                "nothing was sent. Try again once it finishes."
-            )
+        self._acquire()
         try:
             if self._services is None:
                 self._services = self.factory(self.cfg)
@@ -138,8 +178,10 @@ class AppContext:
             self._calls.release()
 
     def close(self) -> None:
-        """Close the client once the call in flight (if any) is done. If it is still running
-        after `call_wait_s`, the client is left open rather than closed under its requests."""
+        """Stop new calls, then close the client once the call in flight (if any) is done.
+        If it is still running after `call_wait_s`, the client is left open rather than
+        closed under its requests."""
+        self._closed = True  # a call queued behind this one must not rebuild the services
         if not self._calls.acquire(timeout=self.call_wait_s):
             logger.warning("a tool call is still running; leaving its client open")
             return
@@ -172,18 +214,33 @@ def _app(ctx: Context[AppContext]) -> AppContext:
 # Failures whose message tells the model what to do next (fix the credentials, pick another
 # name, re-read before retrying a write of unknown outcome). MCP SDK 2 replaces the message
 # of any other exception with "Error executing tool <name>", so these become ToolError.
-_ANTICIPATED = (ApiError, CredentialsError, WriteVerifyError, ServerBusy, ValueError, OSError)
+_ANTICIPATED = (
+    ApiError,
+    CredentialsError,
+    WriteVerifyError,
+    ServerBusy,
+    ServerClosed,
+    ValueError,
+    OSError,
+)
+
+
+@contextmanager
+def _tool_errors() -> Iterator[None]:
+    """Anticipated errors inside reach the model with their message. For input checks that
+    need no services, so they run before the call lock and the services build."""
+    try:
+        yield
+    except _ANTICIPATED as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @contextmanager
 def _services(ctx: Context[AppContext]) -> Iterator[Services]:
-    """The one way tools reach the services (see AppContext.use). Keep the whole tool body
-    inside it, so its anticipated errors reach the model with their message."""
-    try:
-        with _app(ctx).use() as services:
-            yield services
-    except _ANTICIPATED as exc:
-        raise ToolError(str(exc)) from exc
+    """The one way tools reach the services (see AppContext.use). Keep the rest of the tool
+    body inside it, so its anticipated errors reach the model with their message."""
+    with _tool_errors(), _app(ctx).use() as services:
+        yield services
 
 
 class HealthStatus(BaseModel):
@@ -216,7 +273,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     try:
         with app.use() as services:
             data = services.store.data()
-    except (CredentialsError, ApiError, ServerBusy, ValueError, KeyError, OSError) as exc:
+    except (*_ANTICIPATED, KeyError) as exc:
         return HealthStatus(
             ok=False,
             routines=None,
@@ -351,8 +408,9 @@ def smartgym_update_routine(
     dry_run=true (default) shows old → new and sends NOTHING; dry_run=false snapshots the
     routine, sends the edit, and verifies it on the server.
     """
-    with _services(ctx) as services:
+    with _tool_errors():
         desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
+    with _services(ctx) as services:
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
@@ -499,7 +557,7 @@ def smartgym_apply_routine(
     (e.g. "2,4,6").
     dry_run=true (default) shows the full plan and sends NOTHING.
     """
-    with _services(ctx) as services:
+    with _tool_errors():
         desired = DesiredRoutine(
             name=name,
             days=days,
@@ -509,6 +567,7 @@ def smartgym_apply_routine(
             main=main,
             cooldown=cooldown,
         )
+    with _services(ctx) as services:
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
@@ -534,11 +593,11 @@ def smartgym_unarchive_routine(
 
 
 def _read_catalog(name: str) -> str:
-    """MCP SDK 2 hides the message of any non-ResourceError, so a missing bundle file
-    surfaces as one (its message says where SmartGym was looked for)."""
+    """MCP SDK 2 hides the message of any non-ResourceError, so a missing or unreadable
+    bundle file surfaces as one (its message names the file and where it was looked for)."""
     try:
         return catalog.read_catalog(load_config(), name)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise ResourceError(str(exc)) from exc
 
 

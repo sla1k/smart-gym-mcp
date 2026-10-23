@@ -7,6 +7,7 @@ import copy
 import json
 import plistlib
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -14,6 +15,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import anyio
+import anyio.to_thread
 import pytest
 from mcp import Client
 from mcp.server.mcpserver.exceptions import (
@@ -563,6 +566,61 @@ def test_close_waits_for_the_call_in_flight(tmp_path: Path) -> None:
     assert client.closed
 
 
+def test_a_cancelled_call_stops_waiting_and_sends_nothing(tmp_path: Path) -> None:
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
+    app = replace(_fake_app(tmp_path, client), call_wait_s=3)  # far past the cancellation
+
+    def archive() -> Any:
+        return server.smartgym_archive_routines(_ctx(app), routines=["ZZ-FB"], dry_run=False)
+
+    async def cancel_while_waiting() -> None:
+        with app.use(), anyio.move_on_after(0.5):  # another call in flight
+            await anyio.to_thread.run_sync(archive)  # as MCP SDK 2 runs sync tools
+
+    started = time.monotonic()
+    asyncio.run(cancel_while_waiting())
+    assert time.monotonic() - started < 2
+    assert client.get_calls == [] and client.sent == []
+
+
+def test_no_call_starts_after_close(tmp_path: Path) -> None:
+    client = account_client({HISTORY: ACCOUNT})
+    built: list[Config] = []
+    app = _fake_app(tmp_path, client)
+    factory = app.factory
+    app.factory = lambda cfg: built.append(cfg) or factory(cfg)  # type: ignore[func-returns-value]
+    app.close()
+    with pytest.raises(ToolError, match="shutting down"):
+        server.smartgym_list_routines(_ctx(app))
+    status = server.smartgym_health(_ctx(app))
+    assert not status.ok and status.problem is not None and "shutting down" in status.problem
+    assert built == [] and client.get_calls == []
+
+
+def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
+    app = server.AppContext(cfg=_cfg(tmp_path))  # no credentials file, full wait
+    calls: dict[str, WriteCall] = {
+        "update_routine": lambda c: server.smartgym_update_routine(c, routine="ZZ-FB"),
+        "apply_routine": lambda c: server.smartgym_apply_routine(
+            c,
+            routine="ZZ-FB",
+            main=[{"exercise_id": 1, "exercise": "Plank"}],  # type: ignore[list-item]
+        ),
+    }
+    for call in calls.values():
+        with pytest.raises(ToolError, match="Pass at least one of|exactly one of"):
+            call(_ctx(app))  # the input problem, not the missing credentials
+    assert app._calls.acquire(timeout=1)  # another call in flight
+    try:
+        started = time.monotonic()
+        for call in calls.values():
+            with pytest.raises(ToolError, match="Pass at least one of|exactly one of"):
+                call(_ctx(app))
+        assert time.monotonic() - started < 5
+    finally:
+        app._calls.release()
+
+
 def test_missing_catalog_resource_keeps_its_message(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -570,3 +628,17 @@ def test_missing_catalog_resource_keeps_its_message(
     with pytest.raises(ResourceError, match="SMARTGYM_APP_BUNDLE") as exc:
         asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
     assert not isinstance(exc.value, UnexpectedResourceError)
+
+
+def test_undecodable_catalog_resource_keeps_its_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = tmp_path / "SmartGym.app"
+    resources = bundle / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    (resources / "Exercises.json").write_bytes(b"\xff\xfe not utf-8")
+    monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(bundle))
+    with pytest.raises(ResourceError, match="Exercises.json") as exc:
+        asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
+    assert not isinstance(exc.value, UnexpectedResourceError)
+    assert "not valid UTF-8" in str(exc.value)
