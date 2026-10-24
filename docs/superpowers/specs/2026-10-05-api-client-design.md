@@ -84,7 +84,7 @@ the changed fields plus `routineID`, `days`, `goal` (always re-sent). Two endpoi
 | reorder | `routine/update/` | `exercisesOrder="<id>:0,<id>:1,…"` | `update_reorder` |
 | add exercise | `routine/update/` | `exercises=[<full exercise JSON as in routine/add, with routineID, idx/index, sets[]>]`; response maps `original_id` → `server_id` for the exercise and its sets | `update_add_exercise` |
 | remove exercise | `routine/update/` | `removeExercises=<id>` | `update_remove_exercise` |
-| add + remove in one save | `routine/update/` | both of the above | `update_add_and_remove_exercise` |
+| add + remove in one save | `routine/update/` | both of the above | — (captured, not kept: no test used it) |
 | add set | `routine/updateExercise/` | `exercises=[{"exerciseID":<id>,"addedSets":[{routineID,index,uniqueHashID,firstValue,secondValue,thirdValue,type,uniqueExerciseID}]}]` | `update_add_set` |
 | change set | `routine/updateExercise/` | `…"updatedSets":[{identifier,index,uniqueHashID,firstValue,secondValue,thirdValue,type,dateAdded}]` | `update_change_set` |
 | remove set | `routine/updateExercise/` | `…"removedSets":[{identifier, …full set…}]` | `update_remove_set` |
@@ -102,7 +102,7 @@ back (no `routine/add` / `routine/update`).
 equipmentLists[], goal}`; routines carry the full tree (`identifier`, `uniqueHashID`, `name`,
 `days` as `"2,4,6"`, `note`, `dateArchived`, `dateRemoved`, `exercises[]` with `id`, `idx`,
 `pause`, `note`, `dateRemoved`, `superset`, `sets[]` with `dateLogged`, `dateRemoved`,
-`secondValue`, `thirdValue`, `serverID`). Fixture `history_all_incremental`.
+`secondValue`, `thirdValue`, `serverID`). (The incremental capture was not kept as a fixture.)
 
 Notes: exercise ids in these calls are server exercise identifiers. The app's own
 `routine/add/` also sends local placeholder `identifier`s and `routineID` on exercises;
@@ -340,8 +340,8 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 | `exercise/allCustomExercises/` (GET, no params) lists every custom exercise: `id` (≥ 397744, beyond the bundle's ids), `name`, `type`, `category`, `subCategories`, `equipments`, `twoSides`, `isCustom: "1"`, `dateRemoved`, image fields. `history/all/`'s `customExercises[]` has the same shape but **only the ones already used in a routine** (live 2026-10-18: a new, unused one was missing), so it is not used | `all_custom_exercises`, `history_all_custom` |
 | A routine exercise of a custom exercise is an ordinary routine exercise: `id` = the custom id, `isCustom: "1"`; edits address it by its routine-exercise `identifier` like any other | `history_all_custom`, `update_custom_*` |
 | Create / add: the app sends `id` = `genericID` = custom id, `isCustom: 1`, and **no** `stretch`, `subCategories`, `secondImage`…`sixthImage`; `firstImage` is a local name ("deadhang1") — the server keeps the custom exercise's own empty one, so the MCP sends that | `add_routine_custom`, `update_add_custom_exercise` |
-| The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note`, `update_custom_remove_set` |
-| Removing a custom exercise from a routine = plain `removeExercises` | `update_remove_custom_exercise` |
+| The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note` |
+| Removing a custom exercise from a routine = plain `removeExercises` | — (captured, not kept: no test used it) |
 
 Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed and malformed
 ones skipped — a malformed one is logged — cached like the account read). `RoutineService`
