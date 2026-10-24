@@ -124,16 +124,6 @@ class ChangeSet(BaseModel):
     warnings: list[str]
     expected: RoutineView
 
-    @property
-    def is_empty(self) -> bool:
-        return not (
-            self.routine_changes
-            or self.added
-            or self.removed
-            or self.updated
-            or self.final_order is not None
-        )
-
 
 @dataclass(frozen=True)
 class _Slot:

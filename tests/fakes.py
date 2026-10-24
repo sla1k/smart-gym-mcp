@@ -89,6 +89,8 @@ ACCOUNT: dict[str, Any] = json.loads(
 )
 HISTORY = "history/all/1/"
 SINGLE = "routine/single/3000001/"
+UPDATE = "routine/update/"
+EDIT = "routine/updateExercise/"
 TZ = "Europe/Madrid"
 SECRET = "Bearer s3cr3t-token"
 APP = {"user-agent": "SmartGym/8.0.3", "accept": "*/*", "accept-language": "en-GB"}
