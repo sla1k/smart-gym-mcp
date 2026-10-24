@@ -246,7 +246,11 @@ class RoutineService:
             if readd is not cs:
                 _, exercises = self._exercises()
             cs = readd
-        if cs.is_empty:
+        now = self._now()
+        requests = encode_change(
+            cs, current, exercises, timezone=self._tz, now=now, mint=self._mint
+        )
+        if not requests:
             return EditResult(
                 dry_run=dry_run,
                 routine=handle,
@@ -255,18 +259,6 @@ class RoutineService:
                 snapshot=None,
                 notice="Nothing to change — the routine already looks like that.",
             )
-        now = self._now()
-        enc = encode_change(
-            cs, current, exercises, timezone=self._tz, now=now, mint=self._mint
-        )
-        requests = [
-            (path, form)
-            for path, form in (
-                ("routine/update/", enc.structure),
-                ("routine/updateExercise/", enc.exercise_edits),
-            )
-            if form is not None
-        ]
         planned = [path for path, _ in requests]
         if dry_run:
             return EditResult(

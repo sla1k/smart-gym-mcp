@@ -17,7 +17,6 @@ import json
 import os
 import random
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -193,20 +192,6 @@ def unarchive_form(routine_identifier: int) -> dict[str, str]:
     return {"routineID": str(routine_identifier)}
 
 
-@dataclass(frozen=True)
-class EncodedChange:
-    """A ChangeSet as at most two requests; together they are the whole change.
-
-    `structure` → `routine/update/`, `exercise_edits` → `routine/updateExercise/`.
-    `added_hashids[k]` is the client `uniqueHashID` of `ChangeSet.added[k]`, which the
-    server's response maps to its new identifier.
-    """
-
-    structure: dict[str, str] | None
-    exercise_edits: dict[str, str] | None
-    added_hashids: list[int]
-
-
 def _routine_base(cs: ChangeSet, current: Routine, timezone: str) -> dict[str, str]:
     form = {"routineID": str(current.identifier), "timezone": timezone}
     if cs.expected.days is not None:
@@ -242,7 +227,7 @@ def _structure(
     timezone: str,
     now: datetime,
     mint: Mint,
-) -> tuple[dict[str, str] | None, list[int]]:
+) -> dict[str, str] | None:
     form = _routine_base(cs, current, timezone)
     for c in cs.routine_changes:
         form[c.field] = c.new or ""
@@ -251,7 +236,6 @@ def _structure(
         form["updateExercises"] = _json(entries)
     if cs.removed:
         form["removeExercises"] = ",".join(str(r.identifier) for r in cs.removed)
-    hashids: list[int] = []
     if cs.added:
         payloads = []
         for a in cs.added:
@@ -262,19 +246,19 @@ def _structure(
                     "nor one of the account's custom exercises any more, so it cannot be "
                     "added (back). Leave it where it is or remove it."
                 )
-            p = exercise_payload(
-                cat,
-                section=a.section,
-                idx=a.position,
-                rest_seconds=a.rest_seconds,
-                note=a.note,
-                sets=a.sets,
-                now=now,
-                mint=mint,
-                routine_identifier=current.identifier,
+            payloads.append(
+                exercise_payload(
+                    cat,
+                    section=a.section,
+                    idx=a.position,
+                    rest_seconds=a.rest_seconds,
+                    note=a.note,
+                    sets=a.sets,
+                    now=now,
+                    mint=mint,
+                    routine_identifier=current.identifier,
+                )
             )
-            payloads.append(p)
-            hashids.append(int(p["uniqueHashID"]))
         form["exercises"] = _json(payloads)
     if cs.final_order is not None:
         form["exercisesOrder"] = ",".join(
@@ -285,7 +269,7 @@ def _structure(
     meaningful = (
         cs.routine_changes or entries or cs.removed or cs.added or cs.final_order is not None
     )
-    return (form if meaningful else None), hashids
+    return form if meaningful else None
 
 
 def _existing_set(
@@ -357,12 +341,20 @@ def encode_change(
     timezone: str,
     now: datetime,
     mint: Mint = mint_unique_hashid,
-) -> EncodedChange:
-    structure, hashids = _structure(
-        cs, current, catalog, timezone=timezone, now=now, mint=mint
+) -> list[tuple[str, dict[str, str]]]:
+    """A ChangeSet as the `(path, form)` requests that together make the whole change.
+
+    At most two, in this order: `routine/update/` (structure), `routine/updateExercise/`
+    (notes and sets). An empty list means there is nothing to send.
+    """
+    requests = (
+        (
+            "routine/update/",
+            _structure(cs, current, catalog, timezone=timezone, now=now, mint=mint),
+        ),
+        (
+            "routine/updateExercise/",
+            _exercise_edits(cs, current, timezone=timezone, now=now, mint=mint),
+        ),
     )
-    return EncodedChange(
-        structure=structure,
-        exercise_edits=_exercise_edits(cs, current, timezone=timezone, now=now, mint=mint),
-        added_hashids=hashids,
-    )
+    return [(path, form) for path, form in requests if form is not None]

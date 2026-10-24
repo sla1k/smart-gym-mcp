@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 
-from fakes import by_id
+from fakes import TZ, by_id
 from smartgym_mcp.diff import (
+    ChangeSet,
     DesiredExercise,
     DesiredRoutine,
     DiffError,
@@ -17,6 +20,7 @@ from smartgym_mcp.diff import (
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.payloads import encode_change
 
 CATALOG = ExerciseCatalog(
     [
@@ -27,6 +31,7 @@ CATALOG = ExerciseCatalog(
         (400, "Cross Arm Stretch"),
     ]
 )
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 LAYOUT = {"warmup": [10], "main": [11, 12, 13], "cooldown": [14]}
 
 
@@ -102,14 +107,20 @@ def _same(**over: DesiredExercise) -> dict[str, list[DesiredExercise]]:
     }
 
 
+def _sends_nothing(cs: ChangeSet, current: Routine) -> bool:
+    """The change encodes to no request (an add would need the catalog and fail here)."""
+    return encode_change(cs, current, {}, timezone=TZ, now=NOW) == []
+
+
 def test_nothing_requested_is_empty_and_expected_equals_current() -> None:
     cs = diff_routine(_routine(), DesiredRoutine(), CATALOG)
-    assert cs.is_empty
+    assert _sends_nothing(cs, _routine())
     assert cs.expected == view_of(_routine())
 
 
 def test_listing_every_section_unchanged_is_empty() -> None:
-    assert diff_routine(_routine(), DesiredRoutine.model_validate(_same()), CATALOG).is_empty
+    cs = diff_routine(_routine(), DesiredRoutine.model_validate(_same()), CATALOG)
+    assert _sends_nothing(cs, _routine())
 
 
 def test_routine_fields_change_and_empty_string_clears() -> None:
@@ -305,16 +316,16 @@ def test_float_noise_from_server_is_not_a_change() -> None:
     routine = _routine()
     routine.exercises[1].template_sets = _sets((12.300000190734863, 20), base=110)
     want = DesiredExercise(exercise_id=11, sets=[SetSpec(reps=12.3, weight_kg=20)])
-    assert diff_routine(
-        routine, DesiredRoutine.model_validate(_same(e11=want)), CATALOG
-    ).is_empty
+    cs = diff_routine(routine, DesiredRoutine.model_validate(_same(e11=want)), CATALOG)
+    assert _sends_nothing(cs, routine)
 
 
 def test_section_order_wins_over_inconsistent_server_indexes() -> None:
     routine = _routine()
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
     assert [e.identifier for e in routine.active_exercises()] == [10, 11, 12, 13, 14]
-    assert diff_routine(routine, DesiredRoutine.model_validate(_same()), CATALOG).is_empty
+    cs = diff_routine(routine, DesiredRoutine.model_validate(_same()), CATALOG)
+    assert _sends_nothing(cs, routine)
 
 
 def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
