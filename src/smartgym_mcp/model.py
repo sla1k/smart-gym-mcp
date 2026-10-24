@@ -214,14 +214,7 @@ def parse_routine(raw: Mapping[str, Any]) -> Routine:
     )
 
 
-def _check_success(raw: Mapping[str, Any]) -> None:
-    code = raw.get("code")
-    if code != "SUCCESS":
-        raise ApiPayloadError(f"SmartGym API answered {code!r} instead of SUCCESS.")
-
-
 def parse_routines_response(raw: Mapping[str, Any]) -> list[Routine]:
-    _check_success(raw)
     return [parse_routine(r) for r in raw.get("routines") or []]
 
 
@@ -286,7 +279,6 @@ def parse_custom_exercises(raw: Mapping[str, Any]) -> list[CatalogExercise]:
     """`exercise/allCustomExercises/` → the account's live custom exercises. (`history/all/`
     lists only those already used in a routine.) A malformed record is skipped and logged,
     so one bad exercise cannot block every write."""
-    _check_success(raw)
     out: list[CatalogExercise] = []
     for c in raw.get("exercises") or []:
         if _present(c.get("dateRemoved")):
@@ -306,7 +298,6 @@ def _has_workout_start(history: Mapping[str, Any]) -> bool:
 
 
 def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
-    _check_success(raw)
     if str(raw.get("hasMore", False)).lower() in ("true", "1"):
         raise ApiPayloadError(
             "SmartGym returned a partial history (hasMore=true); paging is not supported, "

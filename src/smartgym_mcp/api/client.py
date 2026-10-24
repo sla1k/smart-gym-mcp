@@ -39,21 +39,13 @@ class ApiCalls(Protocol):
     @property
     def user_id(self) -> str: ...
 
-    def get(
-        self,
-        path: str,
-        params: Mapping[str, str] | None = None,
-        *,
-        require_success: bool = True,
-    ) -> dict[str, Any]: ...
+    def get(self, path: str) -> dict[str, Any]: ...
 
     def post(self, path: str, form: Mapping[str, str]) -> dict[str, Any]: ...
 
 
 class ApiError(RuntimeError):
-    def __init__(self, message: str, *, code: str | None = None) -> None:
-        super().__init__(message)
-        self.code = code
+    pass
 
 
 class AuthError(ApiError):
@@ -74,7 +66,6 @@ class ApiClient:
         credentials: CredentialProvider,
         *,
         app_version: str,
-        base_url: str = BASE_URL,
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], datetime] = _utcnow,
         sleep: Callable[[float], None] = time.sleep,
@@ -85,7 +76,7 @@ class ApiClient:
         self._clock = clock
         self._sleep = sleep
         self._max_read_attempts = max_read_attempts
-        self._http = httpx.Client(base_url=base_url, transport=transport, timeout=_TIMEOUT_S)
+        self._http = httpx.Client(base_url=BASE_URL, transport=transport, timeout=_TIMEOUT_S)
 
     def __repr__(self) -> str:
         return f"ApiClient(base_url={str(self._http.base_url)!r})"
@@ -109,15 +100,9 @@ class ApiClient:
             "requestDate": self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
-    def get(
-        self,
-        path: str,
-        params: Mapping[str, str] | None = None,
-        *,
-        require_success: bool = True,
-    ) -> dict[str, Any]:
+    def get(self, path: str) -> dict[str, Any]:
         shown = self._safe_path(path)
-        query = {**(params or {}), **self._common()}
+        query = self._common()
         last: Exception | None = None
         last_status: int | None = None
         for attempt in range(self._max_read_attempts):
@@ -137,7 +122,7 @@ class ApiClient:
                     "GET %s HTTP %d (attempt %d)", shown, resp.status_code, attempt + 1
                 )
                 continue
-            return self._decode(shown, resp, require_success)
+            return self._decode(shown, resp)
         if last_status is not None:
             raise ApiError(
                 f"SmartGym server error HTTP {last_status} on {shown} after "
@@ -175,7 +160,7 @@ class ApiClient:
                     f"body during write to {shown}; the change may or may not have landed — "
                     "re-fetch before retrying."
                 ) from None
-        return self._decode(shown, resp, require_success=True)
+        return self._decode(shown, resp)
 
     @staticmethod
     def _server_code(resp: httpx.Response) -> str | None:
@@ -187,23 +172,19 @@ class ApiClient:
         return str(code) if code is not None else None
 
     @classmethod
-    def _decode(
-        cls, shown: str, resp: httpx.Response, require_success: bool
-    ) -> dict[str, Any]:
+    def _decode(cls, shown: str, resp: httpx.Response) -> dict[str, Any]:
         if resp.status_code in (401, 403):
             code = cls._server_code(resp)
             raise AuthError(
                 f"SmartGym rejected the credentials (HTTP {resp.status_code}"
                 f"{', ' + code if code else ''}) on {shown}. "
-                "Re-run scripts/capture_credentials.py and retry.",
-                code=code,
+                "Re-run scripts/capture_credentials.py and retry."
             )
         if not 200 <= resp.status_code < 300:
             code = cls._server_code(resp)
             raise ApiError(
                 f"SmartGym answered HTTP {resp.status_code}{' ' + code if code else ''} "
-                f"on {shown}.",
-                code=code,
+                f"on {shown}."
             )
         try:
             body = resp.json()
@@ -212,11 +193,8 @@ class ApiClient:
         if not isinstance(body, dict):
             raise ApiError(f"SmartGym returned an unexpected JSON shape on {shown}.")
         code = body.get("code")
-        if require_success and code != "SUCCESS":
-            raise ApiError(
-                f"SmartGym answered {code!r} on {shown}.",
-                code=str(code) if code is not None else None,
-            )
+        if code != "SUCCESS":
+            raise ApiError(f"SmartGym answered {code!r} on {shown}.")
         return body
 
 

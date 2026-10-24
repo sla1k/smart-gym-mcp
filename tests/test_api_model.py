@@ -56,11 +56,6 @@ def test_template_sets_exclude_logged_and_removed_and_sort_by_index() -> None:
     assert chest.note is None  # "" normalizes to None
 
 
-def test_non_success_code_raises() -> None:
-    with pytest.raises(ApiPayloadError, match="ROUTINE_NOT_FOUND"):
-        parse_routines_response({"code": "ROUTINE_NOT_FOUND"})
-
-
 def test_missing_required_field_raises_payload_error() -> None:
     raw = _raw()["routines"][0]
     del raw["identifier"]
@@ -190,8 +185,3 @@ def test_has_more_is_refused_rather_than_truncated() -> None:
     raw["hasMore"] = True
     with pytest.raises(ApiPayloadError, match="hasMore"):
         parse_history_all(raw)
-
-
-def test_history_non_success_raises() -> None:
-    with pytest.raises(ApiPayloadError, match="INVALID_TOKEN"):
-        parse_history_all({"code": "INVALID_TOKEN"})

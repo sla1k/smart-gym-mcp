@@ -29,13 +29,7 @@ class FakeClient:
         self.get_calls: list[str] = []
         self.closed = False
 
-    def get(
-        self,
-        path: str,
-        params: Mapping[str, str] | None = None,  # noqa: ARG002 — mirrors ApiClient.get
-        *,
-        require_success: bool = True,  # noqa: ARG002
-    ) -> dict[str, Any]:
+    def get(self, path: str) -> dict[str, Any]:
         self.get_calls.append(path)
         queue = self._gets[path]
         body = queue.pop(0) if len(queue) > 1 else queue[0]

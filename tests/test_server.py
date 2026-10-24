@@ -229,10 +229,10 @@ class _SessionClient(FakeClient):
         super().__init__({HISTORY: ACCOUNT})
         self.expired = authorization == "Bearer expired"
 
-    def get(self, path: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def get(self, path: str) -> dict[str, Any]:
         if self.expired:
-            raise AuthError("SmartGym rejected the credentials (HTTP 401).", code="401")
-        return super().get(path, *args, **kwargs)
+            raise AuthError("SmartGym rejected the credentials (HTTP 401).")
+        return super().get(path)
 
 
 def test_recaptured_credentials_take_effect_after_an_auth_error(tmp_path: Path) -> None:

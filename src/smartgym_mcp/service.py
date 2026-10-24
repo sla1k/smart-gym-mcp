@@ -151,8 +151,6 @@ def _payload_view(payload: Mapping[str, Any]) -> RoutineView:
 
 def _with_context(exc: Exception, suffix: str) -> Exception:
     """The same exception class with `suffix` appended — callers match on the class."""
-    if isinstance(exc, ApiError):
-        return type(exc)(f"{exc}{suffix}", code=exc.code)
     return type(exc)(f"{exc}{suffix}")
 
 

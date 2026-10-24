@@ -216,7 +216,7 @@ def test_unknown_outcome_rereads_and_reports_whether_it_landed(
 def test_failed_first_request_lists_the_requests_never_sent(tmp_path: Path) -> None:
     client = account_client(
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
-        posts=[ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
+        posts=[ApiError("SmartGym answered 'FAIL'.")],
     )
     build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
@@ -229,18 +229,21 @@ def test_failed_first_request_lists_the_requests_never_sent(tmp_path: Path) -> N
     assert [path for path, _ in client.sent] == ["routine/update/"]
 
 
-def test_failed_second_request_keeps_class_code_and_reports_progress(tmp_path: Path) -> None:
+def test_failed_second_request_keeps_class_message_and_reports_progress(
+    tmp_path: Path,
+) -> None:
     client = account_client(
         {HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)},
-        posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
+        posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.")],
     )
     build = lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(ApiError) as exc:
         _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
-    assert type(exc.value) is ApiError and exc.value.code == "FAIL"
+    assert type(exc.value) is ApiError
     message = str(exc.value)
+    assert message.startswith("SmartGym answered 'FAIL'.")
     assert "Already sent: routine/update/" in message
     assert "Failed: routine/updateExercise/" in message
     assert "Not sent" not in message
@@ -543,13 +546,14 @@ def test_failing_create_verification_read_keeps_class_and_reports_what_was_sent(
     tmp_path: Path,
 ) -> None:
     client = account_client(
-        {HISTORY: [_account(BEFORE), ApiError("SmartGym answered 'FAIL'.", code="FAIL")]}
+        {HISTORY: [_account(BEFORE), ApiError("SmartGym answered 'FAIL'.")]}
     )
     spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
     with pytest.raises(ApiError) as exc:
         _service(client, tmp_path).create([spec], dry_run=False)
-    assert type(exc.value) is ApiError and exc.value.code == "FAIL"
+    assert type(exc.value) is ApiError
     message = str(exc.value)
+    assert message.startswith("SmartGym answered 'FAIL'.")
     assert "routine/add/ was sent and accepted, but re-reading to verify failed" in message
     assert "'ZZ-New'" in message
     assert [path for path, _ in client.sent] == ["routine/add/"]
@@ -576,7 +580,7 @@ def test_archive_failure_reports_what_was_already_sent(tmp_path: Path) -> None:
     three = _raw_routine(ident="3000003", name="ZZ-Three", hashid="3")
     client = account_client(
         {HISTORY: _account(BEFORE, two, three)},
-        posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.", code="FAIL")],
+        posts=[{"code": "SUCCESS"}, ApiError("SmartGym answered 'FAIL'.")],
     )
     with pytest.raises(ApiError) as exc:
         _service(client, tmp_path).set_archived(
