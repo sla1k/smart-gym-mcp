@@ -196,14 +196,3 @@ class ApiClient:
         if code != "SUCCESS":
             raise ApiError(f"SmartGym answered {code!r} on {shown}.")
         return body
-
-
-__all__ = [
-    "BASE_URL",
-    "ApiCalls",
-    "ApiClient",
-    "ApiError",
-    "AuthError",
-    "CredentialProvider",
-    "WriteOutcomeUnknown",
-]

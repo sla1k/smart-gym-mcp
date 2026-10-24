@@ -168,7 +168,7 @@ def test_health_reports_credentials_problem(
     if content is not None:
         _write_credentials(cfg.credentials_path, content, mode)
     status = server.smartgym_health(_ctx(server.AppContext(cfg=cfg)))
-    assert not status.ok
+    assert not status.ok and status.data_as_of is None
     assert status.problem is not None
     assert str(cfg.credentials_path) in status.problem
     assert fix in status.problem
@@ -369,6 +369,7 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     status = server.smartgym_health(_ctx(app))
     assert status.ok and status.problem is None
     assert status.routines == 1
+    assert status.data_as_of == "2026-10-05 15:56:48"  # history/all's lastModified
     assert status.app_version == "9.0.0"
     assert status.warning is not None and "9.0.0" in status.warning
 

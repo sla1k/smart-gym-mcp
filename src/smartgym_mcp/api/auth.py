@@ -61,6 +61,3 @@ class FileCredentials:
     @property
     def user_id(self) -> str:
         return self._user_id
-
-
-__all__ = ["REQUIRED_APP_HEADERS", "CredentialsError", "FileCredentials"]

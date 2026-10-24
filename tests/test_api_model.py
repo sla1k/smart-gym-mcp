@@ -12,7 +12,6 @@ from smartgym_mcp.model import (
     ApiPayloadError,
     parse_history_all,
     parse_routine,
-    parse_routines_response,
 )
 
 FIXTURE = FIX / "routine_single_synthetic.json"
@@ -22,8 +21,12 @@ def _raw() -> dict[str, Any]:
     return dict(json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
+def _routine_raw() -> dict[str, Any]:
+    return dict(_raw()["routines"][0])
+
+
 def test_parses_routine_fields_and_coerces_strings() -> None:
-    (routine,) = parse_routines_response(_raw())
+    routine = parse_routine(_routine_raw())
     assert routine.identifier == 3000001
     assert routine.unique_hashid == 26091100000001
     assert routine.name == "ZZ-FB — Test"
@@ -34,7 +37,7 @@ def test_parses_routine_fields_and_coerces_strings() -> None:
 
 
 def test_active_exercises_sorted_by_index_and_skip_removed() -> None:
-    (routine,) = parse_routines_response(_raw())
+    routine = parse_routine(_routine_raw())
     active = routine.active_exercises()
     assert [e.name for e in active] == ["Cable Chest Press", "Resistance Band Pull Apart"]
     assert [e.catalog_id for e in active] == [207, 363]
@@ -44,7 +47,7 @@ def test_active_exercises_sorted_by_index_and_skip_removed() -> None:
 
 
 def test_template_sets_exclude_logged_and_removed_and_sort_by_index() -> None:
-    (routine,) = parse_routines_response(_raw())
+    routine = parse_routine(_routine_raw())
     band = next(e for e in routine.exercises if e.catalog_id == 363)
     assert [(s.identifier, s.reps, s.weight_kg) for s in band.template_sets] == [
         (50000001, 19.0, 0.0),
@@ -138,13 +141,12 @@ def test_workouts_parse_numbers_and_skip_removed_histories() -> None:
     assert [w.identifier for w in data.workouts] == [7000001, 7000002]
     first, second = data.workouts
     assert (first.routine_identifier, first.duration_s, first.calories) == (3000001, 3600, 350)
-    assert (first.avg_hr, first.max_hr, first.end) == (120, 160, "2026-09-14 09:00:00")
+    assert (first.avg_hr, first.max_hr) == (120, 160)
     assert first.set_ids == [50000021, 50000022]
-    assert (second.duration_s, second.calories, second.avg_hr, second.max_hr, second.end) == (
+    assert (second.duration_s, second.calories, second.avg_hr, second.max_hr) == (
         2700,
         None,
         132,
-        None,
         None,
     )
 

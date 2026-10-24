@@ -5,22 +5,23 @@ from __future__ import annotations
 import json
 import plistlib
 from dataclasses import dataclass
+from typing import Literal
 
 from .config import Config
 
+CatalogName = Literal["exercises", "equipment", "categories"]
+
 # Resource name → bundle JSON filename.
-CATALOG_FILES = {
+CATALOG_FILES: dict[CatalogName, str] = {
     "exercises": "Exercises.json",
     "equipment": "Equipments.json",
     "categories": "Categories.json",
 }
 
 
-def read_catalog(cfg: Config, name: str) -> str:
-    """Return the raw JSON text of a bundle catalog. Raises if unknown/missing."""
-    filename = CATALOG_FILES.get(name)
-    if filename is None:
-        raise KeyError(f"unknown catalog {name!r}; known: {sorted(CATALOG_FILES)}")
+def read_catalog(cfg: Config, name: CatalogName) -> str:
+    """Return the raw JSON text of a bundle catalog. Raises if missing or unreadable."""
+    filename = CATALOG_FILES[name]
     path = cfg.app_bundle / "Contents" / "Resources" / filename
     if not path.exists():
         raise FileNotFoundError(

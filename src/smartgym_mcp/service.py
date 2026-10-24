@@ -520,15 +520,3 @@ class RoutineService:
         target = "archived" if archived else "active"
         done = [t.name for t in todo if state.get(t.identifier) == archived]
         return f"Re-read: now {target}: {', '.join(done) or 'none'}."
-
-
-__all__ = [
-    "ArchiveResult",
-    "CreatePlan",
-    "CreateResult",
-    "EditResult",
-    "RoutineId",
-    "RoutineService",
-    "WriteVerifyError",
-    "compare_views",
-]

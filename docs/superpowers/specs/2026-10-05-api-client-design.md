@@ -175,7 +175,8 @@ Invariants:
 Exercises are addressed by server `identifier` (shown by `get_routine`). Every write defaults
 to `dry_run=true`.
 
-Read: `smartgym_health` (server reachable, auth valid, installed app version vs last verified),
+Read: `smartgym_health` (server reachable, auth valid, installed app version vs last verified,
+`data_as_of` = the server's `lastModified` of `history/all`),
 `smartgym_list_routines(include_archived=false)`,
 `smartgym_get_routine(routine, history_depth=5)` (exercises, rest, notes, template sets,
 recent sessions), `smartgym_get_workout_history(...)` (filters as today),

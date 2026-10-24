@@ -7,7 +7,7 @@ import json
 import pytest
 
 from fakes import ACCOUNT, CUSTOM_EXERCISES, FIX, HISTORY, FakeClient
-from smartgym_mcp.api.store import AccountStore, AmbiguousRoutine, RoutineNotFound
+from smartgym_mcp.api.store import AccountStore, RoutineNotFound
 from smartgym_mcp.model import ApiPayloadError
 
 SINGLE_BODY = json.loads((FIX / "routine_single_synthetic.json").read_text(encoding="utf-8"))
@@ -63,7 +63,7 @@ def test_resolve_excludes_removed_and_reports_ambiguity_with_ids() -> None:
     store = _store(FakeClient({HISTORY: ACCOUNT}))
     with pytest.raises(RoutineNotFound):
         store.resolve("ZZ-Gone")
-    with pytest.raises(AmbiguousRoutine, match=r"3000001.*3000002"):
+    with pytest.raises(ValueError, match=r"Multiple routines.*3000001.*3000002"):
         store.resolve("ZZ-")
 
 
