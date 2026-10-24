@@ -115,12 +115,8 @@ def _single(*bodies: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"code": "SUCCESS", "routines": [b]} for b in bodies]
 
 
-def _service(
-    client: FakeClient, tmp_path: Path, *, move_in_place: bool = True
-) -> RoutineService:
-    return routine_service(
-        client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH, move_in_place=move_in_place
-    )
+def _service(client: FakeClient, tmp_path: Path) -> RoutineService:
+    return routine_service(client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH)
 
 
 def _rest(seconds: int) -> Callable[[Routine], DesiredRoutine]:
@@ -307,18 +303,6 @@ def test_nothing_to_change_sends_nothing(tmp_path: Path) -> None:
     client = account_client({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)})
     result = _service(client, tmp_path).edit("ZZ-Svc", _rest(60), dry_run=False)
     assert client.sent == [] and "Nothing to change" in result.notice
-
-
-def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
-    client = account_client({HISTORY: _account(BEFORE), SINGLE: _single(BEFORE)})
-    build = lambda _r: DesiredRoutine(
-        warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise_id=11)]
-    )
-    result = _service(client, tmp_path, move_in_place=False).edit(
-        "ZZ-Svc", build, dry_run=True
-    )
-    assert [r.identifier for r in result.changes.removed] == [11]
-    assert [(a.catalog_id, a.section) for a in result.changes.added] == [(207, "warmup")]
 
 
 def test_create_rejects_existing_name(tmp_path: Path) -> None:

@@ -119,7 +119,6 @@ class ChangeSet(BaseModel):
     added: list[AddedExercise]
     removed: list[RemovedExercise]
     updated: list[ExerciseUpdate]
-    order: list[str]
     final_order: list[str] | None
     warnings: list[str]
     expected: RoutineView
@@ -337,7 +336,7 @@ def _final_order(
     order: list[str],
     added: list[AddedExercise],
     active: list[RoutineExercise],
-    sections: dict[str, Section] | None = None,
+    sections: dict[str, Section],
 ) -> list[str] | None:
     """`order` when the server must renumber `idx`, None when every kept exercise keeps it.
 
@@ -354,11 +353,7 @@ def _final_order(
     if kept != [k for k in by_key if k in kept_set]:
         return order
     idxs = [by_key[k].index for k in kept]
-    moved = (
-        any(sections.get(k, by_key[k].section) != by_key[k].section for k in kept)
-        if sections
-        else False
-    )
+    moved = any(sections[k] != by_key[k].section for k in kept)
     if moved and any(a >= b for a, b in pairwise(idxs)):
         return order
     if not added:
@@ -441,7 +436,6 @@ def diff_routine(
         added=added,
         removed=removed,
         updated=updated,
-        order=order,
         final_order=_final_order(order, added, active, new_sections),
         warnings=warnings,
         expected=RoutineView(
@@ -451,53 +445,4 @@ def diff_routine(
             note=pick("note", current.note),
             exercises=expected,
         ),
-    )
-
-
-def moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet:
-    """Spec §10.4 fallback: express every section move as remove + re-add.
-
-    The re-added exercise takes the moved one's expected state (rest, note, template sets),
-    so any other edit of it rides along; it gets a new server identifier.
-    """
-    moved = [u for u in cs.updated if u.new_section is not None]
-    if not moved:
-        return cs
-    active = current.active_exercises()
-    by_id = {e.identifier: e for e in active}
-    added = list(cs.added)
-    removed = list(cs.removed)
-    updated = [u for u in cs.updated if u.new_section is None]
-    order = list(cs.order)
-    for u in moved:
-        ex = by_id[u.identifier]
-        pos = order.index(f"id:{u.identifier}")
-        view = cs.expected.exercises[pos]
-        removed.append(RemovedExercise(identifier=ex.identifier, name=ex.name))
-        order[pos] = f"new:{len(added)}"
-        added.append(
-            AddedExercise(
-                catalog_id=ex.catalog_id,
-                name=ex.name,
-                section=view.section,
-                position=pos,
-                rest_seconds=view.rest_seconds,
-                note=view.note,
-                sets=[SetSpec.model_construct(reps=r, weight_kg=w) for r, w in view.sets],
-            )
-        )
-    warnings = cs.warnings + [
-        f"{u.name!r} moves by remove + re-add (no in-place section move); its recent "
-        "sessions in this routine restart."
-        for u in moved
-    ]
-    return cs.model_copy(
-        update={
-            "added": added,
-            "removed": removed,
-            "updated": updated,
-            "order": order,
-            "final_order": _final_order(order, added, active),
-            "warnings": warnings,
-        }
     )

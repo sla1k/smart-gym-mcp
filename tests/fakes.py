@@ -139,7 +139,6 @@ def routine_service(
     *,
     now: datetime,
     first_hash: int,
-    move_in_place: bool = True,
 ) -> RoutineService:
     """A RoutineService on `client` with a fixed clock and deterministic hash ids."""
     return RoutineService(
@@ -150,5 +149,4 @@ def routine_service(
         timezone=TZ,
         now=lambda: now,
         mint=counter_mint(first_hash),
-        move_in_place=move_in_place,
     )

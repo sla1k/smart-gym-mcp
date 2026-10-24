@@ -10,14 +10,12 @@ import pytest
 from pydantic import ValidationError
 
 from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint
-from smartgym_mcp import payloads
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import (
     ChangeSet,
     DesiredExercise,
     DesiredRoutine,
     diff_routine,
-    moves_as_readd,
 )
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
@@ -707,36 +705,3 @@ def test_app_add_at_top_of_main_matches_capture() -> None:
     assert [{k: v for k, v in s.items() if k not in strip} for s in our_ex["sets"]] == [
         {k: v for k, v in s.items() if k not in strip} for s in app_ex["sets"]
     ]
-
-
-def test_move_fallback_encodes_as_remove_plus_readd_with_order() -> None:
-    current = _s7((AB, "main"), (SC, "main"))
-    cs = moves_as_readd(
-        diff_routine(current, DesiredRoutine(warmup=by_id(SC)), CATALOG), current
-    )
-    cat = CatalogExercise(
-        id=507,
-        name="Shoulder Circling",
-        type=2,
-        category=9,
-        sub_categories="",
-        two_sides=0,
-        stretch=1,
-        equipment_ids=(),
-        images=("0507-1", "", "", "", "", ""),
-    )
-    enc = dict(encode_change(cs, current, {507: cat}, timezone=TZ, now=NOW, mint=_counter()))
-    form = _norm(enc[UPDATE])
-    assert form["removeExercises"] == str(SC)
-    assert "updateExercises" not in form
-    (ex,) = form["exercises"]
-    assert (ex["id"], ex["idx"], ex["listGroup"]) == (507, 0, 1)
-    assert form["exercisesOrder"] == f"{AB}:1"
-
-
-def test_in_place_move_refuses_to_encode_when_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(payloads, "SECTION_MOVE_IN_PLACE", False)
-    with pytest.raises(ValueError, match="moves_as_readd"):
-        _encode(_s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=by_id(SC)))
