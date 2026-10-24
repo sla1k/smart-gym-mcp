@@ -16,7 +16,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
-from typing import Annotated, Literal
+from typing import Annotated
 
 import anyio.from_thread
 from mcp.server.mcpserver import Context, MCPServer
@@ -292,8 +292,8 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
 
     ok=true means the server answered with your account data. `problem` explains
     what to fix otherwise (e.g. create the credentials file). `data_as_of` is the server's
-    last-modified time of the account data — older than the last workout on the iPhone
-    means the app hasn't synced yet. `warning` appears when the installed SmartGym version
+    last-modified time of the account data, in local time with its UTC offset — older than
+    the last workout on the iPhone means the app hasn't synced yet. `warning` appears when the installed SmartGym version
     differs from the one the MCP was verified against.
     """
     app = _app(ctx)
@@ -307,6 +307,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
         )
     try:
         with app.use() as services:
+            services.store.invalidate()  # data_as_of must be the server's, not a cached read
             data = services.store.data()
     except (*_ANTICIPATED, KeyError) as exc:
         return HealthStatus(
@@ -322,7 +323,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     return HealthStatus(
         ok=True,
         routines=sum(1 for r in data.routines if not r.removed and not r.archived),
-        data_as_of=data.last_modified,
+        data_as_of=reads.local_timestamp(data.last_modified) if data.last_modified else None,
         app_version=installed,
         verified_app_version=VERIFIED_APP_VERSION,
         warning=warning,
@@ -365,7 +366,7 @@ def smartgym_get_routine(
 @mcp.tool(annotations=_read_only("Get workout history"))
 def smartgym_get_workout_history(
     ctx: Context[AppContext],
-    days: Literal[7, 14, 30] = 7,
+    days: reads.RangeDays = 7,
     date_from: str | None = None,
     date_to: str | None = None,
     routine: str | None = None,

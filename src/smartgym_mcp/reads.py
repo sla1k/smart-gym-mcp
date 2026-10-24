@@ -98,10 +98,18 @@ class EquipmentListResult(BaseModel):
     kettlebell_weights: str | None
 
 
+RangeDays = Literal[7, 14, 30]  # the SmartGym app's history presets
+
+
 def _local(server_time: str, tz: tzinfo | None) -> datetime:
     """UTC server time → `tz`; tz=None resolves the system zone per instant (DST-aware)."""
     parsed = datetime.strptime(server_time[:19], "%Y-%m-%d %H:%M:%S")
     return parsed.replace(tzinfo=UTC).astimezone(tz)
+
+
+def local_timestamp(server_time: str, tz: tzinfo | None = None) -> str:
+    """UTC server time → ISO 8601 local time with its offset, e.g. 2026-10-05T17:56:48+02:00."""
+    return _local(server_time, tz).isoformat(timespec="seconds")
 
 
 def list_routines(data: AccountData, *, include_archived: bool = False) -> RoutineListResult:
@@ -196,7 +204,7 @@ def routine_detail(
 def workout_history(
     data: AccountData,
     *,
-    days: Literal[7, 14, 30] = 7,
+    days: RangeDays = 7,
     date_from: str | None = None,
     date_to: str | None = None,
     routine: Routine | None = None,
