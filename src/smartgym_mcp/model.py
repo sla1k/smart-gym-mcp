@@ -25,7 +25,7 @@ logger = logging.getLogger("smartgym_mcp.model")
 
 
 class ApiPayloadError(ValueError):
-    """The server answered with an unexpected shape or a non-SUCCESS code."""
+    """The server answered SUCCESS with an unexpected shape (ApiClient rejects other codes)."""
 
 
 class TemplateSet(BaseModel):

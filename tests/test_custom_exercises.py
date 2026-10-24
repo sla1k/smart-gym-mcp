@@ -372,7 +372,10 @@ def test_editing_a_routine_with_a_custom_exercise_leaves_it_untouched(tmp_path: 
             HISTORY: _account(),
             # An edit that adds nothing never reads the custom exercises.
             CUSTOM_EXERCISES: ApiError("custom exercise list unavailable"),
-            single: [{"code": "SUCCESS", "routines": [before]}, {"routines": [after]}],
+            single: [
+                {"code": "SUCCESS", "routines": [before]},
+                {"code": "SUCCESS", "routines": [after]},
+            ],
         }
     )
 
