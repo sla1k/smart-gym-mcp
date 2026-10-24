@@ -119,6 +119,51 @@ def test_every_write_tool_defaults_to_dry_run() -> None:
         assert tool.input_schema["properties"]["dry_run"]["default"] is True, tool.name
 
 
+IDEMPOTENT_WRITES = {
+    "smartgym_update_routine", "smartgym_update_exercise",
+    "smartgym_archive_routines", "smartgym_unarchive_routine",
+}  # fmt: skip
+READ_ONLY = {
+    "smartgym_health", "smartgym_list_routines", "smartgym_get_routine",
+    "smartgym_get_workout_history", "smartgym_get_equipment",
+}  # fmt: skip
+
+
+def test_annotations_tell_reads_from_retry_safe_and_unsafe_writes() -> None:
+    for tool in asyncio.run(server.mcp.list_tools()):
+        hints = tool.annotations
+        assert hints is not None and hints.title and hints.open_world_hint, tool.name
+        if tool.name in READ_ONLY:
+            assert hints.read_only_hint is True, tool.name
+            continue
+        # every write may overwrite or remove the user's data
+        assert hints.read_only_hint is False and hints.destructive_hint is True, tool.name
+        assert hints.idempotent_hint is (tool.name in IDEMPOTENT_WRITES), tool.name
+
+
+def test_server_sends_its_instructions_and_identity_at_initialize() -> None:
+    async def connect() -> Any:
+        async with Client(server.mcp) as client:
+            return client.instructions, client.server_info
+
+    instructions, info = asyncio.run(connect())
+    assert instructions == server.INSTRUCTIONS
+    for rule in (
+        "defaults to dry_run=true",
+        "show the user the plan",
+        "comes from smartgym_get_routine",
+        "name (case-insensitive, partial allowed) or its id",
+    ):
+        assert rule in instructions
+    assert (info.name, info.title) == ("smartgym_mcp", "SmartGym")
+    assert info.website_url == "https://github.com/sla1k/smart-gym-mcp"
+
+
+def test_server_wide_rules_live_in_the_instructions_not_in_each_tool() -> None:
+    for tool in asyncio.run(server.mcp.list_tools()):
+        assert "sends NOTHING" not in (tool.description or ""), tool.name
+
+
 # ----------------------------------------------------------------- credentials
 @pytest.mark.parametrize(
     ("content", "mode", "fix"),
@@ -621,12 +666,44 @@ def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
         app._calls.release()
 
 
+CATALOGS = {
+    "smartgym://catalog/exercises": "Exercises.json",
+    "smartgym://catalog/equipment": "Equipments.json",
+    "smartgym://catalog/categories": "Categories.json",
+}
+
+
+@pytest.mark.parametrize(("uri", "filename"), CATALOGS.items(), ids=list(CATALOGS))
+def test_catalog_resource_serves_the_bundle_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uri: str, filename: str
+) -> None:
+    resources = tmp_path / "SmartGym.app" / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    text = json.dumps({filename: [{"id": "1", "name": "Bench"}]})
+    (resources / filename).write_text(text, encoding="utf-8")
+    monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(tmp_path / "SmartGym.app"))
+    monkeypatch.setenv("SMARTGYM_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv("SMARTGYM_CREDENTIALS", str(tmp_path / "credentials.json"))
+
+    async def read() -> Any:
+        async with Client(server.mcp) as client:
+            listed = {str(r.uri): r for r in (await client.list_resources()).resources}
+            return listed, await client.read_resource(uri)
+
+    listed, result = asyncio.run(read())
+    assert set(listed) == set(CATALOGS)
+    assert listed[uri].mime_type == "application/json"
+    (content,) = result.contents
+    assert content.text == text and content.mime_type == "application/json"
+
+
+@pytest.mark.parametrize("uri", CATALOGS)
 def test_missing_catalog_resource_keeps_its_message(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uri: str
 ) -> None:
     monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(tmp_path / "nowhere.app"))
     with pytest.raises(ResourceError, match="SMARTGYM_APP_BUNDLE") as exc:
-        asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
+        asyncio.run(server.mcp.read_resource(uri))
     assert not isinstance(exc.value, UnexpectedResourceError)
 
 

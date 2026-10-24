@@ -48,12 +48,19 @@ def _read_only(title: str) -> ToolAnnotations:
     return ToolAnnotations(title=title, read_only_hint=True, open_world_hint=True)
 
 
-def _destructive(title: str) -> ToolAnnotations:
+def _write(title: str, *, idempotent: bool) -> ToolAnnotations:
+    """Every write may overwrite or remove the user's data, so all are destructive.
+
+    idempotent=True: repeating the call with the same arguments leaves the same state (set
+    a value, archive an archived routine), so a client may retry it. False: a repeat may
+    change the account again (add_exercise adds a second copy, create_program a second
+    program), or is not guaranteed not to — the conservative default.
+    """
     return ToolAnnotations(
         title=title,
         read_only_hint=False,
         destructive_hint=True,
-        idempotent_hint=False,
+        idempotent_hint=idempotent,
         open_world_hint=True,
     )
 
@@ -204,7 +211,32 @@ async def lifespan(_server: MCPServer[AppContext]) -> AsyncIterator[AppContext]:
         await asyncio.to_thread(app.close)
 
 
-mcp = MCPServer("smartgym_mcp", version=__version__, lifespan=lifespan)
+INSTRUCTIONS = """\
+SmartGym routines, exercises and workout history, read from and written to the SmartGym \
+server. This is the user's live training data: a write reaches every device.
+
+- Every write tool defaults to dry_run=true: it returns the plan (old -> new) and sends \
+nothing. Run it that way first, show the user the plan, and repeat the call with \
+dry_run=false only once they confirm it.
+- `routine` (and each entry of `routines`) is a routine name (case-insensitive, partial \
+allowed) or its id from smartgym_list_routines; an ambiguous name is refused.
+- exercise_id (and the ids in reorder/apply lists) comes from smartgym_get_routine.
+- New exercises are catalog names (built-in or the account's custom exercises, \
+fuzzy-matched deterministically) or catalog ids.
+- Template sets are [{reps, weight_kg}], weight_kg 0.0 = bodyweight; omitted sets become \
+one 1x10 set, flagged in the plan. Logged workout history is never changed.
+- When a write's outcome is unknown, re-read the routine before retrying it.
+- If calls fail on credentials, smartgym_health says what to fix.
+"""
+
+mcp = MCPServer(
+    "smartgym_mcp",
+    title="SmartGym",
+    website_url="https://github.com/sla1k/smart-gym-mcp",
+    instructions=INSTRUCTIONS,
+    version=__version__,
+    lifespan=lifespan,
+)
 
 
 def _app(ctx: Context[AppContext]) -> AppContext:
@@ -314,9 +346,8 @@ def smartgym_get_routine(
 ) -> reads.RoutineDetail:
     """Get a routine split into warmup, main and cooldown sections.
 
-    `routine` is a name (case-insensitive, partial allowed) or id. Each exercise shows
-    its exercise_id (what the edit tools take), rest, note, planned template sets, and
-    up to `history_depth` recent sessions (reps + weight_kg; 0.0 = bodyweight) with the
+    Each exercise shows its exercise_id (what the edit tools take), rest, note, planned
+    template sets, and up to `history_depth` recent sessions (reps + weight_kg) with the
     latest session's top set and total volume.
     """
     with _services(ctx) as services:
@@ -366,7 +397,7 @@ def smartgym_get_equipment(
         )
 
 
-@mcp.tool(annotations=_destructive("Create program"))
+@mcp.tool(annotations=_write("Create program", idempotent=False))
 def smartgym_create_program(
     ctx: Context[AppContext],
     routines: Annotated[list[RoutineSpec], Field(min_length=1)],
@@ -377,19 +408,16 @@ def smartgym_create_program(
     Each routine: name (must not match an active routine), goal (required free text, e.g.
     "Strength" — the app can't save a routine without one), optional days/note, and three
     ordered sections — `warmup` (optional), `exercises` (= main, required), `cooldown`
-    (optional). Exercises are catalog names — built-in or the account's custom exercises
-    (fuzzy-matched, deterministic) — or catalog ids, with optional rest_seconds, note and
-    template sets (reps + weight_kg; omitted = one 1x10 set, flagged). `days` is
-    comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6").
-    Validation is all-or-nothing.
-    dry_run=true (default) returns the plan and sends NOTHING; dry_run=false creates the
-    routines and verifies them on the server.
+    (optional). Each exercise: catalog name or id, optional rest_seconds, note and template
+    sets. `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
+    (e.g. "2,4,6"). Validation is all-or-nothing; dry_run=false creates the routines and
+    verifies them on the server.
     """
     with _services(ctx) as services:
         return services.service.create(routines, dry_run=dry_run)
 
 
-@mcp.tool(annotations=_destructive("Update routine"))
+@mcp.tool(annotations=_write("Update routine", idempotent=True))
 def smartgym_update_routine(
     ctx: Context[AppContext],
     routine: str,
@@ -403,10 +431,8 @@ def smartgym_update_routine(
 
     The goal can be changed but not cleared (the app can't save a routine without one).
     `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
-    (e.g. "2,4,6"). A new name must not match another active routine.
-
-    dry_run=true (default) shows old → new and sends NOTHING; dry_run=false snapshots the
-    routine, sends the edit, and verifies it on the server.
+    (e.g. "2,4,6"). A new name must not match another active routine. dry_run=false
+    snapshots the routine, sends the edit, and verifies it on the server.
     """
     with _tool_errors():
         desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
@@ -414,7 +440,7 @@ def smartgym_update_routine(
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
-@mcp.tool(annotations=_destructive("Add exercise"))
+@mcp.tool(annotations=_write("Add exercise", idempotent=False))
 def smartgym_add_exercise(
     ctx: Context[AppContext],
     routine: str,
@@ -430,8 +456,7 @@ def smartgym_add_exercise(
     cooldown).
 
     `position` counts within the section (0 = first; omitted = last). Optional rest,
-    note and template sets (omitted = one 1x10 set, flagged). dry_run=true (default)
-    sends NOTHING.
+    note and template sets.
     """
     with _services(ctx) as services:
         return services.service.edit(
@@ -449,7 +474,7 @@ def smartgym_add_exercise(
         )
 
 
-@mcp.tool(annotations=_destructive("Move exercise"))
+@mcp.tool(annotations=_write("Move exercise", idempotent=False))
 def smartgym_move_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
@@ -459,8 +484,7 @@ def smartgym_move_exercise(
 ) -> EditResult:
     """Move an exercise to another section (or to another position in its section).
 
-    `exercise_id` comes from smartgym_get_routine; `position` counts within the target
-    section (omitted = last). dry_run=true (default) sends NOTHING.
+    `position` counts within the target section (0 = first; omitted = last).
     """
     with _services(ctx) as services:
         return services.service.edit_exercise(
@@ -472,21 +496,18 @@ def smartgym_move_exercise(
         )
 
 
-@mcp.tool(annotations=_destructive("Remove exercise"))
+@mcp.tool(annotations=_write("Remove exercise", idempotent=False))
 def smartgym_remove_exercise(
     ctx: Context[AppContext], exercise_id: int, dry_run: bool = True
 ) -> EditResult:
-    """Remove an exercise from its routine (logged history is kept).
-
-    `exercise_id` comes from smartgym_get_routine. dry_run=true (default) sends NOTHING.
-    """
+    """Remove an exercise from its routine (logged history is kept)."""
     with _services(ctx) as services:
         return services.service.edit_exercise(
             exercise_id, lambda r: builders.remove_exercise(r, exercise_id), dry_run=dry_run
         )
 
 
-@mcp.tool(annotations=_destructive("Reorder routine"))
+@mcp.tool(annotations=_write("Reorder routine", idempotent=False))
 def smartgym_reorder_routine(
     ctx: Context[AppContext],
     routine: str,
@@ -499,7 +520,7 @@ def smartgym_reorder_routine(
 
     Each list you pass must hold exactly that section's current exercise_ids, in the new
     order; omitted sections stay as they are. To change an exercise's section use
-    smartgym_move_exercise. dry_run=true (default) sends NOTHING.
+    smartgym_move_exercise.
     """
     with _services(ctx) as services:
         return services.service.edit(
@@ -509,7 +530,7 @@ def smartgym_reorder_routine(
         )
 
 
-@mcp.tool(annotations=_destructive("Update exercise"))
+@mcp.tool(annotations=_write("Update exercise", idempotent=True))
 def smartgym_update_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
@@ -521,8 +542,7 @@ def smartgym_update_exercise(
     """Change an exercise's rest time, note ("" clears) or template sets.
 
     `sets` is the FULL planned list [{reps, weight_kg}] — sets beyond it are removed,
-    extra ones added. Logged history is never touched. dry_run=true (default) sends
-    NOTHING.
+    extra ones added.
     """
     with _services(ctx) as services:
         return services.service.edit_exercise(
@@ -534,7 +554,7 @@ def smartgym_update_exercise(
         )
 
 
-@mcp.tool(annotations=_destructive("Apply routine"))
+@mcp.tool(annotations=_write("Apply routine", idempotent=False))
 def smartgym_apply_routine(
     ctx: Context[AppContext],
     routine: str,
@@ -555,7 +575,6 @@ def smartgym_apply_routine(
     there; one you leave out of a passed section is removed. Omitted sections stay as they
     are. `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
     (e.g. "2,4,6").
-    dry_run=true (default) shows the full plan and sends NOTHING.
     """
     with _tool_errors():
         desired = DesiredRoutine(
@@ -571,23 +590,23 @@ def smartgym_apply_routine(
         return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
 
 
-@mcp.tool(annotations=_destructive("Archive routines"))
+@mcp.tool(annotations=_write("Archive routines", idempotent=True))
 def smartgym_archive_routines(
     ctx: Context[AppContext], routines: list[str], dry_run: bool = True
 ) -> ArchiveResult:
     """Archive routines (names or ids) on every device.
 
-    Reversible with smartgym_unarchive_routine. dry_run=true (default) sends NOTHING.
+    Reversible with smartgym_unarchive_routine.
     """
     with _services(ctx) as services:
         return services.service.set_archived(routines, archived=True, dry_run=dry_run)
 
 
-@mcp.tool(annotations=_destructive("Unarchive routine"))
+@mcp.tool(annotations=_write("Unarchive routine", idempotent=True))
 def smartgym_unarchive_routine(
     ctx: Context[AppContext], routine: str, dry_run: bool = True
 ) -> ArchiveResult:
-    """Bring an archived routine back to the active list. dry_run=true sends NOTHING."""
+    """Bring an archived routine back to the active list."""
     with _services(ctx) as services:
         return services.service.set_archived([routine], archived=False, dry_run=dry_run)
 
