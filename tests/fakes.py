@@ -8,6 +8,7 @@ A scripted response may be an Exception, which that call raises instead. A body 
 from __future__ import annotations
 
 import copy
+import itertools
 import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -114,7 +115,7 @@ def by_id(*idents: int) -> list[DesiredExercise]:
 
 def counter_mint(first: int) -> Mint:
     """A deterministic Mint: first, first + 1, … regardless of the clock."""
-    n = iter(range(first, first + 1000))
+    n = itertools.count(first)
     return lambda _now: next(n)
 
 

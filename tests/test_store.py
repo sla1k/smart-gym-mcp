@@ -10,7 +10,7 @@ from fakes import ACCOUNT, CUSTOM_EXERCISES, FIX, HISTORY, FakeClient
 from smartgym_mcp.api.store import AccountStore, AmbiguousRoutine, RoutineNotFound
 from smartgym_mcp.model import ApiPayloadError
 
-SINGLE = json.loads((FIX / "routine_single_synthetic.json").read_text(encoding="utf-8"))
+SINGLE_BODY = json.loads((FIX / "routine_single_synthetic.json").read_text(encoding="utf-8"))
 
 
 class Clock:
@@ -68,7 +68,7 @@ def test_resolve_excludes_removed_and_reports_ambiguity_with_ids() -> None:
 
 
 def test_routine_raw_is_fetched_fresh_each_time() -> None:
-    client = FakeClient({"routine/single/3000001/": SINGLE})
+    client = FakeClient({"routine/single/3000001/": SINGLE_BODY})
     store = _store(client)
     assert store.routine_raw(3000001)["identifier"] == "3000001"
     store.routine_raw(3000001)
