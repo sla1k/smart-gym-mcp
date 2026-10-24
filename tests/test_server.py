@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, override
@@ -369,9 +370,25 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     status = server.smartgym_health(_ctx(app))
     assert status.ok and status.problem is None
     assert status.routines == 1
-    assert status.data_as_of == "2026-10-05 15:56:48"  # history/all's lastModified
+    # history/all's lastModified (UTC), shown in local time with its offset
+    assert status.data_as_of is not None
+    assert datetime.fromisoformat(status.data_as_of) == datetime(
+        2026, 10, 5, 15, 56, 48, tzinfo=UTC
+    )
     assert status.app_version == "9.0.0"
     assert status.warning is not None and "9.0.0" in status.warning
+
+
+def test_health_reads_data_as_of_past_the_cache(tmp_path: Path) -> None:
+    """A sync check right after another call must see the server, not a 30 s-old read."""
+    synced = {**copy.deepcopy(ACCOUNT), "lastModified": "2026-10-05 16:10:00"}
+    app = _fake_app(tmp_path, account_client({HISTORY: [ACCOUNT, synced]}))
+    server.smartgym_list_routines(_ctx(app))
+    status = server.smartgym_health(_ctx(app))
+    assert status.data_as_of is not None
+    assert datetime.fromisoformat(status.data_as_of) == datetime(
+        2026, 10, 5, 16, 10, tzinfo=UTC
+    )
 
 
 # ----------------------------------------------------------------------- reads
