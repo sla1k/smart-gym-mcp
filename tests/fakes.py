@@ -1,6 +1,7 @@
 """Offline stand-in for api.client.ApiClient: scripted responses, recorded posts.
 
-A scripted GET response may be an Exception, which that call raises instead.
+A scripted response may be an Exception, which that call raises instead. A body whose
+`code` isn't SUCCESS raises ApiError, as ApiClient._decode does: the parsers rely on it.
 """
 
 from __future__ import annotations
@@ -8,6 +9,8 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from smartgym_mcp.api.client import ApiError
 
 # Sequence and Mapping are covariant, so a list[dict[str, Any]] literal type-checks as a script.
 Script = Mapping[str, Mapping[str, Any] | Exception | Sequence[Mapping[str, Any] | Exception]]
@@ -35,7 +38,7 @@ class FakeClient:
         body = queue.pop(0) if len(queue) > 1 else queue[0]
         if isinstance(body, Exception):
             raise body
-        return copy.deepcopy(dict(body))
+        return _decoded(path, copy.deepcopy(dict(body)))
 
     def post(self, path: str, form: Mapping[str, str]) -> dict[str, Any]:
         self.sent.append((path, dict(form)))
@@ -44,10 +47,16 @@ class FakeClient:
         nxt = self._posts.pop(0)
         if isinstance(nxt, Exception):
             raise nxt
-        return dict(nxt)
+        return _decoded(path, dict(nxt))
 
     def close(self) -> None:
         self.closed = True
+
+
+def _decoded(path: str, body: dict[str, Any]) -> dict[str, Any]:
+    if body.get("code") != "SUCCESS":
+        raise ApiError(f"SmartGym answered {body.get('code')!r} on {path}.")
+    return body
 
 
 CUSTOM_EXERCISES = "exercise/allCustomExercises/"
