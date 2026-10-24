@@ -9,12 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from fakes import APP, SECRET
 from smartgym_mcp.api.auth import CredentialsError, FileCredentials
 from smartgym_mcp.catalog import installed_app_version
 from smartgym_mcp.config import load_config
-
-SECRET = "Bearer s3cr3t-token"
-APP = {"user-agent": "SmartGym/8.0.3", "accept": "*/*", "accept-language": "en-GB"}
 
 
 def _write(path: Path, data: object, mode: int = 0o600) -> Path:

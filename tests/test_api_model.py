@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import pytest
 
+from fakes import FIX
 from smartgym_mcp.model import (
     ApiPayloadError,
     parse_history_all,
@@ -15,7 +15,7 @@ from smartgym_mcp.model import (
     parse_routines_response,
 )
 
-FIXTURE = Path(__file__).parent / "fixtures" / "api" / "routine_single_synthetic.json"
+FIXTURE = FIX / "routine_single_synthetic.json"
 
 
 def _raw() -> dict[str, Any]:
@@ -87,7 +87,7 @@ def test_bad_numbers_raise_payload_error_naming_field(field: str, value: str) ->
         parse_routine(raw)
 
 
-SYNTH = Path(__file__).parent / "fixtures" / "api" / "history_all_synthetic.json"
+SYNTH = FIX / "history_all_synthetic.json"
 
 
 def _account() -> dict[str, Any]:

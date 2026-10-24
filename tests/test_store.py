@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from fakes import CUSTOM_EXERCISES, FakeClient
+from fakes import ACCOUNT, CUSTOM_EXERCISES, FIX, HISTORY, FakeClient
 from smartgym_mcp.api.store import AccountStore, AmbiguousRoutine, RoutineNotFound
 from smartgym_mcp.model import ApiPayloadError
 
-FIX = Path(__file__).parent / "fixtures" / "api"
-ACCOUNT = json.loads((FIX / "history_all_synthetic.json").read_text(encoding="utf-8"))
 SINGLE = json.loads((FIX / "routine_single_synthetic.json").read_text(encoding="utf-8"))
-HISTORY = "history/all/1/"
 
 
 class Clock:

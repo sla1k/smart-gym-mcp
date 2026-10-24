@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
+from fakes import SECRET
 from smartgym_mcp.api.client import ApiClient, ApiError, AuthError, WriteOutcomeUnknown
 
-SECRET = "Bearer s3cr3t-token"
 PHRASE = "ph-r4se-value"
 
 

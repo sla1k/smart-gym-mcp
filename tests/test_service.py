@@ -10,40 +10,29 @@ from typing import Any
 
 import pytest
 
-from fakes import FakeClient, account_client
+from fakes import (
+    HISTORY,
+    SINGLE,
+    FakeClient,
+    account_client,
+    catalog_exercise,
+    routine_service,
+)
 from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
-from smartgym_mcp.api.store import AccountStore, RoutineNotFound
-from smartgym_mcp.catalog import CatalogExercise
+from smartgym_mcp.api.store import RoutineNotFound
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
 from smartgym_mcp.model import Routine
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
-from smartgym_mcp.payloads import Mint
 from smartgym_mcp.service import RoutineService, WriteVerifyError
 
-HISTORY = "history/all/1/"
-SINGLE = "routine/single/3000001/"
 NOW = datetime(2026, 10, 6, 10, 0, tzinfo=UTC)
 FIRST_HASH = 26100600000001
 
 
-def _cat(ident: int, name: str) -> CatalogExercise:
-    return CatalogExercise(
-        id=ident,
-        name=name,
-        type=0,
-        category=1,
-        sub_categories="",
-        two_sides=0,
-        stretch=0,
-        equipment_ids=(),
-        images=(f"{ident}-1", "", "", "", "", ""),
-    )
-
-
 BUNDLE = {
-    300: _cat(300, "Shoulder Circling"),
-    207: _cat(207, "Cable Chest Press"),
-    20: _cat(20, "Plank"),
+    300: catalog_exercise(300, "Shoulder Circling"),
+    207: catalog_exercise(207, "Cable Chest Press"),
+    20: catalog_exercise(20, "Plank"),
 }
 
 
@@ -126,23 +115,11 @@ def _single(*bodies: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"code": "SUCCESS", "routines": [b]} for b in bodies]
 
 
-def _counter() -> Mint:
-    n = iter(range(FIRST_HASH, FIRST_HASH + 1000))
-    return lambda _now: next(n)
-
-
 def _service(
     client: FakeClient, tmp_path: Path, *, move_in_place: bool = True
 ) -> RoutineService:
-    return RoutineService(
-        client,
-        AccountStore(client),
-        BUNDLE,
-        backup_dir=tmp_path,
-        timezone="Europe/Madrid",
-        now=lambda: NOW,
-        mint=_counter(),
-        move_in_place=move_in_place,
+    return routine_service(
+        client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH, move_in_place=move_in_place
     )
 
 

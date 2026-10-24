@@ -1,4 +1,4 @@
-"""matching.py: deterministic name → catalog id resolution (no DB)."""
+"""matching.py: deterministic name → catalog id resolution (pure, no client)."""
 
 from __future__ import annotations
 
