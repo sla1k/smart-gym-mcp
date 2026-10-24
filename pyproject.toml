@@ -48,6 +48,8 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# test modules import the shared helpers as `from fakes import ...`, in any import mode
+pythonpath = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 filterwarnings = ["error"]
