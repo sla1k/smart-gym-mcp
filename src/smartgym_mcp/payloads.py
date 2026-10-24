@@ -21,15 +21,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .catalog import CatalogExercise
-from .diff import DEFAULT_SET, ChangeSet, DiffError, ExerciseUpdate
+from .diff import DEFAULT_SET, ChangeSet, ExerciseUpdate
 from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet
 from .models import ExerciseSpec, RoutineSpec, SetSpec
 
 _BAND_EQUIPMENT_ID = "38"
 Mint = Callable[[datetime], int]
-
-# Spec §10.3 / S7: True = the server moves an exercise between sections in place.
-SECTION_MOVE_IN_PLACE = True
 
 
 def mint_unique_hashid(now: datetime) -> int:
@@ -207,11 +204,6 @@ def _update_entry(u: ExerciseUpdate) -> dict[str, Any] | None:
         if c.field == "rest_seconds":
             entry["pause"] = c.new
     if u.new_section is not None:
-        if not SECTION_MOVE_IN_PLACE:
-            raise ValueError(
-                "Section moves must be expressed with diff.moves_as_readd: the server has no "
-                "in-place move (spec §10.4)."
-            )
         entry["listGroup"] = str(LIST_GROUP_BY_SECTION[u.new_section])
     if not entry:
         return None
@@ -237,18 +229,10 @@ def _structure(
     if cs.removed:
         form["removeExercises"] = ",".join(str(r.identifier) for r in cs.removed)
     if cs.added:
-        payloads = []
-        for a in cs.added:
-            cat = catalog.get(a.catalog_id)
-            if cat is None:
-                raise DiffError(
-                    f"Rejected — {a.name!r} (catalog id {a.catalog_id}) is neither built in "
-                    "nor one of the account's custom exercises any more, so it cannot be "
-                    "added (back). Leave it where it is or remove it."
-                )
-            payloads.append(
+        form["exercises"] = _json(
+            [
                 exercise_payload(
-                    cat,
+                    catalog[a.catalog_id],
                     section=a.section,
                     idx=a.position,
                     rest_seconds=a.rest_seconds,
@@ -258,8 +242,9 @@ def _structure(
                     mint=mint,
                     routine_identifier=current.identifier,
                 )
-            )
-        form["exercises"] = _json(payloads)
+                for a in cs.added
+            ]
+        )
     if cs.final_order is not None:
         form["exercisesOrder"] = ",".join(
             f"{key[3:]}:{pos}"

@@ -28,7 +28,6 @@ from .diff import (
     ExerciseView,
     RoutineView,
     diff_routine,
-    moves_as_readd,
     resolution_warnings,
     round3,
     view_of,
@@ -37,7 +36,6 @@ from .matching import ExerciseCatalog, UnresolvedExercise
 from .model import SECTION_BY_LIST_GROUP, SECTIONS, ApiPayloadError, Routine, parse_routine
 from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
-    SECTION_MOVE_IN_PLACE,
     Mint,
     add_routines_form,
     archive_form,
@@ -184,7 +182,6 @@ class RoutineService:
         timezone: str,
         now: Callable[[], datetime] = _now_local,
         mint: Mint = mint_unique_hashid,
-        move_in_place: bool = SECTION_MOVE_IN_PLACE,
     ) -> None:
         self._client = client
         self._store = store
@@ -194,7 +191,6 @@ class RoutineService:
         self._tz = timezone
         self._now = now
         self._mint = mint
-        self._move_in_place = move_in_place
 
     def _exercises(
         self, *, custom: bool = True
@@ -227,8 +223,7 @@ class RoutineService:
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
         desired = build(current)
-        # Custom exercises are read only when a change adds one: by name here, or as a §10.4
-        # re-add below.
+        # Custom exercises are read only when a change adds one.
         adds_by_name = any(
             want.exercise is not None
             for section in SECTIONS
@@ -241,11 +236,6 @@ class RoutineService:
             self._store.data().routines, besides=current.identifier
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
-        if not self._move_in_place:
-            readd = moves_as_readd(cs, current)
-            if readd is not cs:
-                _, exercises = self._exercises()
-            cs = readd
         now = self._now()
         requests = encode_change(
             cs, current, exercises, timezone=self._tz, now=now, mint=self._mint

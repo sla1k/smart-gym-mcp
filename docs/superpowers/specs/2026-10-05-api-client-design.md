@@ -315,12 +315,12 @@ when unset.
 - Probe method: the Mac app has no section editor, so S7 used hand-built requests
   (`scripts/spike/send.py --save=`) on `ZZ-S7`, read back with `routine/single` after each.
 
-### 10.4 Fallback if S7 shows no in-place move
+### 10.4 Fallback if S7 shows no in-place move (removed)
 
-A move becomes remove + re-add in the target section (same catalog exercise, rest, note,
-template sets). Cost: the re-added routine exercise gets a new identifier, so that routine's
-per-exercise "recent sessions" restart for it; workout history itself is untouched. The dry
-run states this per moved exercise.
+Planned before S7: a move would become remove + re-add in the target section, at the cost of
+a new identifier (the exercise's "recent sessions" in that routine restart). S7 showed the
+in-place move (§10.3), so the fallback (`diff.moves_as_readd`, the `SECTION_MOVE_IN_PLACE`
+switch) was removed from the code; moves are only ever sent in place.
 
 ### 10.5 Fixing the existing "Return" routines
 
@@ -346,7 +346,7 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 
 Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed and malformed
 ones skipped — a malformed one is logged — cached like the account read). `RoutineService`
-reads them only when a change adds an exercise (by name, or the §10.4 re-add) and extends
+reads them only when a change adds an exercise by name and extends
 the bundle catalog with them, so a custom exercise made in the app is usable within the
 cache's 30 s and edits that add nothing don't depend on that read. A name shared by several
 exercises (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm
