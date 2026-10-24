@@ -17,7 +17,7 @@ APP = {"user-agent": "SmartGym/8.0.3", "accept": "*/*", "accept-language": "en-G
 
 
 class _Headers(dict[str, str]):
-    def get(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+    def get(self, key: str, default: Any = None) -> Any:
         return super().get(key.lower(), default)
 
 

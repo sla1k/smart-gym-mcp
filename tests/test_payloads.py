@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 from smartgym_mcp import payloads
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import (
+    ChangeSet,
     DesiredExercise,
     DesiredRoutine,
     diff_routine,
@@ -21,6 +23,8 @@ from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import (
+    EncodedChange,
+    Mint,
     add_routines_form,
     archive_form,
     encode_change,
@@ -57,7 +61,7 @@ BAND = CatalogExercise(
 )
 
 
-def _counter() -> object:
+def _counter() -> Mint:
     n = iter(range(1, 100))
     return lambda _now: 26100500000000 + next(n)
 
@@ -228,11 +232,11 @@ CATALOG = ExerciseCatalog(
 )
 
 
-def _norm(form: dict[str, str]) -> dict[str, object]:
+def _norm(form: dict[str, str]) -> dict[str, Any]:
     return {k: json.loads(v) if k in JSON_FIELDS else v for k, v in form.items()}
 
 
-def _fixture_form(name: str) -> dict[str, object]:
+def _fixture_form(name: str) -> dict[str, Any]:
     form = json.loads((FIX / f"{name}.json").read_text(encoding="utf-8"))["form"]
     return _norm(
         {k: v for k, v in form.items() if k not in ("authID", "appVersion", "requestDate")}
@@ -310,7 +314,9 @@ AB3 = (
 AB_FOURTH = _ts(149092034, 26100568239109, 3, 10, 32, "2026-10-05 15:17:10")
 
 
-def _encode(current: Routine, desired: DesiredRoutine, mint=None):  # type: ignore[no-untyped-def]
+def _encode(
+    current: Routine, desired: DesiredRoutine, mint: Mint | None = None
+) -> tuple[ChangeSet, EncodedChange]:
     cs = diff_routine(current, desired, CATALOG)
     enc = encode_change(cs, current, BUNDLE, timezone=TZ, now=NOW, mint=mint or _counter())
     return cs, enc
@@ -411,8 +417,8 @@ def test_add_exercise_matches_capture_shape() -> None:
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
     }
-    (app_ex,) = app["exercises"]  # type: ignore[misc]
-    (our_ex,) = ours["exercises"]  # type: ignore[misc]
+    (app_ex,) = app["exercises"]
+    (our_ex,) = ours["exercises"]
     assert set(app_ex) - set(our_ex) == {"identifier"}
     assert set(our_ex) - set(app_ex) <= {"subCategories", "mode"}  # both accepted in S6
     for key in (
@@ -445,7 +451,7 @@ def test_mid_routine_add_carries_the_kept_order_in_the_same_request() -> None:
     new = DesiredExercise(exercise="Abdominal 4 points Drawing In")
     _, enc = _encode(_routine(*SPIKE), _main(34048391, new, 34048392, 34048393))
     form = _norm(enc.structure or {})
-    assert form["exercises"][0]["idx"] == 1  # type: ignore[index]
+    assert form["exercises"][0]["idx"] == 1
     assert form["exercisesOrder"] == "34048391:0,34048392:2,34048393:3"
 
 
@@ -620,9 +626,9 @@ def test_rest_and_move_merge_into_one_entry() -> None:
     ]
 
 
-def _app_added(fixture: str) -> tuple[dict[str, object], dict[str, object], CatalogExercise]:
+def _app_added(fixture: str) -> tuple[dict[str, Any], dict[str, Any], CatalogExercise]:
     app = _fixture_form(fixture)
-    (app_ex,) = app["exercises"]  # type: ignore[misc]
+    (app_ex,) = app["exercises"]
     images = ("first", "second", "third", "fourth", "fifth", "sixth")
     cat = CatalogExercise(
         id=int(app_ex["id"]),
@@ -638,14 +644,13 @@ def _app_added(fixture: str) -> tuple[dict[str, object], dict[str, object], Cata
     return app, app_ex, cat
 
 
-def _new_like(app_ex: dict[str, object]) -> DesiredExercise:
+def _new_like(app_ex: dict[str, Any]) -> DesiredExercise:
     return DesiredExercise(
         exercise=str(app_ex["name"]),
-        rest_seconds=int(app_ex["pause"]),  # type: ignore[call-overload]
-        note=app_ex.get("note"),  # type: ignore[arg-type]
+        rest_seconds=int(app_ex["pause"]),
+        note=app_ex.get("note"),
         sets=[
-            SetSpec(reps=s["secondValue"], weight_kg=s["thirdValue"])
-            for s in app_ex["sets"]  # type: ignore[attr-defined]
+            SetSpec(reps=s["secondValue"], weight_kg=s["thirdValue"]) for s in app_ex["sets"]
         ],
     )
 
@@ -679,11 +684,11 @@ def test_add_into_section_matches_capture_exactly(
 ) -> None:
     """The probe's minted hashids and timestamp are replayed, so the whole form must match."""
     app, app_ex, cat = _app_added(fixture)
-    sets: list[dict[str, object]] = app_ex["sets"]  # type: ignore[assignment]
-    minted = iter([int(app_ex["uniqueHashID"]), *(int(s["uniqueHashID"]) for s in sets)])  # type: ignore[call-overload]
+    sets: list[dict[str, Any]] = app_ex["sets"]
+    minted = iter([int(app_ex["uniqueHashID"]), *(int(s["uniqueHashID"]) for s in sets)])
     now = datetime.fromisoformat(str(app_ex["dateAdded"])).replace(tzinfo=UTC)
     current = _s7(*layout)
-    desired = DesiredRoutine(**{section: [*_ids(*kept), _new_like(app_ex)]})
+    desired = DesiredRoutine.model_validate({section: [*_ids(*kept), _new_like(app_ex)]})
     cs = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
     enc = encode_change(
         cs, current, {cat.id: cat}, timezone=TZ, now=now, mint=lambda _now: next(minted)
@@ -704,7 +709,7 @@ def test_app_add_at_top_of_main_matches_capture() -> None:
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
     }
-    (our_ex,) = ours["exercises"]  # type: ignore[misc]
+    (our_ex,) = ours["exercises"]
     assert set(app_ex) - set(our_ex) == {"identifier"}
     assert set(our_ex) - set(app_ex) <= {"subCategories", "mode"}
     minted = {"uniqueHashID", "dateAdded", "sets", "subCategories", "mode", "identifier"}
@@ -712,8 +717,7 @@ def test_app_add_at_top_of_main_matches_capture() -> None:
         assert our_ex[key] == app_ex[key], key
     strip = ("uniqueHashID", "dateAdded")
     assert [{k: v for k, v in s.items() if k not in strip} for s in our_ex["sets"]] == [
-        {k: v for k, v in s.items() if k not in strip}
-        for s in app_ex["sets"]  # type: ignore[attr-defined]
+        {k: v for k, v in s.items() if k not in strip} for s in app_ex["sets"]
     ]
 
 
@@ -737,7 +741,7 @@ def test_move_fallback_encodes_as_remove_plus_readd_with_order() -> None:
     form = _norm(enc.structure or {})
     assert form["removeExercises"] == str(SC)
     assert "updateExercises" not in form
-    (ex,) = form["exercises"]  # type: ignore[misc]
+    (ex,) = form["exercises"]
     assert (ex["id"], ex["idx"], ex["listGroup"]) == (507, 0, 1)
     assert form["exercisesOrder"] == f"{AB}:1"
 

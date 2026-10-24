@@ -33,10 +33,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
+      # One locked sync above; the uv run steps below must not re-resolve or re-sync.
+      - run: echo "UV_NO_SYNC=1" >> "$GITHUB_ENV"
       - run: uv run ruff check src tests scripts/smoke_stdio.py
       - run: uv run ruff format --check src tests scripts/smoke_stdio.py
-      - run: uv run mypy src scripts/smoke_stdio.py
+      - run: uv run mypy  # files = src, tests, scripts/smoke_stdio.py (pyproject.toml)
       - run: uv run pytest
+      # Catches a broken pyproject before release day, not on it.
+      - run: uv build
 
   # Single stable check name for the main ruleset, independent of the matrix.
   ci:

@@ -29,7 +29,7 @@ Project knowledge lives in shared docs — read them, don't rediscover:
   orphans the PR.
 - Before pushing, run `uv run ruff check src tests scripts/smoke_stdio.py`,
   `uv run ruff format --check src tests scripts/smoke_stdio.py`,
-  `uv run mypy src scripts/smoke_stdio.py` and `uv run pytest` — the same steps as CI.
+  `uv run mypy` and `uv run pytest` — the same steps as CI.
   `scripts/smoke_stdio.py` otherwise runs only in the release build after the merge;
   `scripts/spike/` holds throwaway capture scripts and stays unchecked.
 - The PR description says what changed, why, and how it was verified.
@@ -46,7 +46,7 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 ```sh
 uv run pytest
 uv run ruff check src tests scripts/smoke_stdio.py && uv run ruff format src tests scripts/smoke_stdio.py
-uv run mypy src scripts/smoke_stdio.py
+uv run mypy                    # src, tests and scripts/smoke_stdio.py
 uv run smartgym-mcp            # stdio server
 uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>   # install a release
 npx @modelcontextprotocol/inspector uv run smartgym-mcp   # MCP Inspector

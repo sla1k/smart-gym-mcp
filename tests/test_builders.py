@@ -7,7 +7,7 @@ import pytest
 from smartgym_mcp import builders
 from smartgym_mcp.diff import DiffError, diff_routine
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.model import Routine, RoutineExercise
+from smartgym_mcp.model import Routine, RoutineExercise, Section
 from smartgym_mcp.models import SetSpec
 
 CATALOG = ExerciseCatalog(
@@ -15,7 +15,7 @@ CATALOG = ExerciseCatalog(
 )
 
 
-def _ex(ident: int, section: str, idx: int) -> RoutineExercise:
+def _ex(ident: int, section: Section, idx: int) -> RoutineExercise:
     return RoutineExercise(
         identifier=ident,
         unique_hashid=ident,
