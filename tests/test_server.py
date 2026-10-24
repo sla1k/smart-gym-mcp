@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, override
 
 import anyio
 import anyio.to_thread
@@ -29,7 +29,7 @@ from mcp.server.mcpserver.exceptions import (
 from fakes import FakeClient, account_client
 from smartgym_mcp import server
 from smartgym_mcp.api.auth import CredentialsError, FileCredentials
-from smartgym_mcp.api.client import AuthError, WriteOutcomeUnknown
+from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.config import Config, load_config
@@ -146,7 +146,7 @@ def test_health_reports_credentials_problem(
 def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     app = server.AppContext(cfg=cfg)
-    with pytest.raises(ToolError, match="capture_credentials.py") as exc:
+    with pytest.raises(ToolError, match=r"capture_credentials\.py") as exc:
         server.smartgym_list_routines(_ctx(app))
     assert isinstance(exc.value.__cause__, CredentialsError)
     assert str(cfg.credentials_path) in str(exc.value)
@@ -232,6 +232,7 @@ def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------- tool errors
 class _UnknownOutcomeClient(FakeClient):
+    @override
     def post(self, path: str, form: Any) -> dict[str, Any]:
         raise WriteOutcomeUnknown(
             f"SmartGym did not answer {path} — the change may or may not have landed — "
@@ -304,7 +305,7 @@ def test_build_services_closes_the_client_when_a_later_step_fails(
 ) -> None:
     built: list[Any] = []
 
-    class _RecordingClient(server.ApiClient):
+    class _RecordingClient(ApiClient):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.closed = False
@@ -359,7 +360,7 @@ def test_get_routine_splits_sections(tmp_path: Path) -> None:
     "arguments", [{"limit": 0}, {"limit": -1}, {"offset": -1}], ids=["zero", "neg", "offset"]
 )
 def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
-    with pytest.raises(ToolError, match="limit|offset"):
+    with pytest.raises(ToolError, match=r"limit|offset"):
         asyncio.run(server.mcp.call_tool("smartgym_get_workout_history", arguments))
 
 
@@ -492,10 +493,10 @@ def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
 
 # ----------------------------------------------------------- one call at a time
 READ_CALLS: dict[str, WriteCall] = {
-    "list_routines": lambda c: server.smartgym_list_routines(c),
+    "list_routines": server.smartgym_list_routines,
     "get_routine": lambda c: server.smartgym_get_routine(c, routine="ZZ-FB"),
-    "workout_history": lambda c: server.smartgym_get_workout_history(c),
-    "equipment": lambda c: server.smartgym_get_equipment(c),
+    "workout_history": server.smartgym_get_workout_history,
+    "equipment": server.smartgym_get_equipment,
 }
 
 
@@ -588,7 +589,12 @@ def test_no_call_starts_after_close(tmp_path: Path) -> None:
     built: list[Config] = []
     app = _fake_app(tmp_path, client)
     factory = app.factory
-    app.factory = lambda cfg: built.append(cfg) or factory(cfg)  # type: ignore[func-returns-value]
+
+    def recording(cfg: Config) -> server.Services:
+        built.append(cfg)
+        return factory(cfg)
+
+    app.factory = recording
     app.close()
     with pytest.raises(ToolError, match="shutting down"):
         server.smartgym_list_routines(_ctx(app))
@@ -608,13 +614,13 @@ def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
         ),
     }
     for call in calls.values():
-        with pytest.raises(ToolError, match="Pass at least one of|exactly one of"):
+        with pytest.raises(ToolError, match=r"Pass at least one of|exactly one of"):
             call(_ctx(app))  # the input problem, not the missing credentials
     assert app._calls.acquire(timeout=1)  # another call in flight
     try:
         started = time.monotonic()
         for call in calls.values():
-            with pytest.raises(ToolError, match="Pass at least one of|exactly one of"):
+            with pytest.raises(ToolError, match=r"Pass at least one of|exactly one of"):
                 call(_ctx(app))
         assert time.monotonic() - started < 5
     finally:
@@ -638,7 +644,7 @@ def test_undecodable_catalog_resource_keeps_its_message(
     resources.mkdir(parents=True)
     (resources / "Exercises.json").write_bytes(b"\xff\xfe not utf-8")
     monkeypatch.setenv("SMARTGYM_APP_BUNDLE", str(bundle))
-    with pytest.raises(ResourceError, match="Exercises.json") as exc:
+    with pytest.raises(ResourceError, match=r"Exercises\.json") as exc:
         asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
     assert not isinstance(exc.value, UnexpectedResourceError)
     assert "not valid UTF-8" in str(exc.value)

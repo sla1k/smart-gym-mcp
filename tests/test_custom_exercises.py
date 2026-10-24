@@ -25,7 +25,7 @@ from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_r
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import ApiPayloadError, parse_custom_exercises, parse_routine
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
-from smartgym_mcp.payloads import encode_change, new_routine_payload
+from smartgym_mcp.payloads import Mint, encode_change, new_routine_payload
 from smartgym_mcp.service import RoutineService
 
 FIX = Path(__file__).parent / "fixtures" / "api"
@@ -75,7 +75,7 @@ def _counter() -> Iterator[int]:
     return iter(range(FIRST_HASH, FIRST_HASH + 1000))
 
 
-def _mint():  # type: ignore[no-untyped-def]
+def _mint() -> Mint:
     n = _counter()
     return lambda _now: next(n)
 

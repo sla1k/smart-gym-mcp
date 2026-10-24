@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,8 +18,8 @@ from smartgym_mcp.model import (
 FIXTURE = Path(__file__).parent / "fixtures" / "api" / "routine_single_synthetic.json"
 
 
-def _raw() -> dict:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+def _raw() -> dict[str, Any]:
+    return dict(json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
 def test_parses_routine_fields_and_coerces_strings() -> None:
@@ -94,8 +95,8 @@ def test_bad_numbers_raise_payload_error_naming_field(field: str, value: str) ->
 SYNTH = Path(__file__).parent / "fixtures" / "api" / "history_all_synthetic.json"
 
 
-def _account() -> dict:
-    return json.loads(SYNTH.read_text(encoding="utf-8"))
+def _account() -> dict[str, Any]:
+    return dict(json.loads(SYNTH.read_text(encoding="utf-8")))
 
 
 def test_sections_map_from_list_group_and_order_active_exercises() -> None:
@@ -112,7 +113,7 @@ def test_sections_map_from_list_group_and_order_active_exercises() -> None:
 def test_unknown_list_group_is_rejected_naming_the_value() -> None:
     raw = _account()["routines"][0]
     raw["exercises"][0]["listGroup"] = "7"
-    with pytest.raises(ApiPayloadError, match="listGroup.*7"):
+    with pytest.raises(ApiPayloadError, match=r"listGroup.*7"):
         parse_routine(raw)
 
 

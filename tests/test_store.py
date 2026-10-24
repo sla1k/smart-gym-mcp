@@ -67,7 +67,7 @@ def test_resolve_excludes_removed_and_reports_ambiguity_with_ids() -> None:
     store = _store(FakeClient({HISTORY: ACCOUNT}))
     with pytest.raises(RoutineNotFound):
         store.resolve("ZZ-Gone")
-    with pytest.raises(AmbiguousRoutine, match="3000001.*3000002"):
+    with pytest.raises(AmbiguousRoutine, match=r"3000001.*3000002"):
         store.resolve("ZZ-")
 
 

@@ -14,7 +14,7 @@ from smartgym_mcp.diff import (
     view_of,
 )
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.model import Routine, RoutineExercise, TemplateSet
+from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 
 CATALOG = ExerciseCatalog(
@@ -47,7 +47,7 @@ def _ex(
     ident: int,
     cat: int,
     name: str,
-    section: str,
+    section: Section,
     idx: int,
     sets: list[TemplateSet],
     note: str | None = None,
@@ -113,7 +113,7 @@ def test_nothing_requested_is_empty_and_expected_equals_current() -> None:
 
 
 def test_listing_every_section_unchanged_is_empty() -> None:
-    assert diff_routine(_routine(), DesiredRoutine(**_same()), CATALOG).is_empty
+    assert diff_routine(_routine(), DesiredRoutine.model_validate(_same()), CATALOG).is_empty
 
 
 def test_routine_fields_change_and_empty_string_clears() -> None:
@@ -197,14 +197,14 @@ def test_add_at_end_of_warmup_is_mid_routine_and_needs_order() -> None:
 def test_new_exercise_without_sets_gets_default_set_and_warning() -> None:
     wanted = _same()
     wanted["main"].append(DesiredExercise(exercise="Plank"))
-    cs = diff_routine(_routine(), DesiredRoutine(**wanted), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine.model_validate(wanted), CATALOG)
     assert [(s.reps, s.weight_kg) for s in cs.added[0].sets] == [(10, 0.0)]
     assert any("default" in w for w in cs.warnings)
 
 
 def test_duplicate_catalog_exercise_matched_by_identifier() -> None:
     working = DesiredExercise(exercise_id=12, rest_seconds=120)
-    cs = diff_routine(_routine(), DesiredRoutine(**_same(e12=working)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine.model_validate(_same(e12=working)), CATALOG)
     (upd,) = cs.updated
     assert upd.identifier == 12
     assert [(c.field, c.old, c.new) for c in upd.changes] == [("rest_seconds", "60", "120")]
@@ -216,7 +216,7 @@ def test_sets_update_add_and_remove_by_position() -> None:
     sets = [SetSpec(reps=10, weight_kg=40), SetSpec(reps=10, weight_kg=45)]
     cs = diff_routine(
         _routine(),
-        DesiredRoutine(**_same(e12=DesiredExercise(exercise_id=12, sets=sets))),
+        DesiredRoutine.model_validate(_same(e12=DesiredExercise(exercise_id=12, sets=sets))),
         CATALOG,
     )
     (upd,) = cs.updated
@@ -229,7 +229,7 @@ def test_sets_update_add_and_remove_by_position() -> None:
     more = [SetSpec(reps=15), SetSpec(reps=12)]
     cs = diff_routine(
         _routine(),
-        DesiredRoutine(**_same(e13=DesiredExercise(exercise_id=13, sets=more))),
+        DesiredRoutine.model_validate(_same(e13=DesiredExercise(exercise_id=13, sets=more))),
         CATALOG,
     )
     (upd,) = cs.updated
@@ -251,7 +251,9 @@ def test_set_index_gaps_are_renumbered_so_added_sets_never_collide() -> None:
         for i, idx in enumerate((0, 2, 3))
     ]
     want = DesiredExercise(exercise_id=12, sets=[SetSpec(reps=10, weight_kg=40)] * 4)
-    (upd,) = diff_routine(routine, DesiredRoutine(**_same(e12=want)), CATALOG).updated
+    (upd,) = diff_routine(
+        routine, DesiredRoutine.model_validate(_same(e12=want)), CATALOG
+    ).updated
     assert [(u.identifier, u.index) for u in upd.updated_sets] == [(201, 1), (202, 2)]
     assert [a.index for a in upd.added_sets] == [3]
 
@@ -259,8 +261,8 @@ def test_set_index_gaps_are_renumbered_so_added_sets_never_collide() -> None:
 def test_exercise_note_change_and_clear() -> None:
     cs = diff_routine(
         _routine(),
-        DesiredRoutine(
-            **_same(
+        DesiredRoutine.model_validate(
+            _same(
                 e13=DesiredExercise(exercise_id=13, note=""),
                 e10=DesiredExercise(exercise_id=10, note="Fast"),
             )
@@ -275,7 +277,7 @@ def test_empty_sets_list_rejected() -> None:
     with pytest.raises(DiffError, match="sets must not be empty"):
         diff_routine(
             _routine(),
-            DesiredRoutine(**_same(e13=DesiredExercise(exercise_id=13, sets=[]))),
+            DesiredRoutine.model_validate(_same(e13=DesiredExercise(exercise_id=13, sets=[]))),
             CATALOG,
         )
 
@@ -307,14 +309,16 @@ def test_float_noise_from_server_is_not_a_change() -> None:
     routine = _routine()
     routine.exercises[1].template_sets = _sets((12.300000190734863, 20), base=110)
     want = DesiredExercise(exercise_id=11, sets=[SetSpec(reps=12.3, weight_kg=20)])
-    assert diff_routine(routine, DesiredRoutine(**_same(e11=want)), CATALOG).is_empty
+    assert diff_routine(
+        routine, DesiredRoutine.model_validate(_same(e11=want)), CATALOG
+    ).is_empty
 
 
 def test_section_order_wins_over_inconsistent_server_indexes() -> None:
     routine = _routine()
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
     assert [e.identifier for e in routine.active_exercises()] == [10, 11, 12, 13, 14]
-    assert diff_routine(routine, DesiredRoutine(**_same()), CATALOG).is_empty
+    assert diff_routine(routine, DesiredRoutine.model_validate(_same()), CATALOG).is_empty
 
 
 def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
