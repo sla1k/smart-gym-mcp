@@ -3,30 +3,22 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import httpx
 import pytest
 
-from fakes import SECRET
+from fakes import APP, SECRET
+from smartgym_mcp.api.auth import Credentials
 from smartgym_mcp.api.client import ApiClient, ApiError, AuthError, WriteOutcomeUnknown
 
-PHRASE = "ph-r4se-value"
-
-
-class FakeCreds:
-    def auth_headers(self) -> Mapping[str, str]:
-        return {"Authorization": SECRET, "phrase": PHRASE}
-
-    @property
-    def user_id(self) -> str:
-        return "1"
+CREDS = Credentials(user_id="1", authorization=SECRET, app_headers=APP)
 
 
 def _client(handler: Callable[[httpx.Request], httpx.Response], **kw: object) -> ApiClient:
     return ApiClient(
-        FakeCreds(),
+        CREDS,
         app_version="8.0.3",
         transport=httpx.MockTransport(handler),
         clock=lambda: datetime(2026, 10, 5, 11, 30, 0, tzinfo=UTC),
@@ -49,7 +41,8 @@ def test_get_adds_common_params_and_auth_headers() -> None:
     assert req.url.params["appVersion"] == "8.0.3"
     assert req.url.params["authID"] == "1"
     assert req.url.params["requestDate"] == "2026-10-05T11:30:00"
-    assert req.headers["Authorization"] == SECRET and req.headers["phrase"] == PHRASE
+    assert req.headers["Authorization"] == SECRET
+    assert {h: req.headers[h] for h in APP} == APP
 
 
 def test_post_is_utf8_multipart_with_common_fields() -> None:
@@ -58,6 +51,8 @@ def test_post_is_utf8_multipart_with_common_fields() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(req.read())
         assert req.headers["content-type"].startswith("multipart/form-data")
+        assert req.headers["Authorization"] == SECRET
+        assert {h: req.headers[h] for h in APP} == APP
         return httpx.Response(200, json={"code": "SUCCESS"})
 
     _client(handler).post("routine/archive/", {"routinesIDs": "7", "note": "FB-A — W1"})
@@ -90,10 +85,10 @@ def test_reads_reject_any_answer_but_success(path: str) -> None:
 
 @pytest.mark.parametrize("status", [401, 403])
 def test_auth_failures_raise_auth_error_without_secrets(status: int) -> None:
-    client = _client(lambda _r: httpx.Response(status, text=f"denied {SECRET} {PHRASE}"))
+    client = _client(lambda _r: httpx.Response(status, text=f"denied {SECRET}"))
     with pytest.raises(AuthError) as exc:
         client.get("user/info/1")
-    assert SECRET not in str(exc.value) and PHRASE not in str(exc.value)
+    assert SECRET not in str(exc.value)
 
 
 def test_reads_retry_on_5xx_then_succeed() -> None:
@@ -141,7 +136,7 @@ def test_non_json_body_raises_api_error() -> None:
 
 def test_client_repr_hides_credentials() -> None:
     client = _client(lambda _r: httpx.Response(200, json={"code": "SUCCESS"}))
-    assert SECRET not in repr(client) and PHRASE not in repr(client)
+    assert SECRET not in repr(client) and "Authorization" not in repr(client)
 
 
 @pytest.mark.parametrize("status", [500, 502, 504])
@@ -193,15 +188,12 @@ def test_user_id_is_exposed() -> None:
 UID = "987654321"
 
 
-class _UidCreds(FakeCreds):
-    @property
-    def user_id(self) -> str:
-        return UID
+UID_CREDS = Credentials(user_id=UID, authorization=SECRET, app_headers=APP)
 
 
 def _uid_client(handler: Callable[[httpx.Request], httpx.Response]) -> ApiClient:
     return ApiClient(
-        _UidCreds(),
+        UID_CREDS,
         app_version="8.0.3",
         transport=httpx.MockTransport(handler),
         clock=lambda: datetime(2026, 10, 5, 11, 30, 0, tzinfo=UTC),
@@ -298,7 +290,7 @@ def test_reads_report_repeated_5xx_as_server_error_with_masked_id() -> None:
         return httpx.Response(503, text="busy")
 
     client = ApiClient(
-        _UidCreds(),
+        UID_CREDS,
         app_version="8.0.3",
         transport=httpx.MockTransport(handler),
         sleep=lambda _s: None,
