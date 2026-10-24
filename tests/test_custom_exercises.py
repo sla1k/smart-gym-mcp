@@ -3,7 +3,8 @@
 Fixtures: `all_custom_exercises` (the account's custom exercises: Dead Hang),
 `history_all_custom` (ZZ-F8 = Dead Hang + Push Up, ZZ-F8B = Push Up + Dead Hang),
 `add_routine_custom` (app creates ZZ-F8), `update_add_custom_exercise`
-(app adds Dead Hang to ZZ-F8B), `update_custom_*` (app edits Dead Hang inside ZZ-F8).
+(app adds Dead Hang to ZZ-F8B), `update_custom_change_set` / `update_custom_note` /
+`update_custom_sets_rest` (app edits Dead Hang inside ZZ-F8).
 """
 
 from __future__ import annotations
