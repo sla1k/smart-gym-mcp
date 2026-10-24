@@ -24,7 +24,7 @@ from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.model import ApiPayloadError, parse_custom_exercises, parse_routine
+from smartgym_mcp.model import parse_custom_exercises, parse_routine
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import Mint, encode_change, new_routine_payload
 from smartgym_mcp.service import RoutineService
@@ -134,11 +134,6 @@ def test_a_malformed_custom_exercise_is_skipped_and_logged(
     raw["exercises"].insert(0, bad)
     assert [c.name for c in parse_custom_exercises(raw)] == ["Dead Hang"]
     assert "id=397801 name='Broken Custom'" in caplog.text
-
-
-def test_custom_exercises_answer_must_be_success() -> None:
-    with pytest.raises(ApiPayloadError, match="INVALID_TOKEN"):
-        parse_custom_exercises({"code": "INVALID_TOKEN"})
 
 
 def test_routine_exercise_of_a_custom_exercise_parses_with_its_custom_id() -> None:

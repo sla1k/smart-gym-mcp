@@ -74,14 +74,18 @@ def test_post_is_utf8_multipart_with_common_fields() -> None:
 
 def test_http_200_with_error_code_raises() -> None:
     client = _client(lambda _r: httpx.Response(200, json={"code": "ROUTINE_NOT_FOUND"}))
-    with pytest.raises(ApiError) as exc:
+    with pytest.raises(ApiError, match="ROUTINE_NOT_FOUND"):
         client.post("routine/archive/", {"routinesIDs": "7"})
-    assert exc.value.code == "ROUTINE_NOT_FOUND"
 
 
-def test_require_success_false_returns_body_without_code() -> None:
-    client = _client(lambda _r: httpx.Response(200, json={"options": []}))
-    assert client.get("options.json", require_success=False) == {"options": []}
+@pytest.mark.parametrize(
+    "path", ["routine/all/1/", "history/all/1/", "exercise/allCustomExercises/"]
+)
+def test_reads_reject_any_answer_but_success(path: str) -> None:
+    """The parsers trust the client here: a non-SUCCESS read never reaches them."""
+    client = _client(lambda _r: httpx.Response(200, json={"code": "INVALID_TOKEN"}))
+    with pytest.raises(ApiError, match="INVALID_TOKEN"):
+        client.get(path)
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -165,24 +169,21 @@ def test_read_decoding_error_raises_api_error() -> None:
 
 def test_http_error_passes_server_code_through() -> None:
     client = _client(lambda _r: httpx.Response(400, json={"code": "TOO_MANY_ROUTINES"}))
-    with pytest.raises(ApiError, match="TOO_MANY_ROUTINES") as exc:
+    with pytest.raises(ApiError, match="TOO_MANY_ROUTINES"):
         client.post("routine/add/", {"routines": "[]"})
-    assert exc.value.code == "TOO_MANY_ROUTINES"
 
 
 def test_auth_error_keeps_code_without_secrets() -> None:
     client = _client(lambda _r: httpx.Response(401, json={"code": "INVALID_TOKEN"}))
-    with pytest.raises(AuthError) as exc:
+    with pytest.raises(AuthError, match="INVALID_TOKEN") as exc:
         client.get("user/info/1")
-    assert exc.value.code == "INVALID_TOKEN"
     assert SECRET not in str(exc.value)
 
 
-def test_missing_code_stays_none() -> None:
+def test_body_without_code_is_rejected() -> None:
     client = _client(lambda _r: httpx.Response(200, json={"routines": []}))
-    with pytest.raises(ApiError) as exc:
+    with pytest.raises(ApiError, match="answered None"):
         client.get("routine/all/1/")
-    assert exc.value.code is None
 
 
 def test_user_id_is_exposed() -> None:
