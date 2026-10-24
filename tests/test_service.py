@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,9 @@ from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore, RoutineNotFound
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
+from smartgym_mcp.model import Routine
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.payloads import Mint
 from smartgym_mcp.service import RoutineService, WriteVerifyError
 
 HISTORY = "history/all/1/"
@@ -123,7 +126,7 @@ def _single(*bodies: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"code": "SUCCESS", "routines": [b]} for b in bodies]
 
 
-def _counter():  # type: ignore[no-untyped-def]
+def _counter() -> Mint:
     n = iter(range(FIRST_HASH, FIRST_HASH + 1000))
     return lambda _now: next(n)
 
@@ -143,7 +146,7 @@ def _service(
     )
 
 
-def _rest(seconds: int):  # type: ignore[no-untyped-def]
+def _rest(seconds: int) -> Callable[[Routine], DesiredRoutine]:
     return lambda _r: DesiredRoutine(
         main=[DesiredExercise(exercise_id=11, rest_seconds=seconds)]
     )
@@ -255,7 +258,7 @@ def test_unknown_outcome_reports_partial_landing(tmp_path: Path) -> None:
         main=[DesiredExercise(exercise_id=11, rest_seconds=90, note="Slow")]
     )
     with pytest.raises(
-        WriteOutcomeUnknown, match="landed only partially.*note: expected 'Slow'"
+        WriteOutcomeUnknown, match=r"landed only partially.*note: expected 'Slow'"
     ):
         _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
 
@@ -341,7 +344,7 @@ def test_moves_fall_back_to_readd_when_not_in_place(tmp_path: Path) -> None:
 def test_create_rejects_existing_name(tmp_path: Path) -> None:
     client = account_client({HISTORY: _account(BEFORE)})
     spec = RoutineSpec(name="zz-svc", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
-    with pytest.raises(DiffError, match="'zz-svc' already exists — rename it."):
+    with pytest.raises(DiffError, match=r"\'zz-svc\' already exists — rename it\."):
         _service(client, tmp_path).create([spec], dry_run=True)
 
 
@@ -386,7 +389,7 @@ def test_create_may_reuse_an_archived_routines_name(tmp_path: Path) -> None:
 def test_rename_onto_an_active_routines_name_is_rejected(tmp_path: Path) -> None:
     two = _raw_routine(ident="3000002", name="ZZ-Two", hashid="2")
     client = account_client({HISTORY: _account(BEFORE, two), SINGLE: _single(BEFORE)})
-    with pytest.raises(DiffError, match="'zz-two' already exists — rename it."):
+    with pytest.raises(DiffError, match=r"\'zz-two\' already exists — rename it\."):
         _service(client, tmp_path).edit(
             "ZZ-Svc", lambda _r: DesiredRoutine(name="zz-two"), dry_run=True
         )

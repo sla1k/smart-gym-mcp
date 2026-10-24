@@ -160,9 +160,11 @@ def new_routine_payload(
         "exercises": [],
     }
     # The server 500s on JSON null here; the app omits unset optional fields.
-    for key, value in (("days", spec.days), ("goal", spec.goal), ("note", spec.note)):
-        if value and value.strip():
-            routine[key] = value
+    routine |= {
+        key: value
+        for key, value in (("days", spec.days), ("goal", spec.goal), ("note", spec.note))
+        if value and value.strip()
+    }
     for i, ((section, ex_spec), cat) in enumerate(zip(entries, exercises, strict=True)):
         routine["exercises"].append(
             exercise_payload(

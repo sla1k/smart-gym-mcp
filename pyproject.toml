@@ -48,6 +48,9 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = ["error"]
 
 [tool.ruff]
 target-version = "py312"
@@ -55,9 +58,22 @@ line-length = 95
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-extend-select = ["I", "UP", "B", "SIM"]
+extend-select = [
+    "I", "UP", "B", "SIM",
+    "RUF", "C4", "PIE", "PERF", "FURB", "ASYNC", "T20", "ARG", "RET", "PT",
+]
+ignore = ["PT018"]  # composite asserts read fine in these tests
+allowed-confusables = ["×"]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI scripts report on stdout; only the stdio server must keep it clean.
+"scripts/*" = ["T20"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src"]
+warn_unreachable = true
+enable_error_code = [
+    "ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined", "deprecated",
+]
+files = ["src", "tests", "scripts/smoke_stdio.py"]

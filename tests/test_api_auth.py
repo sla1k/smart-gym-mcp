@@ -40,7 +40,7 @@ def test_headers_carry_authorization_and_app_headers_without_phrase(tmp_path: Pa
 
 
 def test_missing_file_names_path_and_capture_script(tmp_path: Path) -> None:
-    with pytest.raises(CredentialsError, match="capture_credentials.py") as exc:
+    with pytest.raises(CredentialsError, match=r"capture_credentials\.py") as exc:
         FileCredentials(tmp_path / "nope.json")
     assert "nope.json" in str(exc.value)
 
