@@ -5,16 +5,13 @@ the current `phrase` / `Authorization` values are replaced by <REDACTED>
 everywhere, and bodies of login/token endpoints are dropped. Per request only
 a verdict is kept: whether each secret header equals the previous request's.
 
-With SPIKE_SAVE_CREDENTIALS=1 the latest complete header pair plus the account
-id and the requestDate the pair was made for are written to ~/.smartgym-mcp/credentials.json (mode 0600) for send.py;
-that file never leaves the user's machine.
+Credentials for send.py come from scripts/capture_credentials.py, not from here.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
 from pathlib import Path
@@ -23,7 +20,6 @@ from typing import Any
 from mitmproxy import http
 
 OUT = Path(__file__).with_name("spike-flows.jsonl")
-CRED = Path.home() / ".smartgym-mcp" / "credentials.json"
 SECRET_HEADERS = ("authorization", "phrase")
 APP_HEADERS = ("accept", "accept-language", "user-agent")
 AUTH_PATH = re.compile(r"login|logout|auth(?!ID)|token|register|password|session", re.I)
@@ -75,25 +71,6 @@ def _form(req: http.Request) -> dict[str, str]:
     return {}
 
 
-def _save_credentials(
-    flow: http.HTTPFlow, account: str | None, request_date: str | None
-) -> None:
-    headers = {h: flow.request.headers.get(h) for h in SECRET_HEADERS}
-    if not all(headers.values()) or not account or not request_date:
-        return
-    CRED.parent.mkdir(parents=True, exist_ok=True)
-    tmp = CRED.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        app = {
-            h: flow.request.headers.get(h) for h in APP_HEADERS if flow.request.headers.get(h)
-        }
-        json.dump(
-            {**headers, "authID": account, "requestDate": request_date, "app_headers": app}, f
-        )
-    os.replace(tmp, CRED)
-
-
 def response(flow: http.HTTPFlow) -> None:
     if "smartgymapp.com" not in flow.request.pretty_host:
         return
@@ -101,7 +78,6 @@ def response(flow: http.HTTPFlow) -> None:
     secrets = _secrets(flow)
     form = _form(flow.request)
     query = {str(k): str(v) for k, v in flow.request.query.items()}
-    account = form.get("authID") or query.get("authID")
     rec: dict[str, Any] = {
         "t": time.strftime("%Y-%m-%d %H:%M:%S"),
         "method": flow.request.method,
@@ -122,5 +98,3 @@ def response(flow: http.HTTPFlow) -> None:
     line = _redact(json.dumps(rec, ensure_ascii=False), secrets)
     with OUT.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
-    if os.environ.get("SPIKE_SAVE_CREDENTIALS") == "1":
-        _save_credentials(flow, account, form.get("requestDate") or query.get("requestDate"))
