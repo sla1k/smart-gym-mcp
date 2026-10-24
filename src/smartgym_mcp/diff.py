@@ -115,8 +115,6 @@ class RoutineView(BaseModel):
 
 
 class ChangeSet(BaseModel):
-    routine_identifier: int
-    routine_name: str
     routine_changes: list[FieldChange]
     added: list[AddedExercise]
     removed: list[RemovedExercise]
@@ -449,8 +447,6 @@ def diff_routine(
         return fields.get(field, old)
 
     return ChangeSet(
-        routine_identifier=current.identifier,
-        routine_name=current.name,
         routine_changes=routine_changes,
         added=added,
         removed=removed,
@@ -515,24 +511,3 @@ def moves_as_readd(cs: ChangeSet, current: Routine) -> ChangeSet:
             "warnings": warnings,
         }
     )
-
-
-__all__ = [
-    "DEFAULT_SET",
-    "AddedExercise",
-    "AddedSet",
-    "ChangeSet",
-    "DesiredExercise",
-    "DesiredRoutine",
-    "DiffError",
-    "ExerciseUpdate",
-    "ExerciseView",
-    "RemovedExercise",
-    "RoutineView",
-    "UpdatedSet",
-    "diff_routine",
-    "moves_as_readd",
-    "resolution_warnings",
-    "round3",
-    "view_of",
-]

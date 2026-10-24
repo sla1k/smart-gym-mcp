@@ -55,7 +55,6 @@ def _ex(
 ) -> RoutineExercise:
     return RoutineExercise(
         identifier=ident,
-        unique_hashid=ident,
         catalog_id=cat,
         name=name,
         section=section,

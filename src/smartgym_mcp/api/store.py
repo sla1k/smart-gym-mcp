@@ -22,10 +22,6 @@ class RoutineNotFound(ValueError):
     pass
 
 
-class AmbiguousRoutine(ValueError):
-    pass
-
-
 @dataclass
 class _Slot[T]:
     """One cached read."""
@@ -102,7 +98,7 @@ class AccountStore:
                 f"{r.name} (id={r.identifier}{', archived' if r.archived else ''})"
                 for r in matches
             )
-            raise AmbiguousRoutine(
+            raise ValueError(
                 f"Multiple routines match {ref!r}: {listed}. Pass the id to disambiguate."
             )
         return matches[0]
@@ -117,6 +113,3 @@ class AccountStore:
             f"No routine contains exercise {exercise_id}. "
             "Use smartgym_get_routine to see exercise ids."
         )
-
-
-__all__ = ["AccountStore", "AmbiguousRoutine", "RoutineNotFound"]

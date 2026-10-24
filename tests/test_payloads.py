@@ -245,7 +245,6 @@ def _ex(
 ) -> RoutineExercise:
     return RoutineExercise(
         identifier=ident,
-        unique_hashid=ident,
         catalog_id=cat,
         name=name,
         section="main",
@@ -526,7 +525,6 @@ def _sx(ident: int, section: Section, idx: int, note: str | None = None) -> Rout
     cat, name = S7_EXERCISES.get(ident, (194, f"Ex {ident}"))
     return RoutineExercise(
         identifier=ident,
-        unique_hashid=ident,
         catalog_id=cat,
         name=name,
         section=section,

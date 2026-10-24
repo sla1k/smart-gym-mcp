@@ -131,13 +131,3 @@ def update_routine(
     if all(v is None for v in (name, days, goal, note)):
         raise DiffError("Pass at least one of name, days, goal, note.")
     return DesiredRoutine(name=name, days=days, goal=goal, note=note)
-
-
-__all__ = [
-    "add_exercise",
-    "move_exercise",
-    "remove_exercise",
-    "reorder",
-    "update_exercise",
-    "update_routine",
-]

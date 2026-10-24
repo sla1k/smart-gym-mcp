@@ -97,11 +97,6 @@ def test_workout_history_date_range_routine_filter_and_paging() -> None:
     assert (page.total, page.count, page.has_more, page.next_offset) == (2, 1, True, 1)
 
 
-def test_workout_history_rejects_unsupported_preset() -> None:
-    with pytest.raises(ValueError, match="days must be one of"):
-        workout_history(DATA, days=9, today=TODAY, tz=UTC)
-
-
 def test_equipment_owned_flags_and_weights() -> None:
     catalog = [
         CatalogEquipment(id=1, name="Barbell", category=1),
@@ -141,7 +136,6 @@ def _with_workouts(starts: list[str]) -> AccountData:
                 identifier=8000 + n,
                 routine_identifier=data.routines[0].identifier,
                 start=start,
-                end=None,
                 duration_s=600,
                 calories=None,
                 avg_hr=None,
@@ -156,7 +150,7 @@ def test_local_time_is_dst_aware_for_an_injected_zone() -> None:
     data = _with_workouts(["2026-03-28 23:30:00", "2026-03-29 22:30:00"])
     result = workout_history(data, date_from="2026-03-01", date_to="2026-04-30", tz=MADRID)
     assert [s.date for s in result.sessions] == ["2026-03-30 00:30", "2026-03-29 00:30"]
-    detail = routine_detail(data.routines[0], data, tz=MADRID)
+    detail = routine_detail(data.routines[0], data, history_depth=5, tz=MADRID)
     assert [s.date for s in detail.main[0].sessions] == ["2026-03-30", "2026-03-29"]
 
 
@@ -174,7 +168,7 @@ def test_local_time_is_dst_aware_for_the_system_zone(monkeypatch: pytest.MonkeyP
 
 def test_same_day_workouts_stay_separate_sessions() -> None:
     data = _with_workouts(["2026-09-21 08:00:00", "2026-09-21 17:00:00"])
-    detail = routine_detail(data.routines[0], data, tz=UTC)
+    detail = routine_detail(data.routines[0], data, history_depth=5, tz=UTC)
     first, second = detail.main[0].sessions
     assert (first.date, second.date) == ("2026-09-21", "2026-09-21")
     assert [(s.reps, s.weight_kg) for s in first.sets] == [(2.0, 20.0)]

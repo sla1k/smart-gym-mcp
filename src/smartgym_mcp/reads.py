@@ -9,13 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
+from typing import Literal
 
 from pydantic import BaseModel
 
 from .catalog import CatalogEquipment
 from .model import SECTIONS, AccountData, LoggedSet, Routine, RoutineExercise
-
-ALLOWED_RANGE_DAYS = (7, 14, 30)
 
 
 class RoutineSummary(BaseModel):
@@ -142,7 +141,7 @@ def _sessions(
         groups[key] = (min(started, start), members)
     newest_first = sorted(groups.values(), key=lambda g: g[0], reverse=True)
     out: list[SessionEntry] = []
-    for started, members in newest_first[: max(depth, 0)]:
+    for started, members in newest_first[:depth]:
         ordered = sorted(members, key=lambda s: (s.index, s.logged_at))
         out.append(
             SessionEntry(
@@ -157,7 +156,7 @@ def _sessions(
 
 
 def routine_detail(
-    routine: Routine, data: AccountData, *, history_depth: int = 5, tz: tzinfo | None = None
+    routine: Routine, data: AccountData, *, history_depth: int, tz: tzinfo | None = None
 ) -> RoutineDetail:
     workout_of = {
         sid: (w.identifier, _local(w.start, tz)) for w in data.workouts for sid in w.set_ids
@@ -197,7 +196,7 @@ def routine_detail(
 def workout_history(
     data: AccountData,
     *,
-    days: int = 7,
+    days: Literal[7, 14, 30] = 7,
     date_from: str | None = None,
     date_to: str | None = None,
     routine: Routine | None = None,
@@ -210,8 +209,6 @@ def workout_history(
         start = date.fromisoformat(date_from) if date_from else date.min
         end = date.fromisoformat(date_to) if date_to else date.max
     else:
-        if days not in ALLOWED_RANGE_DAYS:
-            raise ValueError(f"days must be one of {ALLOWED_RANGE_DAYS}, got {days}")
         end = today or datetime.now(tz).date()
         start = end - timedelta(days=days)
     names = {r.identifier: r.name for r in data.routines}
@@ -268,22 +265,3 @@ def equipment(
         dumbbell_weights=first.dumbbell_weights if first else None,
         kettlebell_weights=first.kettlebell_weights if first else None,
     )
-
-
-__all__ = [
-    "ALLOWED_RANGE_DAYS",
-    "EquipmentItem",
-    "EquipmentListResult",
-    "ExerciseEntry",
-    "RoutineDetail",
-    "RoutineListResult",
-    "RoutineSummary",
-    "SessionEntry",
-    "SetEntry",
-    "WorkoutHistoryResult",
-    "WorkoutSession",
-    "equipment",
-    "list_routines",
-    "routine_detail",
-    "workout_history",
-]

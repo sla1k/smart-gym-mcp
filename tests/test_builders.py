@@ -18,7 +18,6 @@ CATALOG = ExerciseCatalog(
 def _ex(ident: int, section: Section, idx: int) -> RoutineExercise:
     return RoutineExercise(
         identifier=ident,
-        unique_hashid=ident,
         catalog_id=207,
         name=f"Ex {ident}",
         section=section,

@@ -366,19 +366,3 @@ def encode_change(
         exercise_edits=_exercise_edits(cs, current, timezone=timezone, now=now, mint=mint),
         added_hashids=hashids,
     )
-
-
-__all__ = [
-    "SECTION_MOVE_IN_PLACE",
-    "EncodedChange",
-    "Mint",
-    "add_routines_form",
-    "archive_form",
-    "encode_change",
-    "exercise_payload",
-    "local_timezone_name",
-    "mint_unique_hashid",
-    "new_routine_payload",
-    "routine_entries",
-    "unarchive_form",
-]

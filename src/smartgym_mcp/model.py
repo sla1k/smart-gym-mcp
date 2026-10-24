@@ -47,7 +47,6 @@ class LoggedSet(BaseModel):
 
 class RoutineExercise(BaseModel):
     identifier: int
-    unique_hashid: int
     catalog_id: int
     name: str
     section: Section
@@ -85,7 +84,6 @@ class Workout(BaseModel):
     identifier: int
     routine_identifier: int | None
     start: str
-    end: str | None
     duration_s: int
     calories: int | None
     avg_hr: int | None
@@ -186,7 +184,6 @@ def _parse_exercise(raw: Mapping[str, Any]) -> RoutineExercise:
             )
     return RoutineExercise(
         identifier=_int(raw, "identifier"),
-        unique_hashid=_int(raw, "uniqueHashID"),
         catalog_id=_int(raw, "id"),
         name=str(_req(raw, "name")),
         section=_section(raw),
@@ -214,10 +211,6 @@ def parse_routine(raw: Mapping[str, Any]) -> Routine:
     )
 
 
-def parse_routines_response(raw: Mapping[str, Any]) -> list[Routine]:
-    return [parse_routine(r) for r in raw.get("routines") or []]
-
-
 def _parse_workout(raw: Mapping[str, Any]) -> Workout:
     workout = raw.get("workout") or {}
     routine = raw.get("routine") or {}
@@ -231,7 +224,6 @@ def _parse_workout(raw: Mapping[str, Any]) -> Workout:
         identifier=_int(raw, "identifier"),
         routine_identifier=_int(routine, "identifier") if routine.get("identifier") else None,
         start=str(_req(workout, "startDate")),
-        end=_text(workout.get("endDate")),
         duration_s=int(_float_value("duration", duration)) if _present(duration) else 0,
         calories=_opt_round(workout, "calories"),
         avg_hr=_opt_round(workout, "averageHeartRate"),
@@ -313,23 +305,3 @@ def parse_history_all(raw: Mapping[str, Any]) -> AccountData:
         equipment_lists=[_parse_equipment_list(e) for e in raw.get("equipmentLists") or []],
         last_modified=_text(raw.get("lastModified")),
     )
-
-
-__all__ = [
-    "LIST_GROUP_BY_SECTION",
-    "SECTIONS",
-    "SECTION_BY_LIST_GROUP",
-    "AccountData",
-    "ApiPayloadError",
-    "EquipmentList",
-    "LoggedSet",
-    "Routine",
-    "RoutineExercise",
-    "Section",
-    "TemplateSet",
-    "Workout",
-    "parse_custom_exercises",
-    "parse_history_all",
-    "parse_routine",
-    "parse_routines_response",
-]

@@ -278,6 +278,7 @@ def _services(ctx: Context[AppContext]) -> Iterator[Services]:
 class HealthStatus(BaseModel):
     ok: bool
     routines: int | None
+    data_as_of: str | None
     app_version: str | None
     verified_app_version: str
     warning: str | None
@@ -290,8 +291,10 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     """Check the credentials file, the SmartGym server, and the installed app version.
 
     ok=true means the server answered with your account data. `problem` explains
-    what to fix otherwise (e.g. create the credentials file). `warning` appears when
-    the installed SmartGym version differs from the one the MCP was verified against.
+    what to fix otherwise (e.g. create the credentials file). `data_as_of` is the server's
+    last-modified time of the account data — older than the last workout on the iPhone
+    means the app hasn't synced yet. `warning` appears when the installed SmartGym version
+    differs from the one the MCP was verified against.
     """
     app = _app(ctx)
     installed = catalog.installed_app_version(app.cfg)
@@ -309,6 +312,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
         return HealthStatus(
             ok=False,
             routines=None,
+            data_as_of=None,
             app_version=installed,
             verified_app_version=VERIFIED_APP_VERSION,
             warning=warning,
@@ -318,6 +322,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     return HealthStatus(
         ok=True,
         routines=sum(1 for r in data.routines if not r.removed and not r.archived),
+        data_as_of=data.last_modified,
         app_version=installed,
         verified_app_version=VERIFIED_APP_VERSION,
         warning=warning,
@@ -611,7 +616,7 @@ def smartgym_unarchive_routine(
         return services.service.set_archived([routine], archived=False, dry_run=dry_run)
 
 
-def _read_catalog(name: str) -> str:
+def _read_catalog(name: catalog.CatalogName) -> str:
     """MCP SDK 2 hides the message of any non-ResourceError, so a missing or unreadable
     bundle file surfaces as one (its message names the file and where it was looked for)."""
     try:
