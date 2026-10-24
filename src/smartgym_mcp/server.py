@@ -25,7 +25,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from . import __version__, builders, catalog, reads
-from .api.auth import CredentialsError, FileCredentials
+from .api.auth import CredentialsError, load_credentials
 from .api.client import ApiClient, ApiError, AuthError
 from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
@@ -74,9 +74,9 @@ class Services:
 
 
 def build_services(cfg: Config) -> Services:
-    credentials = FileCredentials(cfg.credentials_path)
     client = ApiClient(
-        credentials, app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION
+        load_credentials(cfg.credentials_path),
+        app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION,
     )
     try:
         store = AccountStore(client)

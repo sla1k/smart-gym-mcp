@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import plistlib
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
 from fakes import APP, SECRET
-from smartgym_mcp.api.auth import CredentialsError, FileCredentials
+from smartgym_mcp.api.auth import Credentials, CredentialsError, load_credentials
 from smartgym_mcp.catalog import installed_app_version
 from smartgym_mcp.config import load_config
 
@@ -29,8 +29,8 @@ def _good(tmp_path: Path) -> Path:
 
 
 def test_headers_carry_authorization_and_app_headers_without_phrase(tmp_path: Path) -> None:
-    creds = FileCredentials(_good(tmp_path))
-    headers = creds.auth_headers()
+    creds = load_credentials(_good(tmp_path))
+    headers = creds.headers
     assert headers["Authorization"] == SECRET
     assert {k: headers[k] for k in APP} == APP
     assert "phrase" not in {k.lower() for k in headers}
@@ -39,7 +39,7 @@ def test_headers_carry_authorization_and_app_headers_without_phrase(tmp_path: Pa
 
 def test_missing_file_names_path_and_capture_script(tmp_path: Path) -> None:
     with pytest.raises(CredentialsError, match=r"capture_credentials\.py") as exc:
-        FileCredentials(tmp_path / "nope.json")
+        load_credentials(tmp_path / "nope.json")
     assert "nope.json" in str(exc.value)
 
 
@@ -47,7 +47,7 @@ def test_group_or_world_readable_file_is_refused(tmp_path: Path) -> None:
     path = _good(tmp_path)
     path.chmod(0o644)
     with pytest.raises(CredentialsError, match="chmod 600") as exc:
-        FileCredentials(path)
+        load_credentials(path)
     assert SECRET not in str(exc.value)
 
 
@@ -63,7 +63,7 @@ def test_incomplete_file_names_the_missing_key(tmp_path: Path, drop: str) -> Non
     else:
         del data[drop]
     with pytest.raises(CredentialsError, match=drop) as exc:
-        FileCredentials(_write(tmp_path / "c.json", data))
+        load_credentials(_write(tmp_path / "c.json", data))
     assert SECRET not in str(exc.value)
 
 
@@ -72,11 +72,24 @@ def test_invalid_json_is_refused(tmp_path: Path) -> None:
     path.write_text("{not json", encoding="utf-8")
     path.chmod(0o600)
     with pytest.raises(CredentialsError, match="not valid JSON"):
-        FileCredentials(path)
+        load_credentials(path)
 
 
-def test_repr_hides_secret(tmp_path: Path) -> None:
-    assert SECRET not in repr(FileCredentials(_good(tmp_path)))
+def test_repr_hides_token_and_account_id(tmp_path: Path) -> None:
+    account = "acct-7f3e9c"
+    path = _write(
+        tmp_path / "c.json", {"authorization": SECRET, "authID": account, "app_headers": APP}
+    )
+    creds = load_credentials(path)
+    for shown in (repr(creds), str(creds), f"{creds!r}", repr([creds])):
+        assert SECRET not in shown and account not in shown
+
+
+def test_credentials_are_immutable(tmp_path: Path) -> None:
+    creds = load_credentials(_good(tmp_path))
+    with pytest.raises(FrozenInstanceError):
+        creds.authorization = "Bearer other"  # type: ignore[misc]
+    assert creds == Credentials(user_id="42", authorization=SECRET, app_headers=APP)
 
 
 def test_installed_app_version_reads_info_plist(tmp_path: Path) -> None:

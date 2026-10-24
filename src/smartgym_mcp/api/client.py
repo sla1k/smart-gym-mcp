@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 import httpx
 
+from .auth import Credentials
+
 logger = logging.getLogger("smartgym_mcp.api")
 
 # httpx/httpcore INFO/DEBUG request lines carry the full URL, including the account id.
@@ -24,13 +26,6 @@ for _name in ("httpx", "httpcore"):
 
 BASE_URL = "https://api.smartgymapp.com/v1.1/"
 _TIMEOUT_S = 30.0
-
-
-class CredentialProvider(Protocol):
-    def auth_headers(self) -> Mapping[str, str]: ...
-
-    @property
-    def user_id(self) -> str: ...
 
 
 class ApiCalls(Protocol):
@@ -63,7 +58,7 @@ def _utcnow() -> datetime:
 class ApiClient:
     def __init__(
         self,
-        credentials: CredentialProvider,
+        credentials: Credentials,
         *,
         app_version: str,
         transport: httpx.BaseTransport | None = None,
@@ -71,12 +66,17 @@ class ApiClient:
         sleep: Callable[[float], None] = time.sleep,
         max_read_attempts: int = 3,
     ) -> None:
-        self._credentials = credentials
+        self._user_id = credentials.user_id
         self._app_version = app_version
         self._clock = clock
         self._sleep = sleep
         self._max_read_attempts = max_read_attempts
-        self._http = httpx.Client(base_url=BASE_URL, transport=transport, timeout=_TIMEOUT_S)
+        self._http = httpx.Client(
+            base_url=BASE_URL,
+            headers=credentials.headers,
+            transport=transport,
+            timeout=_TIMEOUT_S,
+        )
 
     def __repr__(self) -> str:
         return f"ApiClient(base_url={str(self._http.base_url)!r})"
@@ -86,17 +86,17 @@ class ApiClient:
 
     @property
     def user_id(self) -> str:
-        return self._credentials.user_id
+        return self._user_id
 
     def _safe_path(self, path: str) -> str:
         """Path for messages and logs: the account id never appears in them."""
-        uid = self._credentials.user_id
+        uid = self._user_id
         return "/".join("<user>" if seg == uid else seg for seg in path.split("/"))
 
     def _common(self) -> dict[str, str]:
         return {
             "appVersion": self._app_version,
-            "authID": self._credentials.user_id,
+            "authID": self._user_id,
             "requestDate": self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
@@ -109,9 +109,7 @@ class ApiClient:
             if attempt:
                 self._sleep(0.5 * 2 ** (attempt - 1))
             try:
-                resp = self._http.get(
-                    path, params=query, headers=dict(self._credentials.auth_headers())
-                )
+                resp = self._http.get(path, params=query)
             except httpx.RequestError as exc:
                 last, last_status = exc, None
                 logger.info("GET %s network error (attempt %d)", shown, attempt + 1)
@@ -138,9 +136,7 @@ class ApiClient:
         fields = {**form, **self._common()}
         files = {k: (None, v.encode("utf-8")) for k, v in fields.items()}
         try:
-            resp = self._http.post(
-                path, files=files, headers=dict(self._credentials.auth_headers())
-            )
+            resp = self._http.post(path, files=files)
         except httpx.RequestError as exc:
             raise WriteOutcomeUnknown(
                 f"Network error during write to {shown} ({type(exc).__name__}); the change "

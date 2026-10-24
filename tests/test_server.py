@@ -39,7 +39,7 @@ from fakes import (
     catalog_exercise,
 )
 from smartgym_mcp import server
-from smartgym_mcp.api.auth import CredentialsError, FileCredentials
+from smartgym_mcp.api.auth import Credentials, CredentialsError
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.config import Config, load_config
@@ -87,6 +87,18 @@ def _write_credentials(path: Path, data: object, mode: int = 0o600) -> Path:
     path.write_text(json.dumps(data), encoding="utf-8")
     path.chmod(mode)
     return path
+
+
+def _write_bundle(cfg: Config) -> None:
+    """A minimal app bundle under the test's tmp dir, so build_services runs offline."""
+    resources = cfg.app_bundle / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    exercise = {"id": "207", "name": "Cable Chest Press", "type": "0", "category": "1"}
+    (resources / "Exercises.json").write_text(json.dumps({"exercises": [exercise]}), "utf-8")
+    equipment = {"identifier": "1", "category": "1", "name": {"en": "Barbell"}}
+    (resources / "Equipments.json").write_text(
+        json.dumps({"equipments": [equipment]}), "utf-8"
+    )
 
 
 def _single() -> dict[str, Any]:
@@ -223,16 +235,19 @@ class _SessionClient(FakeClient):
         return super().get(path)
 
 
-def test_recaptured_credentials_take_effect_after_an_auth_error(tmp_path: Path) -> None:
+def test_recaptured_credentials_take_effect_after_an_auth_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real build_services re-reads the file once an AuthError dropped the services."""
     built: list[_SessionClient] = []
 
-    def factory(cfg: Config) -> server.Services:
-        headers = FileCredentials(cfg.credentials_path).auth_headers()
-        client = _SessionClient(headers["Authorization"])
-        built.append(client)
-        return _fake_app(tmp_path, client).factory(cfg)
+    def client_from(credentials: Credentials, **_kw: object) -> _SessionClient:
+        built.append(_SessionClient(credentials.authorization))
+        return built[-1]
 
-    app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
+    monkeypatch.setattr(server, "ApiClient", client_from)
+    app = server.AppContext(cfg=_cfg(tmp_path))
+    _write_bundle(app.cfg)
     creds = {"authID": "1", "app_headers": APP}
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer expired"})
     with pytest.raises(ToolError, match="rejected the credentials") as exc:
@@ -314,14 +329,7 @@ def test_missing_credentials_reach_an_mcp_client(
 
 def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
-    resources = cfg.app_bundle / "Contents" / "Resources"
-    resources.mkdir(parents=True)
-    exercise = {"id": "207", "name": "Cable Chest Press", "type": "0", "category": "1"}
-    (resources / "Exercises.json").write_text(json.dumps({"exercises": [exercise]}), "utf-8")
-    equipment = {"identifier": "1", "category": "1", "name": {"en": "Barbell"}}
-    (resources / "Equipments.json").write_text(
-        json.dumps({"equipments": [equipment]}), "utf-8"
-    )
+    _write_bundle(cfg)
     _write_credentials(
         cfg.credentials_path, {"authorization": SECRET, "authID": "42", "app_headers": APP}
     )
