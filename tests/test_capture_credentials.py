@@ -12,8 +12,9 @@ from typing import Any
 
 import pytest
 
+from fakes import APP
+
 SCRIPT = Path(__file__).parents[1] / "scripts" / "capture_credentials.py"
-APP = {"user-agent": "SmartGym/8.0.3", "accept": "*/*", "accept-language": "en-GB"}
 
 
 class _Headers(dict[str, str]):

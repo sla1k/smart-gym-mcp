@@ -11,16 +11,23 @@ from __future__ import annotations
 
 import copy
 import json
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fakes import CUSTOM_EXERCISES, FakeClient
+from fakes import (
+    CUSTOM_EXERCISES,
+    FIX,
+    HISTORY,
+    TZ,
+    FakeClient,
+    app_form,
+    counter_mint,
+    routine_service,
+)
 from smartgym_mcp.api.client import ApiError
-from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
 from smartgym_mcp.matching import ExerciseCatalog
@@ -29,10 +36,7 @@ from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import Mint, encode_change, new_routine_payload
 from smartgym_mcp.service import RoutineService
 
-FIX = Path(__file__).parent / "fixtures" / "api"
 NOW = datetime(2026, 10, 18, 13, 18, 16, tzinfo=UTC)
-TZ = "Europe/Madrid"
-HISTORY = "history/all/1/"
 FIRST_HASH = 26101800000001
 DEAD_HANG_ID = 397744
 DEAD_HANG_NOTE = "Seconds. Stop on left-wrist pain. W2: 30 -> 35 s"
@@ -49,6 +53,10 @@ PUSH_UP = CatalogExercise(
     images=("0194-1", "0194-2", "", "", "", ""),
 )
 BUNDLE = {PUSH_UP.id: PUSH_UP}
+
+
+def _mint() -> Mint:
+    return counter_mint(FIRST_HASH)
 
 
 def _fixture(name: str) -> dict[str, Any]:
@@ -70,25 +78,6 @@ def _raw_routine(name: str) -> dict[str, Any]:
 def _dead_hang() -> CatalogExercise:
     (custom,) = parse_custom_exercises(_customs())
     return custom
-
-
-def _counter() -> Iterator[int]:
-    return iter(range(FIRST_HASH, FIRST_HASH + 1000))
-
-
-def _mint() -> Mint:
-    n = _counter()
-    return lambda _now: next(n)
-
-
-def _app_form(name: str) -> dict[str, Any]:
-    form = _fixture(name)["form"]
-    out: dict[str, Any] = {}
-    for k, v in form.items():
-        if k in ("authID", "appVersion", "requestDate"):
-            continue
-        out[k] = json.loads(v) if k in ("routines", "exercises", "updateExercises") else v
-    return out
 
 
 def _encoded(form: dict[str, str] | None) -> dict[str, Any]:
@@ -170,7 +159,7 @@ def test_create_payload_carries_the_custom_exercise_like_the_app() -> None:
         ],
     )
     ours = new_routine_payload(spec, [_dead_hang(), PUSH_UP], number=31, now=NOW, mint=_mint())
-    (app,) = _app_form("add_routine_custom")["routines"]
+    (app,) = app_form("add_routine_custom")["routines"]
     app_ex, our_ex = app["exercises"][0], ours["exercises"][0]
     # The app also sends local placeholder ids, which a create may omit (S6); `mode` is
     # accepted (S6).
@@ -210,7 +199,7 @@ def test_adding_a_custom_exercise_matches_the_app_update() -> None:
     cs = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
     enc = encode_change(cs, current, exercises, timezone=TZ, now=NOW, mint=_mint())
     ours = _encoded(enc.structure)
-    app = _app_form("update_add_custom_exercise")
+    app = app_form("update_add_custom_exercise")
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
     }
@@ -242,7 +231,7 @@ def _zz_f8_edit(**dead_hang: Any) -> tuple[Any, Any]:
 
 
 def _app_dead_hang_entry(fixture: str) -> dict[str, Any]:
-    (entry,) = _app_form(fixture)["updateExercises"]
+    (entry,) = app_form(fixture)["updateExercises"]
     return dict(entry)
 
 
@@ -287,15 +276,8 @@ def test_custom_exercise_rest_and_added_set_match_the_app() -> None:
 def _service(
     client: FakeClient, tmp_path: Path, *, move_in_place: bool = True
 ) -> RoutineService:
-    return RoutineService(
-        client,
-        AccountStore(client),
-        BUNDLE,
-        backup_dir=tmp_path,
-        timezone=TZ,
-        now=lambda: NOW,
-        mint=_mint(),
-        move_in_place=move_in_place,
+    return routine_service(
+        client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH, move_in_place=move_in_place
     )
 
 

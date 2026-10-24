@@ -1,8 +1,5 @@
-"""Test setup: make `src` importable. Tests never touch the network, the account, or the DB."""
+"""Tests run against the installed (editable) package and never touch the network or the account.
 
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+Shared helpers live in `fakes.py`; pytest's default rootdir conftest handling puts `tests/` on
+`sys.path`, so test modules import them as `from fakes import ...`.
+"""

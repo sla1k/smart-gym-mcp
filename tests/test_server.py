@@ -26,21 +26,26 @@ from mcp.server.mcpserver.exceptions import (
     UnexpectedToolError,
 )
 
-from fakes import FakeClient, account_client
+from fakes import (
+    ACCOUNT,
+    APP,
+    HISTORY,
+    SECRET,
+    SINGLE,
+    TZ,
+    FakeClient,
+    account_client,
+    catalog_exercise,
+)
 from smartgym_mcp import server
 from smartgym_mcp.api.auth import CredentialsError, FileCredentials
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
-from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
 from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.service import RoutineService
 
-FIX = Path(__file__).parent / "fixtures" / "api"
-ACCOUNT = json.loads((FIX / "history_all_synthetic.json").read_text(encoding="utf-8"))
-HISTORY = "history/all/1/"
-SINGLE = "routine/single/3000001/"
 EXPECTED_TOOLS = {
     "smartgym_health", "smartgym_list_routines", "smartgym_get_routine",
     "smartgym_get_workout_history", "smartgym_get_equipment", "smartgym_create_program",
@@ -48,25 +53,9 @@ EXPECTED_TOOLS = {
     "smartgym_remove_exercise", "smartgym_reorder_routine", "smartgym_update_exercise",
     "smartgym_apply_routine", "smartgym_archive_routines", "smartgym_unarchive_routine",
 }  # fmt: skip
-APP = {"user-agent": "SmartGym/8.0.3", "accept": "*/*", "accept-language": "en-GB"}
-SECRET = "Bearer s3cr3t-token"
 
 
-def _cat(ident: int, name: str) -> CatalogExercise:
-    return CatalogExercise(
-        id=ident,
-        name=name,
-        type=0,
-        category=1,
-        sub_categories="",
-        two_sides=0,
-        stretch=0,
-        equipment_ids=(),
-        images=(f"{ident}-1", "", "", "", "", ""),
-    )
-
-
-BUNDLE = {207: _cat(207, "Cable Chest Press"), 20: _cat(20, "Plank")}
+BUNDLE = {207: catalog_exercise(207, "Cable Chest Press"), 20: catalog_exercise(20, "Plank")}
 
 
 def _ctx(app: server.AppContext) -> Any:
@@ -87,9 +76,7 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
 def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
     def factory(cfg: Config) -> server.Services:
         store = AccountStore(client)
-        service = RoutineService(
-            client, store, BUNDLE, backup_dir=cfg.backup_dir, timezone="Europe/Madrid"
-        )
+        service = RoutineService(client, store, BUNDLE, backup_dir=cfg.backup_dir, timezone=TZ)
         return server.Services(client=client, store=store, service=service, equipment=[])  # type: ignore[arg-type]
 
     return server.AppContext(cfg=_cfg(tmp_path), factory=factory)

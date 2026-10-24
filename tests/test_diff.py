@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from fakes import by_id
 from smartgym_mcp.diff import (
     DesiredExercise,
     DesiredRoutine,
@@ -102,10 +103,6 @@ def _same(**over: DesiredExercise) -> dict[str, list[DesiredExercise]]:
     }
 
 
-def _ids(*idents: int) -> list[DesiredExercise]:
-    return [DesiredExercise(exercise_id=i) for i in idents]
-
-
 def test_nothing_requested_is_empty_and_expected_equals_current() -> None:
     cs = diff_routine(_routine(), DesiredRoutine(), CATALOG)
     assert cs.is_empty
@@ -131,20 +128,20 @@ def test_empty_name_rejected() -> None:
 
 
 def test_reorder_within_main() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(main=_ids(13, 11, 12)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
     assert cs.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
     assert not (cs.added or cs.removed or cs.updated)
 
 
 def test_omitted_from_given_section_is_removed_and_other_sections_kept() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(main=_ids(11, 13)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(main=by_id(11, 13)), CATALOG)
     assert [(r.identifier, r.name) for r in cs.removed] == [(12, "Cable Chest Press")]
     assert cs.final_order is None
     assert not cs.updated
 
 
 def test_move_main_to_warmup_listing_only_warmup() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(warmup=_ids(10, 13)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 13)), CATALOG)
     (upd,) = cs.updated
     assert (upd.identifier, upd.new_section) == (13, "warmup")
     assert [(c.field, c.old, c.new) for c in upd.changes] == [("section", "main", "warmup")]
@@ -160,7 +157,7 @@ def test_move_main_to_warmup_listing_only_warmup() -> None:
 
 
 def test_move_keeping_relative_order_needs_no_order_request() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(warmup=_ids(10, 11)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
     (upd,) = cs.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
     assert cs.final_order is None
@@ -284,8 +281,8 @@ def test_empty_sets_list_rejected() -> None:
 
 def test_all_problems_reported_together() -> None:
     wanted = DesiredRoutine(
-        warmup=_ids(11),
-        main=[*_ids(999), DesiredExercise(exercise="Zercher squat"), *_ids(11)],
+        warmup=by_id(11),
+        main=[*by_id(999), DesiredExercise(exercise="Zercher squat"), *by_id(11)],
     )
     with pytest.raises(DiffError) as exc:
         diff_routine(_routine(), wanted, CATALOG)
@@ -325,7 +322,7 @@ def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
     plank = DesiredExercise(exercise="Plank")
     cs = diff_routine(
         _routine(),
-        DesiredRoutine(main=_ids(11, 13), cooldown=[DesiredExercise(exercise_id=14), plank]),
+        DesiredRoutine(main=by_id(11, 13), cooldown=[DesiredExercise(exercise_id=14), plank]),
         CATALOG,
     )
     assert [r.identifier for r in cs.removed] == [12]
@@ -346,14 +343,14 @@ def test_append_to_routine_with_idx_gap_renumbers() -> None:
 def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
     routine = _routine()
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
-    cs = diff_routine(routine, DesiredRoutine(warmup=_ids(10, 11)), CATALOG)
+    cs = diff_routine(routine, DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
     (upd,) = cs.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
     assert cs.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
 
 
 def test_moves_as_readd_turns_a_move_into_remove_plus_add() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(warmup=_ids(10, 13)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 13)), CATALOG)
     fallback = moves_as_readd(cs, _routine())
     assert [r.identifier for r in fallback.removed] == [13]
     (added,) = fallback.added
@@ -372,7 +369,7 @@ def test_moves_as_readd_turns_a_move_into_remove_plus_add() -> None:
 
 def test_moves_as_readd_keeps_other_edits_of_the_moved_exercise() -> None:
     moved = DesiredExercise(exercise_id=13, rest_seconds=90, sets=[SetSpec(reps=20)])
-    cs = diff_routine(_routine(), DesiredRoutine(cooldown=[*_ids(14), moved]), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(cooldown=[*by_id(14), moved]), CATALOG)
     fallback = moves_as_readd(cs, _routine())
     (added,) = fallback.added
     assert (added.section, added.position, added.rest_seconds) == ("cooldown", 4, 90)
@@ -381,7 +378,7 @@ def test_moves_as_readd_keeps_other_edits_of_the_moved_exercise() -> None:
 
 
 def test_moves_as_readd_is_identity_without_moves() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(main=_ids(13, 11, 12)), CATALOG)
+    cs = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
     assert moves_as_readd(cs, _routine()) == cs
 
 
