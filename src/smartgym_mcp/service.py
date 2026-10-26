@@ -51,6 +51,9 @@ _APPLIED = (
     "next refresh."
 )
 _REREAD_FAILED = "Re-reading failed, so whether the change landed is unknown."
+_RETRY_ROUTINES = " Re-read the routines before retrying."
+_REREAD_ERRORS = (ApiError, ApiPayloadError, RoutineNotFound)
+_Post = tuple[str, str, Mapping[str, str]]  # (label in messages, path, form)
 
 
 class WriteVerifyError(RuntimeError):
@@ -174,6 +177,13 @@ def _progress(
     return message
 
 
+def _unverified(path: str, sent: str) -> str:
+    return (
+        f" {path} was sent and accepted, but re-reading to verify failed. Sent: {sent}."
+        + _RETRY_ROUTINES
+    )
+
+
 def _active_names(routines: Sequence[Routine], *, besides: int | None = None) -> set[str]:
     """Lower-cased names of active routines — archived and removed ones may be reused."""
     return {
@@ -202,6 +212,51 @@ class RoutineService:
         self._tz = timezone
         self._now = now
         self._mint = mint
+
+    # ------------------------------------------------------- send and re-read
+    def _send(
+        self, posts: Sequence[_Post], *, on_unknown: Callable[[], str], retry_hint: str
+    ) -> list[str]:
+        """Post each request once, in order (never re-sent); return the sent labels.
+
+        A failure re-raises its class naming what was sent, failed and not sent; an unknown
+        outcome adds `on_unknown()`, a re-read of whether it landed; `retry_hint` ends it.
+        """
+        labels = [label for label, _, _ in posts]
+        sent: list[str] = []
+        for i, (label, path, form) in enumerate(posts):
+            try:
+                self._client.post(path, form)
+            except ApiError as exc:
+                self._store.invalidate()
+                message = _progress(exc, sent, label, labels[i + 1 :])
+                if isinstance(exc, WriteOutcomeUnknown):
+                    try:
+                        found = on_unknown()
+                    except _REREAD_ERRORS:
+                        found = _REREAD_FAILED
+                    message += f" {found}"
+                raise _with_context(exc, message + retry_hint) from None
+            sent.append(label)
+        self._store.invalidate()
+        return sent
+
+    @staticmethod
+    def _reread[T](read: Callable[[], T], failed: str) -> T:
+        """The re-read that verifies a sent write; a failure keeps its class, + `failed`."""
+        try:
+            return read()
+        except _REREAD_ERRORS as exc:
+            raise _with_context(exc, failed) from None
+
+    def _view(self, identifier: int) -> RoutineView:
+        return view_of(parse_routine(self._store.routine_raw(identifier)))
+
+    def _routines_by_hash(self) -> dict[int, Routine]:
+        return {r.unique_hashid: r for r in self._store.account().routines}
+
+    def _archived_by_id(self) -> dict[int, bool]:
+        return {r.identifier: r.archived for r in self._store.account().routines}
 
     def _catalog(self, *, custom: bool = True) -> ExerciseCatalog:
         """The app bundle plus (with `custom`) the account's custom exercises."""
@@ -263,36 +318,24 @@ class RoutineService:
                 notice=_DRY,
             )
         snapshot = save_snapshot(self._backup_dir, raw, now=now)
-        sent: list[str] = []
-        for i, (path, form) in enumerate(requests):
-            try:
-                self._client.post(path, form)
-            except ApiError as exc:
-                self._store.invalidate()
-                message = _progress(exc, sent, path, planned[i + 1 :])
-                if isinstance(exc, WriteOutcomeUnknown):
-                    message += f" {self._landed(current, change.expected)}"
-                message += (
-                    f" Snapshot of the routine before this edit: {snapshot}. Re-read the "
-                    "routine before retrying."
-                )
-                raise _with_context(exc, message) from None
-            sent.append(path)
-        self._store.invalidate()
-        try:
-            after = view_of(parse_routine(self._store.routine_raw(current.identifier)))
-        except (ApiError, ApiPayloadError, RoutineNotFound) as exc:
-            raise _with_context(
-                exc,
-                f" All requests were sent ({', '.join(sent)}) but re-reading the routine to "
-                f"verify them failed. Snapshot of the routine before this edit: {snapshot}.",
-            ) from None
+        kept = f" Snapshot of the routine before this edit: {snapshot}."
+        sent = self._send(
+            [(path, path, form) for path, form in requests],
+            on_unknown=lambda: self._landed(current, change.expected),
+            retry_hint=kept + " Re-read the routine before retrying.",
+        )
+        after = self._reread(
+            lambda: self._view(current.identifier),
+            f" All requests were sent ({', '.join(sent)}) but re-reading the routine to "
+            "verify them failed." + kept,
+        )
         problems = compare_views(change.expected, after)
         if problems:
             raise WriteVerifyError(
                 "SmartGym accepted the edit, but the routine now differs from the plan: "
                 + "; ".join(problems)
-                + f". Snapshot of the routine before this edit: {snapshot}."
+                + "."
+                + kept
             )
         return EditResult(
             dry_run=False,
@@ -304,10 +347,7 @@ class RoutineService:
         )
 
     def _landed(self, current: Routine, expected: RoutineView) -> str:
-        try:
-            after = view_of(parse_routine(self._store.routine_raw(current.identifier)))
-        except (ApiError, ApiPayloadError, RoutineNotFound):
-            return _REREAD_FAILED
+        after = self._view(current.identifier)
         if after == expected:
             return "Re-read: the change landed."
         if after == view_of(current):
@@ -372,26 +412,16 @@ class RoutineService:
             )
             for i, (spec, plan) in enumerate(zip(specs, plans, strict=True))
         ]
-        try:
-            self._client.post("routine/add/", add_routines_form(payloads, timezone=self._tz))
-        except ApiError as exc:
-            self._store.invalidate()
-            message = _progress(exc, [], "routine/add/")
-            if isinstance(exc, WriteOutcomeUnknown):
-                message += f" {self._created(specs, payloads)}"
-            raise _with_context(
-                exc, message + " Re-read the routines before retrying."
-            ) from None
-        self._store.invalidate()
-        try:
-            by_hash = {r.unique_hashid: r for r in self._store.account().routines}
-        except (ApiError, ApiPayloadError) as exc:
-            raise _with_context(
-                exc,
-                " routine/add/ was sent and accepted, but re-reading to verify failed. Sent: "
-                + ", ".join(repr(spec.name) for spec in specs)
-                + ". Re-read the routines before retrying.",
-            ) from None
+        path = "routine/add/"
+        self._send(
+            [(path, path, add_routines_form(payloads, timezone=self._tz))],
+            on_unknown=lambda: self._created(specs, payloads),
+            retry_hint=_RETRY_ROUTINES,
+        )
+        by_hash = self._reread(
+            self._routines_by_hash,
+            _unverified(path, ", ".join(repr(spec.name) for spec in specs)),
+        )
         created: list[RoutineId] = []
         mismatches: list[str] = []
         for spec, payload in zip(specs, payloads, strict=True):
@@ -415,10 +445,7 @@ class RoutineService:
     def _created(
         self, specs: Sequence[RoutineSpec], payloads: Sequence[dict[str, Any]]
     ) -> str:
-        try:
-            by_hash = {r.unique_hashid: r for r in self._store.account().routines}
-        except (ApiError, ApiPayloadError):
-            return _REREAD_FAILED
+        by_hash = self._routines_by_hash()
         found: list[str] = []
         missing: list[str] = []
         for spec, payload in zip(specs, payloads, strict=True):
@@ -460,30 +487,13 @@ class RoutineService:
                 notice=_DRY if dry_run else "Nothing to change.",
             )
         path = "routine/archive/" if archived else "routine/unarchive/"
-        labels = [f"{path} ({t.name})" for t in todo]
-        sent: list[str] = []
-        for i, (t, label) in enumerate(zip(todo, labels, strict=True)):
-            form = archive_form(t.identifier) if archived else unarchive_form(t.identifier)
-            try:
-                self._client.post(path, form)
-            except ApiError as exc:
-                self._store.invalidate()
-                message = _progress(exc, sent, label, labels[i + 1 :])
-                if isinstance(exc, WriteOutcomeUnknown):
-                    message += f" {self._archive_state(todo, archived)}"
-                raise _with_context(
-                    exc, message + " Re-read the routines before retrying."
-                ) from None
-            sent.append(label)
-        self._store.invalidate()
-        try:
-            state = {r.identifier: r.archived for r in self._store.account().routines}
-        except (ApiError, ApiPayloadError) as exc:
-            raise _with_context(
-                exc,
-                f" {path} was sent and accepted, but re-reading to verify failed. Sent: "
-                f"{', '.join(sent)}. Re-read the routines before retrying.",
-            ) from None
+        form = archive_form if archived else unarchive_form
+        sent = self._send(
+            [(f"{path} ({t.name})", path, form(t.identifier)) for t in todo],
+            on_unknown=lambda: self._archive_state(todo, archived),
+            retry_hint=_RETRY_ROUTINES,
+        )
+        state = self._reread(self._archived_by_id, _unverified(path, ", ".join(sent)))
         wrong = [t.name for t in todo if state.get(t.identifier) != archived]
         if wrong:
             raise WriteVerifyError(
@@ -499,10 +509,7 @@ class RoutineService:
         )
 
     def _archive_state(self, todo: Sequence[Routine], archived: bool) -> str:
-        try:
-            state = {r.identifier: r.archived for r in self._store.account().routines}
-        except (ApiError, ApiPayloadError):
-            return _REREAD_FAILED
+        state = self._archived_by_id()
         target = "archived" if archived else "active"
         done = [t.name for t in todo if state.get(t.identifier) == archived]
         return f"Re-read: now {target}: {', '.join(done) or 'none'}."

@@ -561,3 +561,50 @@ def test_archive_failure_reports_what_was_already_sent(tmp_path: Path) -> None:
     assert "Failed: routine/archive/ (ZZ-Two)" in message
     assert "Not sent: routine/archive/ (ZZ-Three)." in message
     assert len(client.sent) == 2
+
+
+# The three writes share one send → re-read pipeline; these pin its full wording.
+def test_edit_with_unknown_outcome_and_failing_reread_says_it_cannot_tell(
+    tmp_path: Path,
+) -> None:
+    client = account_client(
+        {HISTORY: _account(BEFORE), SINGLE: [*_single(BEFORE), ApiError("down")]},
+        posts=[WriteOutcomeUnknown("timeout")],
+    )
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        _service(client, tmp_path).edit("ZZ-Svc", _rest(90), dry_run=False)
+    message = str(exc.value)
+    assert message.startswith(
+        "timeout Already sent: nothing. Outcome unknown: routine/update/. Re-reading "
+        "failed, so whether the change landed is unknown. Snapshot of the routine before "
+        "this edit: "
+    )
+    assert message.endswith(". Re-read the routine before retrying.")
+
+
+def test_create_with_unknown_outcome_and_failing_reread_says_it_cannot_tell(
+    tmp_path: Path,
+) -> None:
+    client = account_client(
+        {HISTORY: [_account(BEFORE), ApiError("down")]},
+        posts=[WriteOutcomeUnknown("timeout")],
+    )
+    spec = RoutineSpec(name="ZZ-New", goal="G", exercises=[ExerciseSpec(exercise="Plank")])
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        _service(client, tmp_path).create([spec], dry_run=False)
+    assert str(exc.value) == (
+        "timeout Already sent: nothing. Outcome unknown: routine/add/. Re-reading failed, "
+        "so whether the change landed is unknown. Re-read the routines before retrying."
+    )
+
+
+def test_archive_with_unknown_outcome_rereads_and_reports_the_state(tmp_path: Path) -> None:
+    client = account_client(
+        {HISTORY: _account(BEFORE)}, posts=[WriteOutcomeUnknown("timeout")]
+    )
+    with pytest.raises(WriteOutcomeUnknown) as exc:
+        _service(client, tmp_path).set_archived(["ZZ-Svc"], archived=True, dry_run=False)
+    assert str(exc.value) == (
+        "timeout Already sent: nothing. Outcome unknown: routine/archive/ (ZZ-Svc). "
+        "Re-read: now archived: none. Re-read the routines before retrying."
+    )
