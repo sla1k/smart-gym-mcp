@@ -18,8 +18,14 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .account import (
+    AccountCache,
+    RoutineNotFound,
+    fetch_routine,
+    find_routine,
+    routine_of_exercise,
+)
 from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
-from .api.store import AccountStore, RoutineNotFound
 from .diff import (
     ChangeSet,
     DesiredRoutine,
@@ -194,10 +200,13 @@ def _active_names(routines: Sequence[Routine], *, besides: int | None = None) ->
 
 
 class RoutineService:
+    """`cache` lives for one tool call (AppContext.use clears it), so a write plans against
+    the account as the call found it; every send clears it for the verifying re-read."""
+
     def __init__(
         self,
         client: ApiCalls,
-        store: AccountStore,
+        cache: AccountCache,
         bundle: ExerciseCatalog,
         *,
         backup_dir: Path,
@@ -206,7 +215,7 @@ class RoutineService:
         mint: Mint = mint_unique_hashid,
     ) -> None:
         self._client = client
-        self._store = store
+        self._cache = cache
         self._bundle = bundle
         self._backup_dir = backup_dir
         self._tz = timezone
@@ -228,7 +237,7 @@ class RoutineService:
             try:
                 self._client.post(path, form)
             except ApiError as exc:
-                self._store.invalidate()
+                self._cache.invalidate()
                 message = _progress(exc, sent, label, labels[i + 1 :])
                 if isinstance(exc, WriteOutcomeUnknown):
                     try:
@@ -238,7 +247,7 @@ class RoutineService:
                     message += f" {found}"
                 raise _with_context(exc, message + retry_hint) from None
             sent.append(label)
-        self._store.invalidate()
+        self._cache.invalidate()
         return sent
 
     @staticmethod
@@ -250,36 +259,38 @@ class RoutineService:
             raise _with_context(exc, failed) from None
 
     def _view(self, identifier: int) -> RoutineView:
-        return view_of(parse_routine(self._store.routine_raw(identifier)))
+        return view_of(parse_routine(fetch_routine(self._client, identifier)))
 
     def _routines_by_hash(self) -> dict[int, Routine]:
-        return {r.unique_hashid: r for r in self._store.account().routines}
+        return {r.unique_hashid: r for r in self._cache.account().routines}
 
     def _archived_by_id(self) -> dict[int, bool]:
-        return {r.identifier: r.archived for r in self._store.account().routines}
+        return {r.identifier: r.archived for r in self._cache.account().routines}
 
     def _catalog(self, *, custom: bool = True) -> ExerciseCatalog:
         """The app bundle plus (with `custom`) the account's custom exercises."""
         if not custom:
             return self._bundle
-        return self._bundle.extended(self._store.custom_exercises())
+        return self._bundle.extended(self._cache.custom_exercises())
 
     # ------------------------------------------------------------------ edits
     def edit(
         self, ref: str | int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        return self._edit(self._store.resolve(ref).identifier, build, dry_run=dry_run)
+        return self._edit(
+            find_routine(self._cache.account(), ref).identifier, build, dry_run=dry_run
+        )
 
     def edit_exercise(
         self, exercise_id: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        routine = self._store.routine_of_exercise(exercise_id)
+        routine = routine_of_exercise(self._cache.account(), exercise_id)
         return self._edit(routine.identifier, build, dry_run=dry_run)
 
     def _edit(
         self, identifier: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        raw = self._store.routine_raw(identifier)
+        raw = fetch_routine(self._client, identifier)
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
         desired = build(current)
@@ -293,7 +304,7 @@ class RoutineService:
         change = diff_routine(current, desired, catalog)
         renamed = next((c.new for c in change.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
-            self._store.account().routines, besides=current.identifier
+            self._cache.account().routines, besides=current.identifier
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         now = self._now()
@@ -360,9 +371,7 @@ class RoutineService:
 
     # ----------------------------------------------------------------- create
     def create(self, specs: Sequence[RoutineSpec], *, dry_run: bool) -> CreateResult:
-        if not dry_run:
-            self._store.invalidate()
-        account = self._store.account()
+        account = self._cache.account()
         catalog = self._catalog()
         taken = _active_names(account.routines)
         problems: list[str] = []
@@ -465,11 +474,10 @@ class RoutineService:
     def set_archived(
         self, refs: Sequence[str | int], *, archived: bool, dry_run: bool
     ) -> ArchiveResult:
-        if not dry_run:
-            self._store.invalidate()
+        account = self._cache.account()
         targets: dict[int, Routine] = {}
         for ref in refs:
-            routine = self._store.resolve(ref)
+            routine = find_routine(account, ref)
             targets.setdefault(routine.identifier, routine)
         todo = [t for t in targets.values() if t.archived != archived]
         handles = [RoutineId(identifier=t.identifier, name=t.name) for t in todo]

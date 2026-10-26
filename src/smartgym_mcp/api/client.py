@@ -29,7 +29,7 @@ _TIMEOUT_S = 30.0
 
 
 class ApiCalls(Protocol):
-    """What the store and the service need from a client (ApiClient or a test fake)."""
+    """What account.py and the service need from a client (ApiClient or a test fake)."""
 
     @property
     def user_id(self) -> str: ...
