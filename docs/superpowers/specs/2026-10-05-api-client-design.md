@@ -151,9 +151,11 @@ server.py        thin MCP tools (no HTTP or payload code in tool bodies)
 api/client.py    HTTP: base URL, multipart, common params, auth headers, error mapping,
                  read retries; never logs header values
 api/auth.py      credential provider (shape decided after S1)
+api/reads.py     read endpoints: history/all, allCustomExercises, routine/single → raw JSON
 model.py         Routine → Exercise → Set (pydantic), parsed from server JSON
-account.py       account reads cached for one tool call (dropped after every write), fresh
-                 routine/single fetch, routine lookups by ref / exercise id (pure)
+lookups.py       routine by ref / routine of an exercise id over parsed AccountData (pure)
+cache.py         ReadCache: parsed history/all + custom exercises for one tool call,
+                 dropped after every write (routine/single is never cached)
 payloads.py      Routine → routine/add/ JSON; ChangeSet → routine/update/ form
 diff.py          (current Routine, desired Routine) → ChangeSet — pure, no I/O
 matching.py      ExerciseCatalog.resolve (kept)
@@ -346,8 +348,10 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 | The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note` |
 | Removing a custom exercise from a routine = plain `removeExercises` | — (captured, not kept: no test used it) |
 
-Model: `CatalogExercise.is_custom`; `AccountCache.custom_exercises()` (removed and malformed
-ones skipped — a malformed one is logged — cached like the account read, for one tool call).
+Model: `CatalogExercise.is_custom`; `api.reads.custom_exercises()` fetches them,
+`model.parse_custom_exercises()` parses them (removed and malformed ones skipped — a malformed
+one is logged), `ReadCache.custom_exercises()` keeps them like the account read, for one tool
+call.
 `RoutineService` reads them only when a change adds an exercise by name and extends the bundle
 catalog with them, so a custom exercise made in the app is usable from the next tool call and
 edits that add nothing don't depend on that read. A name shared by several

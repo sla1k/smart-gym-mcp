@@ -18,14 +18,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .account import (
-    AccountCache,
-    RoutineNotFound,
-    fetch_routine,
-    find_routine,
-    routine_of_exercise,
-)
+from .api import reads
 from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
+from .cache import ReadCache
 from .diff import (
     ChangeSet,
     DesiredRoutine,
@@ -38,6 +33,7 @@ from .diff import (
     view_of,
 )
 from .inputs import DEFAULT_SET, RoutineSpec
+from .lookups import RoutineNotFound, find_routine, routine_of_exercise
 from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
 from .model import SECTION_BY_LIST_GROUP, SECTIONS, ApiPayloadError, Routine, parse_routine
 from .payloads import (
@@ -206,7 +202,7 @@ class RoutineService:
     def __init__(
         self,
         client: ApiCalls,
-        cache: AccountCache,
+        cache: ReadCache,
         bundle: ExerciseCatalog,
         *,
         backup_dir: Path,
@@ -258,8 +254,15 @@ class RoutineService:
         except _REREAD_ERRORS as exc:
             raise _with_context(exc, failed) from None
 
+    def _routine_raw(self, identifier: int) -> dict[str, Any]:
+        """The routine's JSON from `routine/single/<id>/`, read fresh every time."""
+        routines = reads.routine_single(self._client, identifier).get("routines") or []
+        if not routines:
+            raise RoutineNotFound(f"SmartGym has no routine with id {identifier}.")
+        return dict(routines[0])
+
     def _view(self, identifier: int) -> RoutineView:
-        return view_of(parse_routine(fetch_routine(self._client, identifier)))
+        return view_of(parse_routine(self._routine_raw(identifier)))
 
     def _routines_by_hash(self) -> dict[int, Routine]:
         return {r.unique_hashid: r for r in self._cache.account().routines}
@@ -290,7 +293,7 @@ class RoutineService:
     def _edit(
         self, identifier: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        raw = fetch_routine(self._client, identifier)
+        raw = self._routine_raw(identifier)
         current = parse_routine(raw)
         handle = RoutineId(identifier=current.identifier, name=current.name)
         desired = build(current)
