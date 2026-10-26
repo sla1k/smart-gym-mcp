@@ -23,7 +23,7 @@ class RoutineNotFound(ValueError):
 
 
 @dataclass
-class _Slot[T]:
+class _CachedRead[T]:
     """One cached read."""
 
     value: T | None = None
@@ -43,16 +43,16 @@ class AccountStore:
         self._client = client
         self._ttl = ttl_s
         self._clock = clock
-        self._account = _Slot[AccountData]()
-        self._customs = _Slot[list[CatalogExercise]]()
+        self._account = _CachedRead[AccountData]()
+        self._customs = _CachedRead[list[CatalogExercise]]()
 
-    def _read[T](self, slot: _Slot[T], load: Callable[[], T]) -> T:
+    def _read[T](self, slot: _CachedRead[T], load: Callable[[], T]) -> T:
         if slot.value is None or self._clock() - slot.at > self._ttl:
             slot.value = load()
             slot.at = self._clock()
         return slot.value
 
-    def data(self) -> AccountData:
+    def account(self) -> AccountData:
         return self._read(
             self._account,
             lambda: parse_history_all(
@@ -77,9 +77,10 @@ class AccountStore:
             raise RoutineNotFound(f"SmartGym has no routine with id {identifier}.")
         return dict(routines[0])
 
-    def resolve(self, ref: str | int, *, data: AccountData | None = None) -> Routine:
-        """`data` resolves against an account snapshot the caller already holds."""
-        account = self.data() if data is None else data
+    def resolve(self, ref: str | int, *, account: AccountData | None = None) -> Routine:
+        """`account` resolves against an account snapshot the caller already holds."""
+        if account is None:
+            account = self.account()
         live = [r for r in account.routines if not r.removed]
         s = str(ref).strip()
         if s.isdigit():
@@ -104,7 +105,7 @@ class AccountStore:
         return matches[0]
 
     def routine_of_exercise(self, exercise_id: int) -> Routine:
-        for r in self.data().routines:
+        for r in self.account().routines:
             if not r.removed and any(
                 e.identifier == exercise_id and not e.removed for e in r.exercises
             ):

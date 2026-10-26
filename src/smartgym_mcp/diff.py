@@ -18,11 +18,9 @@ from itertools import pairwise
 
 from pydantic import BaseModel, Field, model_validator
 
-from .matching import ExerciseCatalog, UnresolvedExercise
+from .inputs import DEFAULT_SET, Days, Goal, SetSpec
+from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
 from .model import SECTIONS, Routine, RoutineExercise, Section
-from .models import Days, ExerciseResolution, FieldChange, Goal, SetSpec
-
-DEFAULT_SET = SetSpec(reps=10, weight_kg=0.0)
 
 
 class DiffError(ValueError):
@@ -58,6 +56,12 @@ class DesiredRoutine(BaseModel):
     def section_list(self, section: Section) -> list[DesiredExercise] | None:
         value: list[DesiredExercise] | None = getattr(self, section)
         return value
+
+
+class FieldChange(BaseModel):
+    field: str
+    old: str | None
+    new: str | None
 
 
 class AddedSet(BaseModel):
@@ -126,6 +130,8 @@ class ChangeSet(BaseModel):
 
 @dataclass(frozen=True)
 class _Slot:
+    """One place in a desired section: a kept exercise or a new one from the catalog."""
+
     existing: RoutineExercise | None
     want: DesiredExercise | None
     resolution: ExerciseResolution | None

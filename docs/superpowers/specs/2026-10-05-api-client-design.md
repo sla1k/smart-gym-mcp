@@ -156,7 +156,7 @@ payloads.py      Routine → routine/add/ JSON; ChangeSet → routine/update/ fo
 diff.py          (current Routine, desired Routine) → ChangeSet — pure, no I/O
 matching.py      ExerciseCatalog.resolve (kept)
 catalog.py       bundle catalog reader (kept)
-snapshots.py     saves the fetched routine JSON before every write
+service.py       write orchestration; saves the fetched routine JSON before every write
 ```
 Removed: `lifecycle.py`, `writes.py`, DB write helpers, re-key/tombstone, the publish tool.
 

@@ -13,8 +13,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from pydantic import BaseModel
+
 from .catalog import CatalogExercise
-from .models import ExerciseResolution
 
 FUZZY_THRESHOLD = 0.85
 _SUGGESTIONS = 3
@@ -32,6 +33,14 @@ _ALIASES = {
 
 class UnresolvedExercise(ValueError):
     pass
+
+
+class ExerciseResolution(BaseModel):
+    input: str
+    resolved_name: str
+    catalog_id: int
+    confidence: float
+    fuzzy: bool
 
 
 def _tokens(name: str) -> str:

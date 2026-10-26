@@ -32,9 +32,9 @@ from fakes import (
 from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import parse_custom_exercises, parse_routine
-from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import Mint, encode_change, new_routine_payload
 from smartgym_mcp.service import RoutineService
 
@@ -197,9 +197,11 @@ def test_adding_a_custom_exercise_matches_the_app_update() -> None:
         ]
     )
     exercises = {**BUNDLE, DEAD_HANG_ID: _dead_hang()}
-    cs = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
-    enc = dict(encode_change(cs, current, exercises, timezone=TZ, now=NOW, mint=_mint()))
-    ours = _encoded(enc[UPDATE])
+    change = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
+    requests = dict(
+        encode_change(change, current, exercises, timezone=TZ, now=NOW, mint=_mint())
+    )
+    ours = _encoded(requests[UPDATE])
     app = app_form("update_add_custom_exercise")
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
@@ -211,7 +213,7 @@ def test_adding_a_custom_exercise_matches_the_app_update() -> None:
     assert {k: v for k, v in our_ex.items() if k not in skip} == {
         k: v for k, v in app_ex.items() if k not in skip
     }
-    assert list(enc) == [UPDATE]
+    assert list(requests) == [UPDATE]
 
 
 # ------------------------------------------- editing a routine that holds a custom one
@@ -227,8 +229,8 @@ def _zz_f8_edit(**dead_hang: Any) -> dict[str, dict[str, str]]:
         ]
     )
     exercises = {**BUNDLE, DEAD_HANG_ID: _dead_hang()}
-    cs = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
-    return dict(encode_change(cs, current, exercises, timezone=TZ, now=NOW, mint=_mint()))
+    change = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
+    return dict(encode_change(change, current, exercises, timezone=TZ, now=NOW, mint=_mint()))
 
 
 def _app_dead_hang_entry(fixture: str) -> dict[str, Any]:
@@ -237,32 +239,32 @@ def _app_dead_hang_entry(fixture: str) -> dict[str, Any]:
 
 
 def test_listing_the_custom_exercise_unchanged_is_no_change() -> None:
-    enc = _zz_f8_edit()
-    assert enc == {}
+    requests = _zz_f8_edit()
+    assert requests == {}
 
 
 def test_custom_exercise_set_change_matches_the_app() -> None:
-    enc = _zz_f8_edit(sets=[SetSpec(reps=40), SetSpec(reps=40)])
-    (ours,) = _encoded(enc[EDIT])["exercises"]
+    requests = _zz_f8_edit(sets=[SetSpec(reps=40), SetSpec(reps=40)])
+    (ours,) = _encoded(requests[EDIT])["exercises"]
     # This editor sends set edits inside routine/update/'s updateExercises; ours go to
     # routine/updateExercise/ (S2/S3). The per-exercise entry is the same.
     assert ours == _app_dead_hang_entry("update_custom_change_set")
-    assert list(enc) == [EDIT]
+    assert list(requests) == [EDIT]
 
 
 def test_custom_exercise_note_matches_the_app() -> None:
-    enc = _zz_f8_edit(note=f"{DEAD_HANG_NOTE}\n\nF8 note")
-    (ours,) = _encoded(enc[EDIT])["exercises"]
+    requests = _zz_f8_edit(note=f"{DEAD_HANG_NOTE}\n\nF8 note")
+    (ours,) = _encoded(requests[EDIT])["exercises"]
     assert ours == _app_dead_hang_entry("update_custom_note")
 
 
 def test_custom_exercise_rest_and_added_set_match_the_app() -> None:
     sets = [SetSpec(reps=40), SetSpec(reps=40), SetSpec(reps=30)]
-    enc = _zz_f8_edit(rest_seconds=60, sets=sets)
+    requests = _zz_f8_edit(rest_seconds=60, sets=sets)
     app = _app_dead_hang_entry("update_custom_sets_rest")
-    (rest,) = _encoded(enc[UPDATE])["updateExercises"]
+    (rest,) = _encoded(requests[UPDATE])["updateExercises"]
     assert rest == {"pause": app["pause"], "exerciseID": app["exerciseID"]}
-    (edit,) = _encoded(enc[EDIT])["exercises"]
+    (edit,) = _encoded(requests[EDIT])["exercises"]
     assert edit["updatedSets"] == app["updatedSets"]
     ((our_add,), (app_add,)) = edit["addedSets"], app["addedSets"]
     assert {k: v for k, v in our_add.items() if k != "uniqueHashID"} == {

@@ -44,7 +44,7 @@ from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
-from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.service import RoutineService
 
 EXPECTED_TOOLS = {
@@ -103,6 +103,11 @@ def _write_bundle(cfg: Config) -> None:
 
 def _single() -> dict[str, Any]:
     return {"code": "SUCCESS", "routines": [copy.deepcopy(ACCOUNT["routines"][0])]}
+
+
+def test_local_timezone_name_is_iana_or_utc() -> None:
+    name = server.local_timezone_name()
+    assert name == "UTC" or "/" in name
 
 
 # ---------------------------------------------------------------- registration

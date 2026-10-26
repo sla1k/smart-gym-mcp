@@ -112,9 +112,15 @@ def local_timestamp(server_time: str, tz: tzinfo | None = None) -> str:
     return _local(server_time, tz).isoformat(timespec="seconds")
 
 
-def list_routines(data: AccountData, *, include_archived: bool = False) -> RoutineListResult:
+def list_routines(
+    account: AccountData, *, include_archived: bool = False
+) -> RoutineListResult:
     routines = sorted(
-        (r for r in data.routines if not r.removed and (include_archived or not r.archived)),
+        (
+            r
+            for r in account.routines
+            if not r.removed and (include_archived or not r.archived)
+        ),
         key=lambda r: r.name.lower(),
     )
     items = [
@@ -164,10 +170,10 @@ def _sessions(
 
 
 def routine_detail(
-    routine: Routine, data: AccountData, *, history_depth: int, tz: tzinfo | None = None
+    routine: Routine, account: AccountData, *, history_depth: int, tz: tzinfo | None = None
 ) -> RoutineDetail:
     workout_of = {
-        sid: (w.identifier, _local(w.start, tz)) for w in data.workouts for sid in w.set_ids
+        sid: (w.identifier, _local(w.start, tz)) for w in account.workouts for sid in w.set_ids
     }
 
     def entry(e: RoutineExercise) -> ExerciseEntry:
@@ -202,7 +208,7 @@ def routine_detail(
 
 
 def workout_history(
-    data: AccountData,
+    account: AccountData,
     *,
     days: RangeDays = 7,
     date_from: str | None = None,
@@ -219,9 +225,9 @@ def workout_history(
     else:
         end = today or datetime.now(tz).date()
         start = end - timedelta(days=days)
-    names = {r.identifier: r.name for r in data.routines}
+    names = {r.identifier: r.name for r in account.routines}
     picked: list[tuple[datetime, int]] = []
-    for i, w in enumerate(data.workouts):
+    for i, w in enumerate(account.workouts):
         local = _local(w.start, tz)
         if not start <= local.date() <= end:
             continue
@@ -232,7 +238,7 @@ def workout_history(
     page = picked[offset : offset + limit]
     sessions = []
     for local, i in page:
-        w = data.workouts[i]
+        w = account.workouts[i]
         sessions.append(
             WorkoutSession(
                 identifier=w.identifier,
@@ -256,9 +262,9 @@ def workout_history(
 
 
 def equipment(
-    data: AccountData, catalog: Sequence[CatalogEquipment], *, owned_only: bool = True
+    account: AccountData, catalog: Sequence[CatalogEquipment], *, owned_only: bool = True
 ) -> EquipmentListResult:
-    lists = [e for e in data.equipment_lists if e.selected] or data.equipment_lists[:1]
+    lists = [e for e in account.equipment_lists if e.selected] or account.equipment_lists[:1]
     owned = {i for e in lists for i in e.equipment_ids}
     items = [
         EquipmentItem(id=c.id, name=c.name, owned=c.id in owned)

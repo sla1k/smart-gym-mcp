@@ -1,4 +1,4 @@
-"""reads.py: AccountData → read-tool views. Pure; UTC + fixed 'today' for determinism."""
+"""views.py: AccountData → read-tool views. Pure; UTC + fixed 'today' for determinism."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 
 from smartgym_mcp.catalog import CatalogEquipment
 from smartgym_mcp.model import AccountData, LoggedSet, Workout, parse_history_all
-from smartgym_mcp.reads import equipment, list_routines, routine_detail, workout_history
+from smartgym_mcp.views import equipment, list_routines, routine_detail, workout_history
 
 DATA = parse_history_all(
     json.loads(

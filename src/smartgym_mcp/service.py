@@ -10,6 +10,7 @@ account is re-read once to report whether the change landed (spec §7).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -21,7 +22,6 @@ from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
 from .api.store import AccountStore, RoutineNotFound
 from .catalog import CatalogExercise
 from .diff import (
-    DEFAULT_SET,
     ChangeSet,
     DesiredRoutine,
     DiffError,
@@ -32,9 +32,9 @@ from .diff import (
     round3,
     view_of,
 )
-from .matching import ExerciseCatalog, UnresolvedExercise
+from .inputs import DEFAULT_SET, RoutineSpec
+from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
 from .model import SECTION_BY_LIST_GROUP, SECTIONS, ApiPayloadError, Routine, parse_routine
-from .models import ExerciseResolution, RoutineSpec
 from .payloads import (
     Mint,
     add_routines_form,
@@ -45,7 +45,6 @@ from .payloads import (
     routine_entries,
     unarchive_form,
 )
-from .snapshots import save_snapshot
 
 _DRY = "Dry run — nothing sent. Re-run with dry_run=false to apply."
 _APPLIED = (
@@ -147,6 +146,20 @@ def _payload_view(payload: Mapping[str, Any]) -> RoutineView:
     )
 
 
+def save_snapshot(backup_dir: Path, routine_raw: Mapping[str, Any], *, now: datetime) -> Path:
+    """Save the fetched routine JSON verbatim before a write (spec §7).
+
+    Restore = smartgym_apply_routine from the snapshot's content.
+    """
+    folder = backup_dir / now.strftime("%Y%m%d-%H%M%S-%f")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"routine-{routine_raw['identifier']}.json"
+    path.write_text(
+        json.dumps(routine_raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return path
+
+
 def _with_context(exc: Exception, suffix: str) -> Exception:
     """The same exception class with `suffix` appended — callers match on the class."""
     return type(exc)(f"{exc}{suffix}")
@@ -230,21 +243,21 @@ class RoutineService:
             for want in desired.section_list(section) or []
         )
         catalog, exercises = self._exercises(custom=adds_by_name)
-        cs = diff_routine(current, desired, catalog)
-        renamed = next((c.new for c in cs.routine_changes if c.field == "name"), None)
+        change = diff_routine(current, desired, catalog)
+        renamed = next((c.new for c in change.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
-            self._store.data().routines, besides=current.identifier
+            self._store.account().routines, besides=current.identifier
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         now = self._now()
         requests = encode_change(
-            cs, current, exercises, timezone=self._tz, now=now, mint=self._mint
+            change, current, exercises, timezone=self._tz, now=now, mint=self._mint
         )
         if not requests:
             return EditResult(
                 dry_run=dry_run,
                 routine=handle,
-                changes=cs,
+                changes=change,
                 requests=[],
                 snapshot=None,
                 notice="Nothing to change — the routine already looks like that.",
@@ -254,7 +267,7 @@ class RoutineService:
             return EditResult(
                 dry_run=True,
                 routine=handle,
-                changes=cs,
+                changes=change,
                 requests=planned,
                 snapshot=None,
                 notice=_DRY,
@@ -268,7 +281,7 @@ class RoutineService:
                 self._store.invalidate()
                 message = _progress(exc, sent, path, planned[i + 1 :])
                 if isinstance(exc, WriteOutcomeUnknown):
-                    message += f" {self._landed(current, cs.expected)}"
+                    message += f" {self._landed(current, change.expected)}"
                 message += (
                     f" Snapshot of the routine before this edit: {snapshot}. Re-read the "
                     "routine before retrying."
@@ -284,7 +297,7 @@ class RoutineService:
                 f" All requests were sent ({', '.join(sent)}) but re-reading the routine to "
                 f"verify them failed. Snapshot of the routine before this edit: {snapshot}.",
             ) from None
-        problems = compare_views(cs.expected, after)
+        problems = compare_views(change.expected, after)
         if problems:
             raise WriteVerifyError(
                 "SmartGym accepted the edit, but the routine now differs from the plan: "
@@ -294,7 +307,7 @@ class RoutineService:
         return EditResult(
             dry_run=False,
             routine=handle,
-            changes=cs,
+            changes=change,
             requests=sent,
             snapshot=str(snapshot),
             notice=_APPLIED,
@@ -319,9 +332,9 @@ class RoutineService:
     def create(self, specs: Sequence[RoutineSpec], *, dry_run: bool) -> CreateResult:
         if not dry_run:
             self._store.invalidate()
-        data = self._store.data()
+        account = self._store.account()
         catalog, exercises = self._exercises()
-        taken = _active_names(data.routines)
+        taken = _active_names(account.routines)
         problems: list[str] = []
         plans: list[CreatePlan] = []
         resolved: list[list[CatalogExercise]] = []
@@ -363,7 +376,7 @@ class RoutineService:
             return CreateResult(dry_run=True, plan=plans, created=[], notice=_DRY)
 
         now = self._now()
-        top = max((r.number for r in data.routines), default=0)
+        top = max((r.number for r in account.routines), default=0)
         payloads = [
             new_routine_payload(spec, cats, number=top + i + 1, now=now, mint=self._mint)
             for i, (spec, cats) in enumerate(zip(specs, resolved, strict=True))
@@ -380,7 +393,7 @@ class RoutineService:
             ) from None
         self._store.invalidate()
         try:
-            by_hash = {r.unique_hashid: r for r in self._store.data().routines}
+            by_hash = {r.unique_hashid: r for r in self._store.account().routines}
         except (ApiError, ApiPayloadError) as exc:
             raise _with_context(
                 exc,
@@ -412,7 +425,7 @@ class RoutineService:
         self, specs: Sequence[RoutineSpec], payloads: Sequence[dict[str, Any]]
     ) -> str:
         try:
-            by_hash = {r.unique_hashid: r for r in self._store.data().routines}
+            by_hash = {r.unique_hashid: r for r in self._store.account().routines}
         except (ApiError, ApiPayloadError):
             return _REREAD_FAILED
         found: list[str] = []
@@ -473,7 +486,7 @@ class RoutineService:
             sent.append(label)
         self._store.invalidate()
         try:
-            state = {r.identifier: r.archived for r in self._store.data().routines}
+            state = {r.identifier: r.archived for r in self._store.account().routines}
         except (ApiError, ApiPayloadError) as exc:
             raise _with_context(
                 exc,
@@ -496,7 +509,7 @@ class RoutineService:
 
     def _archive_state(self, todo: Sequence[Routine], archived: bool) -> str:
         try:
-            state = {r.identifier: r.archived for r in self._store.data().routines}
+            state = {r.identifier: r.archived for r in self._store.account().routines}
         except (ApiError, ApiPayloadError):
             return _REREAD_FAILED
         target = "archived" if archived else "active"

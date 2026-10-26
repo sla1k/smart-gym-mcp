@@ -21,9 +21,9 @@ from fakes import (
 from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
 from smartgym_mcp.api.store import RoutineNotFound
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.model import Routine
-from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
-from smartgym_mcp.service import RoutineService, WriteVerifyError
+from smartgym_mcp.service import RoutineService, WriteVerifyError, save_snapshot
 
 NOW = datetime(2026, 10, 6, 10, 0, tzinfo=UTC)
 FIRST_HASH = 26100600000001
@@ -34,6 +34,15 @@ BUNDLE = {
     207: catalog_exercise(207, "Cable Chest Press"),
     20: catalog_exercise(20, "Plank"),
 }
+
+
+def test_snapshot_written_under_timestamped_folder(tmp_path: Path) -> None:
+    """The fetched routine JSON is saved verbatim before a write."""
+    raw = {"identifier": "3000001", "name": "FB-A — Return W1", "exercises": []}
+    path = save_snapshot(tmp_path, raw, now=datetime(2026, 10, 6, 9, 30, 1, 5))
+    assert path == tmp_path / "20261006-093001-000005" / "routine-3000001.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == raw
+    assert "—" in path.read_text(encoding="utf-8")
 
 
 def _raw_ex(

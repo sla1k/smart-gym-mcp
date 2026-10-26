@@ -16,9 +16,9 @@ from smartgym_mcp.diff import (
     diff_routine,
     view_of,
 )
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
-from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import encode_change
 
 CATALOG = ExerciseCatalog(
@@ -106,29 +106,35 @@ def _same(**over: DesiredExercise) -> dict[str, list[DesiredExercise]]:
     }
 
 
-def _sends_nothing(cs: ChangeSet, current: Routine) -> bool:
+def _sends_nothing(change: ChangeSet, current: Routine) -> bool:
     """The change encodes to no request (an add would need the catalog and fail here)."""
-    return encode_change(cs, current, {}, timezone=TZ, now=NOW) == []
+    return encode_change(change, current, {}, timezone=TZ, now=NOW) == []
 
 
 def test_nothing_requested_is_empty_and_expected_equals_current() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(), CATALOG)
-    assert _sends_nothing(cs, _routine())
-    assert cs.expected == view_of(_routine())
+    change = diff_routine(_routine(), DesiredRoutine(), CATALOG)
+    assert _sends_nothing(change, _routine())
+    assert change.expected == view_of(_routine())
 
 
 def test_listing_every_section_unchanged_is_empty() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine.model_validate(_same()), CATALOG)
-    assert _sends_nothing(cs, _routine())
+    change = diff_routine(_routine(), DesiredRoutine.model_validate(_same()), CATALOG)
+    assert _sends_nothing(change, _routine())
 
 
 def test_routine_fields_change_and_empty_string_clears() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(name="ZZ-R2", note="", days="2,4,6"), CATALOG)
-    assert [(c.field, c.old, c.new) for c in cs.routine_changes] == [
+    change = diff_routine(
+        _routine(), DesiredRoutine(name="ZZ-R2", note="", days="2,4,6"), CATALOG
+    )
+    assert [(c.field, c.old, c.new) for c in change.routine_changes] == [
         ("name", "ZZ-R", "ZZ-R2"),
         ("note", "old", None),
     ]
-    assert (cs.expected.name, cs.expected.note, cs.expected.days) == ("ZZ-R2", None, "2,4,6")
+    assert (change.expected.name, change.expected.note, change.expected.days) == (
+        "ZZ-R2",
+        None,
+        "2,4,6",
+    )
 
 
 def test_empty_name_rejected() -> None:
@@ -137,26 +143,26 @@ def test_empty_name_rejected() -> None:
 
 
 def test_reorder_within_main() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
-    assert cs.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
-    assert not (cs.added or cs.removed or cs.updated)
+    change = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
+    assert change.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
+    assert not (change.added or change.removed or change.updated)
 
 
 def test_omitted_from_given_section_is_removed_and_other_sections_kept() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(main=by_id(11, 13)), CATALOG)
-    assert [(r.identifier, r.name) for r in cs.removed] == [(12, "Cable Chest Press")]
-    assert cs.final_order is None
-    assert not cs.updated
+    change = diff_routine(_routine(), DesiredRoutine(main=by_id(11, 13)), CATALOG)
+    assert [(r.identifier, r.name) for r in change.removed] == [(12, "Cable Chest Press")]
+    assert change.final_order is None
+    assert not change.updated
 
 
 def test_move_main_to_warmup_listing_only_warmup() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 13)), CATALOG)
-    (upd,) = cs.updated
+    change = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 13)), CATALOG)
+    (upd,) = change.updated
     assert (upd.identifier, upd.new_section) == (13, "warmup")
     assert [(c.field, c.old, c.new) for c in upd.changes] == [("section", "main", "warmup")]
-    assert cs.removed == []
-    assert cs.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
-    assert [e.section for e in cs.expected.exercises] == [
+    assert change.removed == []
+    assert change.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
+    assert [e.section for e in change.expected.exercises] == [
         "warmup",
         "warmup",
         "main",
@@ -166,18 +172,18 @@ def test_move_main_to_warmup_listing_only_warmup() -> None:
 
 
 def test_move_keeping_relative_order_needs_no_order_request() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
-    (upd,) = cs.updated
+    change = diff_routine(_routine(), DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
+    (upd,) = change.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
-    assert cs.final_order is None
+    assert change.final_order is None
 
 
 def test_add_new_exercise_at_end_of_cooldown() -> None:
     plank = DesiredExercise(exercise="plank", rest_seconds=30, sets=[SetSpec(reps=30)])
-    cs = diff_routine(
+    change = diff_routine(
         _routine(), DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
     )
-    (added,) = cs.added
+    (added,) = change.added
     assert (
         added.catalog_id,
         added.name,
@@ -185,47 +191,49 @@ def test_add_new_exercise_at_end_of_cooldown() -> None:
         added.position,
         added.rest_seconds,
     ) == (20, "Plank", "cooldown", 5, 30)
-    assert cs.final_order is None
+    assert change.final_order is None
 
 
 def test_add_at_end_of_warmup_is_mid_routine_and_needs_order() -> None:
-    cs = diff_routine(
+    change = diff_routine(
         _routine(),
         DesiredRoutine(
             warmup=[DesiredExercise(exercise_id=10), DesiredExercise(exercise="Plank")]
         ),
         CATALOG,
     )
-    assert cs.added[0].position == 1
-    assert cs.final_order == ["id:10", "new:0", "id:11", "id:12", "id:13", "id:14"]
+    assert change.added[0].position == 1
+    assert change.final_order == ["id:10", "new:0", "id:11", "id:12", "id:13", "id:14"]
 
 
 def test_new_exercise_without_sets_gets_default_set_and_warning() -> None:
     wanted = _same()
     wanted["main"].append(DesiredExercise(exercise="Plank"))
-    cs = diff_routine(_routine(), DesiredRoutine.model_validate(wanted), CATALOG)
-    assert [(s.reps, s.weight_kg) for s in cs.added[0].sets] == [(10, 0.0)]
-    assert any("default" in w for w in cs.warnings)
+    change = diff_routine(_routine(), DesiredRoutine.model_validate(wanted), CATALOG)
+    assert [(s.reps, s.weight_kg) for s in change.added[0].sets] == [(10, 0.0)]
+    assert any("default" in w for w in change.warnings)
 
 
 def test_duplicate_catalog_exercise_matched_by_identifier() -> None:
     working = DesiredExercise(exercise_id=12, rest_seconds=120)
-    cs = diff_routine(_routine(), DesiredRoutine.model_validate(_same(e12=working)), CATALOG)
-    (upd,) = cs.updated
+    change = diff_routine(
+        _routine(), DesiredRoutine.model_validate(_same(e12=working)), CATALOG
+    )
+    (upd,) = change.updated
     assert upd.identifier == 12
     assert [(c.field, c.old, c.new) for c in upd.changes] == [("rest_seconds", "60", "120")]
-    assert cs.expected.exercises[2].rest_seconds == 120
-    assert cs.expected.exercises[2].sets == [(10.0, 40.0), (10.0, 40.0), (8.0, 42.5)]
+    assert change.expected.exercises[2].rest_seconds == 120
+    assert change.expected.exercises[2].sets == [(10.0, 40.0), (10.0, 40.0), (8.0, 42.5)]
 
 
 def test_sets_update_add_and_remove_by_position() -> None:
     sets = [SetSpec(reps=10, weight_kg=40), SetSpec(reps=10, weight_kg=45)]
-    cs = diff_routine(
+    change = diff_routine(
         _routine(),
         DesiredRoutine.model_validate(_same(e12=DesiredExercise(exercise_id=12, sets=sets))),
         CATALOG,
     )
-    (upd,) = cs.updated
+    (upd,) = change.updated
     assert [(u.identifier, u.index, u.reps, u.weight_kg) for u in upd.updated_sets] == [
         (201, 1, 10, 45)
     ]
@@ -233,12 +241,12 @@ def test_sets_update_add_and_remove_by_position() -> None:
     assert upd.added_sets == []
 
     more = [SetSpec(reps=15), SetSpec(reps=12)]
-    cs = diff_routine(
+    change = diff_routine(
         _routine(),
         DesiredRoutine.model_validate(_same(e13=DesiredExercise(exercise_id=13, sets=more))),
         CATALOG,
     )
-    (upd,) = cs.updated
+    (upd,) = change.updated
     assert [(a.index, a.reps) for a in upd.added_sets] == [(1, 12)]
     assert upd.updated_sets == [] and upd.removed_set_ids == []
 
@@ -265,7 +273,7 @@ def test_set_index_gaps_are_renumbered_so_added_sets_never_collide() -> None:
 
 
 def test_exercise_note_change_and_clear() -> None:
-    cs = diff_routine(
+    change = diff_routine(
         _routine(),
         DesiredRoutine.model_validate(
             _same(
@@ -275,7 +283,9 @@ def test_exercise_note_change_and_clear() -> None:
         ),
         CATALOG,
     )
-    changes = {u.identifier: [(c.field, c.old, c.new) for c in u.changes] for u in cs.updated}
+    changes = {
+        u.identifier: [(c.field, c.old, c.new) for c in u.changes] for u in change.updated
+    }
     assert changes == {10: [("note", None, "Fast")], 13: [("note", "Slow", None)]}
 
 
@@ -315,47 +325,47 @@ def test_float_noise_from_server_is_not_a_change() -> None:
     routine = _routine()
     routine.exercises[1].template_sets = _sets((12.300000190734863, 20), base=110)
     want = DesiredExercise(exercise_id=11, sets=[SetSpec(reps=12.3, weight_kg=20)])
-    cs = diff_routine(routine, DesiredRoutine.model_validate(_same(e11=want)), CATALOG)
-    assert _sends_nothing(cs, routine)
+    change = diff_routine(routine, DesiredRoutine.model_validate(_same(e11=want)), CATALOG)
+    assert _sends_nothing(change, routine)
 
 
 def test_section_order_wins_over_inconsistent_server_indexes() -> None:
     routine = _routine()
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
     assert [e.identifier for e in routine.active_exercises()] == [10, 11, 12, 13, 14]
-    cs = diff_routine(routine, DesiredRoutine.model_validate(_same()), CATALOG)
-    assert _sends_nothing(cs, routine)
+    change = diff_routine(routine, DesiredRoutine.model_validate(_same()), CATALOG)
+    assert _sends_nothing(change, routine)
 
 
 def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
     plank = DesiredExercise(exercise="Plank")
-    cs = diff_routine(
+    change = diff_routine(
         _routine(),
         DesiredRoutine(main=by_id(11, 13), cooldown=[DesiredExercise(exercise_id=14), plank]),
         CATALOG,
     )
-    assert [r.identifier for r in cs.removed] == [12]
-    assert cs.added[0].position == 4  # exercise 14 still has idx 4 on the server
-    assert cs.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+    assert [r.identifier for r in change.removed] == [12]
+    assert change.added[0].position == 4  # exercise 14 still has idx 4 on the server
+    assert change.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
 
 
 def test_append_to_routine_with_idx_gap_renumbers() -> None:
     routine = _routine()
     del routine.exercises[2]  # removed earlier without renumbering: idx 0, 1, 3, 4
     plank = DesiredExercise(exercise="Plank")
-    cs = diff_routine(
+    change = diff_routine(
         routine, DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
     )
-    assert cs.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+    assert change.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
 
 
 def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
     routine = _routine()
     routine.exercises[0].index = 9  # warm-up drill numbered after main (Return routines)
-    cs = diff_routine(routine, DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
-    (upd,) = cs.updated
+    change = diff_routine(routine, DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
+    (upd,) = change.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
-    assert cs.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
+    assert change.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
 
 
 @pytest.mark.parametrize("days", ["1", "2,3", "1,2,3,4,5,6,7", "", "  ", None])
@@ -384,8 +394,8 @@ def test_blank_goal_is_rejected_on_create_and_edit(goal: str) -> None:
 
 
 def test_goal_less_routine_gets_a_goal() -> None:
-    cs = diff_routine(_routine(), DesiredRoutine(goal="Strength"), CATALOG)
-    assert [(c.field, c.old, c.new) for c in cs.routine_changes] == [
+    change = diff_routine(_routine(), DesiredRoutine(goal="Strength"), CATALOG)
+    assert [(c.field, c.old, c.new) for c in change.routine_changes] == [
         ("goal", None, "Strength")
     ]
-    assert cs.expected.goal == "Strength"
+    assert change.expected.goal == "Strength"

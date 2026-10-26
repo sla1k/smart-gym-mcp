@@ -28,13 +28,13 @@ def _store(client: FakeClient, clock: Clock | None = None) -> AccountStore:
 def test_data_is_cached_until_ttl_or_invalidate() -> None:
     client, clock = FakeClient({HISTORY: ACCOUNT}), Clock()
     store = _store(client, clock)
-    store.data()
-    store.data()
+    store.account()
+    store.account()
     assert client.get_calls == [HISTORY]
     clock.t = 31
-    store.data()
+    store.account()
     store.invalidate()
-    store.data()
+    store.account()
     assert client.get_calls == [HISTORY] * 3
 
 
@@ -91,4 +91,4 @@ def test_routine_of_exercise() -> None:
 def test_partial_history_is_an_error() -> None:
     store = _store(FakeClient({HISTORY: {**ACCOUNT, "hasMore": True}}))
     with pytest.raises(ApiPayloadError):
-        store.data()
+        store.account()
