@@ -136,7 +136,7 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
   errors that no goal was found. After `smartgym_update_routine(goal=…)` the same Save works.
 - **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
   non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
-  (shared `models.Goal` validator). Changing a goal still works (user choice).
+  (shared `inputs.Goal` validator). Changing a goal still works (user choice).
 
 ## Decision log (2026-10-18, custom exercises)
 - **F8 — custom exercises in routines:** the account's custom exercises (from

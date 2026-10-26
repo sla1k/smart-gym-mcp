@@ -1,4 +1,4 @@
-"""Tool input specs shared by the diff and the service (API-client spec §6)."""
+"""Tool input specs (API-client spec §6), read by the diff, payloads and service."""
 
 from __future__ import annotations
 
@@ -49,6 +49,10 @@ class SetSpec(BaseModel):
     weight_kg: float = Field(default=0.0, ge=0, description="Target weight; 0 = bodyweight")
 
 
+# What an exercise gets when no sets are given (flagged in the dry run).
+DEFAULT_SET = SetSpec(reps=10, weight_kg=0.0)
+
+
 class ExerciseSpec(BaseModel):
     exercise: str = Field(
         description="Catalog exercise name (fuzzy-matched) or a numeric catalog id"
@@ -74,17 +78,3 @@ class RoutineSpec(BaseModel):
     cooldown: list[ExerciseSpec] = Field(
         default_factory=list, description="Cool-down section, in order (optional)"
     )
-
-
-class ExerciseResolution(BaseModel):
-    input: str
-    resolved_name: str
-    catalog_id: int
-    confidence: float
-    fuzzy: bool
-
-
-class FieldChange(BaseModel):
-    field: str
-    old: str | None
-    new: str | None

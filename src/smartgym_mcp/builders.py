@@ -9,8 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .diff import DesiredExercise, DesiredRoutine, DiffError
+from .inputs import SetSpec
 from .model import Routine, Section
-from .models import SetSpec
 
 
 def _desired(lists: Mapping[Section, list[DesiredExercise]]) -> DesiredRoutine:

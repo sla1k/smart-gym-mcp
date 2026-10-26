@@ -1,6 +1,6 @@
 """MCPServer app over the SmartGym API (API-client spec §5, §6).
 
-Tools are thin: parse input → store / service / reads. Credentials and the API
+Tools are thin: parse input → store / service / views. Credentials and the API
 client are built on first use, so a missing credentials file becomes a clear
 tool error (and a smartgym_health report) instead of a server that won't start.
 Tool calls run one at a time (DESIGN invariant 7).
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 import threading
 import time
@@ -24,15 +25,14 @@ from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from . import __version__, builders, catalog, reads
+from . import __version__, builders, catalog, views
 from .api.auth import CredentialsError, load_credentials
 from .api.client import ApiClient, ApiError, AuthError
 from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
+from .inputs import Days, Goal, RoutineSpec, SetSpec
 from .model import Section
-from .models import Days, Goal, RoutineSpec, SetSpec
-from .payloads import local_timezone_name
 from .service import (
     ArchiveResult,
     CreateResult,
@@ -63,6 +63,13 @@ def _write(title: str, *, idempotent: bool) -> ToolAnnotations:
         idempotent_hint=idempotent,
         open_world_hint=True,
     )
+
+
+def local_timezone_name() -> str:
+    """The Mac's IANA time zone (what the app sends as `timezone`), "UTC" if unknown."""
+    target = os.path.realpath("/etc/localtime")
+    marker = "zoneinfo/"
+    return target.split(marker, 1)[1] if marker in target else "UTC"
 
 
 @dataclass
@@ -308,7 +315,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     try:
         with app.use() as services:
             services.store.invalidate()  # data_as_of must be the server's, not a cached read
-            data = services.store.data()
+            account = services.store.account()
     except (*_ANTICIPATED, KeyError) as exc:
         return HealthStatus(
             ok=False,
@@ -320,10 +327,11 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
             problem=str(exc),
             version=__version__,
         )
+    last_modified = account.last_modified
     return HealthStatus(
         ok=True,
-        routines=sum(1 for r in data.routines if not r.removed and not r.archived),
-        data_as_of=reads.local_timestamp(data.last_modified) if data.last_modified else None,
+        routines=sum(1 for r in account.routines if not r.removed and not r.archived),
+        data_as_of=views.local_timestamp(last_modified) if last_modified else None,
         app_version=installed,
         verified_app_version=VERIFIED_APP_VERSION,
         warning=warning,
@@ -335,21 +343,21 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
 @mcp.tool(annotations=_read_only("List routines"))
 def smartgym_list_routines(
     ctx: Context[AppContext], include_archived: bool = False
-) -> reads.RoutineListResult:
+) -> views.RoutineListResult:
     """List routines: id, name, days, and exercise counts per section (warm-up/main/cool-down).
 
     Archived routines are listed only with include_archived=true. Use the id (or the
     name) in the other tools.
     """
     with _services(ctx) as services:
-        data = services.store.data()
-    return reads.list_routines(data, include_archived=include_archived)
+        account = services.store.account()
+    return views.list_routines(account, include_archived=include_archived)
 
 
 @mcp.tool(annotations=_read_only("Get routine detail"))
 def smartgym_get_routine(
     ctx: Context[AppContext], routine: str, history_depth: Annotated[int, Field(ge=0)] = 5
-) -> reads.RoutineDetail:
+) -> views.RoutineDetail:
     """Get a routine split into warmup, main and cooldown sections.
 
     Each exercise shows its exercise_id (what the edit tools take), rest, note, planned
@@ -357,22 +365,24 @@ def smartgym_get_routine(
     latest session's top set and total volume.
     """
     with _services(ctx) as services:
-        data = services.store.data()
-        return reads.routine_detail(
-            services.store.resolve(routine, data=data), data, history_depth=history_depth
+        account = services.store.account()
+        return views.routine_detail(
+            services.store.resolve(routine, account=account),
+            account,
+            history_depth=history_depth,
         )
 
 
 @mcp.tool(annotations=_read_only("Get workout history"))
 def smartgym_get_workout_history(
     ctx: Context[AppContext],
-    days: reads.RangeDays = 7,
+    days: views.RangeDays = 7,
     date_from: str | None = None,
     date_to: str | None = None,
     routine: str | None = None,
     limit: Annotated[int, Field(ge=1)] = 20,
     offset: Annotated[int, Field(ge=0)] = 0,
-) -> reads.WorkoutHistoryResult:
+) -> views.WorkoutHistoryResult:
     """List past workouts (newest first) with duration, calories and heart rate.
 
     Defaults to the last 7 days (or 14/30 via `days`); explicit `date_from` / `date_to`
@@ -380,13 +390,13 @@ def smartgym_get_workout_history(
     id). Paginated: total, has_more, next_offset.
     """
     with _services(ctx) as services:
-        data = services.store.data()
-        return reads.workout_history(
-            data,
+        account = services.store.account()
+        return views.workout_history(
+            account,
             days=days,
             date_from=date_from,
             date_to=date_to,
-            routine=services.store.resolve(routine, data=data) if routine else None,
+            routine=services.store.resolve(routine, account=account) if routine else None,
             limit=limit,
             offset=offset,
         )
@@ -395,11 +405,11 @@ def smartgym_get_workout_history(
 @mcp.tool(annotations=_read_only("Get equipment"))
 def smartgym_get_equipment(
     ctx: Context[AppContext], owned_only: bool = True
-) -> reads.EquipmentListResult:
+) -> views.EquipmentListResult:
     """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
     with _services(ctx) as services:
-        return reads.equipment(
-            services.store.data(), services.equipment, owned_only=owned_only
+        return views.equipment(
+            services.store.account(), services.equipment, owned_only=owned_only
         )
 
 

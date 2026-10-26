@@ -6,9 +6,9 @@ import pytest
 
 from smartgym_mcp import builders
 from smartgym_mcp.diff import DiffError, diff_routine
+from smartgym_mcp.inputs import SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section
-from smartgym_mcp.models import SetSpec
 
 CATALOG = ExerciseCatalog(
     [(300, "Shoulder Circling"), (207, "Cable Chest Press"), (20, "Plank")]

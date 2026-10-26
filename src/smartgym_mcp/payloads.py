@@ -14,16 +14,15 @@ Common fields (appVersion, authID, requestDate) are added by api/client.py.
 from __future__ import annotations
 
 import json
-import os
 import random
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from .catalog import CatalogExercise
-from .diff import DEFAULT_SET, ChangeSet, ExerciseUpdate
+from .diff import ChangeSet, ExerciseUpdate
+from .inputs import DEFAULT_SET, ExerciseSpec, RoutineSpec, SetSpec
 from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet
-from .models import ExerciseSpec, RoutineSpec, SetSpec
 
 _BAND_EQUIPMENT_ID = "38"
 Mint = Callable[[datetime], int]
@@ -31,12 +30,6 @@ Mint = Callable[[datetime], int]
 
 def mint_unique_hashid(now: datetime) -> int:
     return int(now.strftime("%y%m%d") + f"{random.randint(0, 99_999_999):08d}")
-
-
-def local_timezone_name() -> str:
-    target = os.path.realpath("/etc/localtime")
-    marker = "zoneinfo/"
-    return target.split(marker, 1)[1] if marker in target else "UTC"
 
 
 def _utc(dt: datetime) -> str:
@@ -189,12 +182,12 @@ def unarchive_form(routine_identifier: int) -> dict[str, str]:
     return {"routineID": str(routine_identifier)}
 
 
-def _routine_base(cs: ChangeSet, current: Routine, timezone: str) -> dict[str, str]:
+def _routine_base(change: ChangeSet, current: Routine, timezone: str) -> dict[str, str]:
     form = {"routineID": str(current.identifier), "timezone": timezone}
-    if cs.expected.days is not None:
-        form["days"] = cs.expected.days
-    if cs.expected.goal is not None:
-        form["goal"] = cs.expected.goal
+    if change.expected.days is not None:
+        form["days"] = change.expected.days
+    if change.expected.goal is not None:
+        form["goal"] = change.expected.goal
     return form
 
 
@@ -212,7 +205,7 @@ def _update_entry(u: ExerciseUpdate) -> dict[str, Any] | None:
 
 
 def _structure(
-    cs: ChangeSet,
+    change: ChangeSet,
     current: Routine,
     catalog: Mapping[int, CatalogExercise],
     *,
@@ -220,15 +213,15 @@ def _structure(
     now: datetime,
     mint: Mint,
 ) -> dict[str, str] | None:
-    form = _routine_base(cs, current, timezone)
-    for c in cs.routine_changes:
+    form = _routine_base(change, current, timezone)
+    for c in change.routine_changes:
         form[c.field] = c.new or ""
-    entries = [e for e in (_update_entry(u) for u in cs.updated) if e is not None]
+    entries = [e for e in (_update_entry(u) for u in change.updated) if e is not None]
     if entries:
         form["updateExercises"] = _json(entries)
-    if cs.removed:
-        form["removeExercises"] = ",".join(str(r.identifier) for r in cs.removed)
-    if cs.added:
+    if change.removed:
+        form["removeExercises"] = ",".join(str(r.identifier) for r in change.removed)
+    if change.added:
         form["exercises"] = _json(
             [
                 exercise_payload(
@@ -242,17 +235,21 @@ def _structure(
                     mint=mint,
                     routine_identifier=current.identifier,
                 )
-                for a in cs.added
+                for a in change.added
             ]
         )
-    if cs.final_order is not None:
+    if change.final_order is not None:
         form["exercisesOrder"] = ",".join(
             f"{key[3:]}:{pos}"
-            for pos, key in enumerate(cs.final_order)
+            for pos, key in enumerate(change.final_order)
             if key.startswith("id:")
         )
     meaningful = (
-        cs.routine_changes or entries or cs.removed or cs.added or cs.final_order is not None
+        change.routine_changes
+        or entries
+        or change.removed
+        or change.added
+        or change.final_order is not None
     )
     return form if meaningful else None
 
@@ -276,11 +273,11 @@ def _existing_set(
 
 
 def _exercise_edits(
-    cs: ChangeSet, current: Routine, *, timezone: str, now: datetime, mint: Mint
+    change: ChangeSet, current: Routine, *, timezone: str, now: datetime, mint: Mint
 ) -> dict[str, str] | None:
     by_id = {e.identifier: e for e in current.exercises}
     items: list[dict[str, Any]] = []
-    for u in cs.updated:
+    for u in change.updated:
         sets_by_id = {s.identifier: s for s in by_id[u.identifier].template_sets}
         item: dict[str, Any] = {}
         for c in u.changes:
@@ -319,7 +316,7 @@ def _exercise_edits(
 
 
 def encode_change(
-    cs: ChangeSet,
+    change: ChangeSet,
     current: Routine,
     catalog: Mapping[int, CatalogExercise],
     *,
@@ -335,11 +332,11 @@ def encode_change(
     requests = (
         (
             "routine/update/",
-            _structure(cs, current, catalog, timezone=timezone, now=now, mint=mint),
+            _structure(change, current, catalog, timezone=timezone, now=now, mint=mint),
         ),
         (
             "routine/updateExercise/",
-            _exercise_edits(cs, current, timezone=timezone, now=now, mint=mint),
+            _exercise_edits(change, current, timezone=timezone, now=now, mint=mint),
         ),
     )
     return [(path, form) for path, form in requests if form is not None]

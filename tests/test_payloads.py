@@ -17,15 +17,14 @@ from smartgym_mcp.diff import (
     DesiredRoutine,
     diff_routine,
 )
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
-from smartgym_mcp.models import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.payloads import (
     Mint,
     add_routines_form,
     archive_form,
     encode_change,
-    local_timezone_name,
     mint_unique_hashid,
     new_routine_payload,
     unarchive_form,
@@ -304,11 +303,11 @@ AB_FOURTH = _ts(149092034, 26100568239109, 3, 10, 32, "2026-10-05 15:17:10")
 def _encode(
     current: Routine, desired: DesiredRoutine, mint: Mint | None = None
 ) -> tuple[ChangeSet, dict[str, dict[str, str]]]:
-    cs = diff_routine(current, desired, CATALOG)
-    enc = dict(
-        encode_change(cs, current, BUNDLE, timezone=TZ, now=NOW, mint=mint or _counter())
+    change = diff_routine(current, desired, CATALOG)
+    requests = dict(
+        encode_change(change, current, BUNDLE, timezone=TZ, now=NOW, mint=mint or _counter())
     )
-    return cs, enc
+    return change, requests
 
 
 def _main(*items: DesiredExercise | int) -> DesiredRoutine:
@@ -322,22 +321,22 @@ def _main(*items: DesiredExercise | int) -> DesiredRoutine:
 
 def test_update_rest_matches_capture() -> None:
     rest = DesiredExercise(exercise_id=34048393, rest_seconds=30)
-    _, enc = _encode(_routine(*SPIKE), _main(34048391, 34048392, rest))
-    assert _norm(enc[UPDATE]) == app_form("update_rest")
-    assert list(enc) == [UPDATE]
+    _, requests = _encode(_routine(*SPIKE), _main(34048391, 34048392, rest))
+    assert _norm(requests[UPDATE]) == app_form("update_rest")
+    assert list(requests) == [UPDATE]
 
 
 def test_reorder_is_a_structure_form_with_only_the_order_matching_capture() -> None:
-    _, enc = _encode(_routine(*SPIKE), _main(34048393, 34048391, 34048392))
-    assert list(enc) == [UPDATE]
-    assert _norm(enc[UPDATE]) == app_form("update_reorder")
+    _, requests = _encode(_routine(*SPIKE), _main(34048393, 34048391, 34048392))
+    assert list(requests) == [UPDATE]
+    assert _norm(requests[UPDATE]) == app_form("update_reorder")
 
 
 def test_remove_exercise_matches_capture() -> None:
     extra = _ex(34048426, 22, "Abdominal 4 points Drawing In", 3)
-    cs, enc = _encode(_routine(*SPIKE, extra), _main(34048391, 34048392, 34048393))
-    assert _norm(enc[UPDATE]) == app_form("update_remove_exercise")
-    assert cs.final_order is None
+    change, requests = _encode(_routine(*SPIKE, extra), _main(34048391, 34048392, 34048393))
+    assert _norm(requests[UPDATE]) == app_form("update_remove_exercise")
+    assert change.final_order is None
 
 
 @pytest.mark.parametrize(
@@ -356,26 +355,26 @@ def test_remove_exercise_matches_capture() -> None:
 def test_routine_field_edits_match_capture(
     fixture: str, before: dict[str, str | None], desired: DesiredRoutine
 ) -> None:
-    _, enc = _encode(_routine(*SPIKE, **before), desired)  # type: ignore[arg-type]
-    assert _norm(enc[UPDATE]) == app_form(fixture)
+    _, requests = _encode(_routine(*SPIKE, **before), desired)  # type: ignore[arg-type]
+    assert _norm(requests[UPDATE]) == app_form(fixture)
 
 
 def test_exercise_note_goes_to_update_exercise_matching_capture() -> None:
     note = DesiredExercise(exercise_id=34048393, note="cahnge note")
-    _, enc = _encode(_routine(*SPIKE), _main(34048391, 34048392, note))
-    assert list(enc) == [EDIT]
-    assert _norm(enc[EDIT]) == app_form("update_exercise_note")
+    _, requests = _encode(_routine(*SPIKE), _main(34048391, 34048392, note))
+    assert list(requests) == [EDIT]
+    assert _norm(requests[EDIT]) == app_form("update_exercise_note")
 
 
 def test_add_set_matches_capture() -> None:
     current = _routine(_ex(34048425, 256, "Ab Machine", 0, sets=AB3))
     sets = [SetSpec(reps=15, weight_kg=36)] * 3 + [SetSpec(reps=10, weight_kg=32)]
-    _, enc = _encode(
+    _, requests = _encode(
         current,
         _main(DesiredExercise(exercise_id=34048425, sets=sets)),
         mint=lambda _now: 26100568239109,
     )
-    assert _norm(enc[EDIT]) == app_form("update_add_set")
+    assert _norm(requests[EDIT]) == app_form("update_add_set")
 
 
 def test_change_set_matches_capture() -> None:
@@ -384,25 +383,25 @@ def test_change_set_matches_capture() -> None:
         SetSpec(reps=5, weight_kg=6),
         SetSpec(reps=10, weight_kg=32),
     ]
-    _, enc = _encode(current, _main(DesiredExercise(exercise_id=34048425, sets=sets)))
-    assert _norm(enc[EDIT]) == app_form("update_change_set")
+    _, requests = _encode(current, _main(DesiredExercise(exercise_id=34048425, sets=sets)))
+    assert _norm(requests[EDIT]) == app_form("update_change_set")
 
 
 def test_remove_set_matches_capture() -> None:
     third = _ts(149091971, 26100526419289, 2, 5, 6, "2026-10-05 15:16:23")
     current = _routine(_ex(34048425, 256, "Ab Machine", 0, sets=(*AB3[:2], third, AB_FOURTH)))
     sets = [SetSpec(reps=15, weight_kg=36)] * 2 + [SetSpec(reps=5, weight_kg=6)]
-    _, enc = _encode(current, _main(DesiredExercise(exercise_id=34048425, sets=sets)))
-    assert _norm(enc[EDIT]) == app_form("update_remove_set")
+    _, requests = _encode(current, _main(DesiredExercise(exercise_id=34048425, sets=sets)))
+    assert _norm(requests[EDIT]) == app_form("update_remove_set")
 
 
 def test_add_exercise_matches_capture_shape() -> None:
     new = DesiredExercise(
         exercise="Abdominal 4 points Drawing In", rest_seconds=0, sets=[SetSpec(reps=1)]
     )
-    cs, enc = _encode(_routine(*SPIKE), _main(34048391, 34048392, 34048393, new))
+    change, requests = _encode(_routine(*SPIKE), _main(34048391, 34048392, 34048393, new))
     app = app_form("update_add_exercise")
-    ours = _norm(enc[UPDATE])
+    ours = _norm(requests[UPDATE])
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
     }
@@ -432,20 +431,20 @@ def test_add_exercise_matches_capture_shape() -> None:
     ):
         assert our_ex[key] == app_ex[key], key
     assert set(our_ex["sets"][0]) == set(app_ex["sets"][0])
-    assert cs.final_order is None
+    assert change.final_order is None
 
 
 def test_mid_routine_add_carries_the_kept_order_in_the_same_request() -> None:
     new = DesiredExercise(exercise="Abdominal 4 points Drawing In")
-    _, enc = _encode(_routine(*SPIKE), _main(34048391, new, 34048392, 34048393))
-    form = _norm(enc[UPDATE])
+    _, requests = _encode(_routine(*SPIKE), _main(34048391, new, 34048392, 34048393))
+    form = _norm(requests[UPDATE])
     assert form["exercises"][0]["idx"] == 1
     assert form["exercisesOrder"] == "34048391:0,34048392:2,34048393:3"
 
 
 def test_cleared_routine_note_is_sent_as_empty_string() -> None:
-    _, enc = _encode(_routine(*SPIKE, note="old"), DesiredRoutine(note=""))
-    assert enc[UPDATE]["note"] == ""
+    _, requests = _encode(_routine(*SPIKE, note="old"), DesiredRoutine(note=""))
+    assert requests[UPDATE]["note"] == ""
 
 
 def test_create_payload_sections_set_list_group_and_global_idx() -> None:
@@ -502,11 +501,6 @@ def test_exercise_spec_rejects_empty_sets() -> None:
         ExerciseSpec(exercise="Push Up", sets=[])
 
 
-def test_local_timezone_name_is_iana_or_utc() -> None:
-    name = local_timezone_name()
-    assert name == "UTC" or "/" in name
-
-
 # S7 probes on ZZ-S7 (spec §10.3): hand-built requests the server accepted, read back after each.
 S7_ROUTINE = 3681558
 SC, AB, BR, PU, CAS = 34052112, 34052309, 34052411, 34052444, 34052451
@@ -552,32 +546,36 @@ def _s7(*layout: tuple[int, Section]) -> Routine:
 
 
 def test_move_main_to_warmup_matches_capture() -> None:
-    cs, enc = _encode(_s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=by_id(SC)))
-    assert cs.final_order == [f"id:{SC}", f"id:{AB}"]
-    assert list(enc) == [UPDATE]
-    assert _norm(enc[UPDATE]) == app_form("update_move_to_warmup")
+    change, requests = _encode(
+        _s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=by_id(SC))
+    )
+    assert change.final_order == [f"id:{SC}", f"id:{AB}"]
+    assert list(requests) == [UPDATE]
+    assert _norm(requests[UPDATE]) == app_form("update_move_to_warmup")
 
 
 def test_move_main_to_cooldown_matches_capture() -> None:
-    cs, enc = _encode(_s7((SC, "warmup"), (AB, "main")), DesiredRoutine(cooldown=by_id(AB)))
-    assert cs.final_order is None
-    assert _norm(enc[UPDATE]) == app_form("update_move_to_cooldown")
+    change, requests = _encode(
+        _s7((SC, "warmup"), (AB, "main")), DesiredRoutine(cooldown=by_id(AB))
+    )
+    assert change.final_order is None
+    assert _norm(requests[UPDATE]) == app_form("update_move_to_cooldown")
 
 
 def test_reorder_inside_warmup_matches_capture() -> None:
     current = _s7((SC, "warmup"), (BR, "warmup"), (PU, "main"), (AB, "cooldown"))
-    _, enc = _encode(current, DesiredRoutine(warmup=by_id(BR, SC)))
-    assert list(enc) == [UPDATE]
-    assert _norm(enc[UPDATE]) == app_form("update_reorder_warmup")
+    _, requests = _encode(current, DesiredRoutine(warmup=by_id(BR, SC)))
+    assert list(requests) == [UPDATE]
+    assert _norm(requests[UPDATE]) == app_form("update_reorder_warmup")
 
 
 def test_remove_two_matches_capture() -> None:
     current = _s7(
         (BR, "warmup"), (SC, "warmup"), (PU, "main"), (AB, "cooldown"), (CAS, "cooldown")
     )
-    cs, enc = _encode(current, DesiredRoutine(warmup=by_id(BR), cooldown=by_id(CAS)))
-    assert cs.final_order is None  # gaps stay, as the app leaves them
-    assert _norm(enc[UPDATE]) == app_form("update_remove_two")
+    change, requests = _encode(current, DesiredRoutine(warmup=by_id(BR), cooldown=by_id(CAS)))
+    assert change.final_order is None  # gaps stay, as the app leaves them
+    assert _norm(requests[UPDATE]) == app_form("update_remove_two")
 
 
 @pytest.mark.parametrize(
@@ -588,11 +586,11 @@ def test_exercise_note_set_and_clear_match_capture(
     fixture: str, before: str | None, note: str
 ) -> None:
     current = _s7((PU, "main")).model_copy(update={"exercises": [_sx(PU, "main", 0, before)]})
-    _, enc = _encode(
+    _, requests = _encode(
         current, DesiredRoutine(main=[DesiredExercise(exercise_id=PU, note=note)])
     )
-    assert list(enc) == [EDIT]
-    assert _norm(enc[EDIT]) == app_form(fixture)
+    assert list(requests) == [EDIT]
+    assert _norm(requests[EDIT]) == app_form(fixture)
 
 
 def test_rest_and_move_merge_into_one_entry() -> None:
@@ -603,8 +601,8 @@ def test_rest_and_move_merge_into_one_entry() -> None:
             DesiredExercise(exercise_id=AB, rest_seconds=45),
         ]
     )
-    _, enc = _encode(current, desired)
-    assert _norm(enc[UPDATE])["updateExercises"] == [
+    _, requests = _encode(current, desired)
+    assert _norm(requests[UPDATE])["updateExercises"] == [
         {"exerciseID": AB, "pause": "45", "listGroup": "1"}
     ]
 
@@ -672,14 +670,19 @@ def test_add_into_section_matches_capture_exactly(
     now = datetime.fromisoformat(str(app_ex["dateAdded"])).replace(tzinfo=UTC)
     current = _s7(*layout)
     desired = DesiredRoutine.model_validate({section: [*by_id(*kept), _new_like(app_ex)]})
-    cs = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
-    enc = dict(
+    change = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
+    requests = dict(
         encode_change(
-            cs, current, {cat.id: cat}, timezone=TZ, now=now, mint=lambda _now: next(minted)
+            change,
+            current,
+            {cat.id: cat},
+            timezone=TZ,
+            now=now,
+            mint=lambda _now: next(minted),
         )
     )
-    assert (cs.final_order is not None) == ordered
-    assert _norm(enc[UPDATE]) == app
+    assert (change.final_order is not None) == ordered
+    assert _norm(requests[UPDATE]) == app
 
 
 def test_app_add_at_top_of_main_matches_capture() -> None:
@@ -687,11 +690,11 @@ def test_app_add_at_top_of_main_matches_capture() -> None:
     app, app_ex, cat = _app_added("update_add_first_app")
     current = _s7((SC, "main"))
     desired = DesiredRoutine(main=[_new_like(app_ex), *by_id(SC)])
-    cs = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
-    enc = dict(
-        encode_change(cs, current, {cat.id: cat}, timezone=TZ, now=NOW, mint=_counter())
+    change = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
+    requests = dict(
+        encode_change(change, current, {cat.id: cat}, timezone=TZ, now=NOW, mint=_counter())
     )
-    ours = _norm(enc[UPDATE])
+    ours = _norm(requests[UPDATE])
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"
     }
