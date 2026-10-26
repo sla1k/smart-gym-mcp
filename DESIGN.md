@@ -76,7 +76,7 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`).
 7. Tool calls run one at a time (`AppContext.use` lock): MCP SDK 2 runs sync tools on worker
-   threads, but the read cache (`cache.ReadCache`, emptied as each call starts and after
+   threads, but the account cache (`account.AccountCache`, emptied as each call starts and after
    every write), the API client's lifetime and each write's re-read → rewrite assume
    calls don't overlap. A waiting call sends nothing if it can't start within 10 min
    (longer than a write's worst case), if its client cancels it or disconnects meanwhile, or

@@ -26,9 +26,9 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from . import __version__, builders, catalog, views
+from .account import AccountCache
 from .api.auth import CredentialsError, load_credentials
 from .api.client import ApiClient, ApiError, AuthError
-from .cache import ReadCache
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .inputs import Days, Goal, RoutineSpec, SetSpec
@@ -77,7 +77,7 @@ def local_timezone_name() -> str:
 @dataclass
 class Services:
     client: ApiClient
-    cache: ReadCache
+    cache: AccountCache
     service: RoutineService
     equipment: list[catalog.CatalogEquipment]
 
@@ -88,7 +88,7 @@ def build_services(cfg: Config) -> Services:
         app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION,
     )
     try:
-        cache = ReadCache(client)
+        cache = AccountCache(client)
         service = RoutineService(
             client,
             cache,
@@ -169,10 +169,10 @@ class AppContext:
     def use(self) -> Iterator[Services]:
         """Services for one tool call, one call at a time.
 
-        MCP SDK 2 runs sync tools on worker threads, but the read cache, the client's
+        MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
         lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
         can't start (see _acquire) fails before sending anything. Each call starts with an
-        empty read cache, so it never sees an earlier call's read.
+        empty account cache, so it never sees an earlier call's read.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the

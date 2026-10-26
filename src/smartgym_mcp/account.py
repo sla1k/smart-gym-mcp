@@ -1,6 +1,6 @@
-"""The account reads one tool call shares (API-client spec §5, §11).
+"""The account cache: the reads one tool call shares (API-client spec §5, §11).
 
-ReadCache keeps the parsed `history/all` and custom-exercises reads for one tool call
+AccountCache keeps the parsed `history/all` and custom-exercises reads for one tool call
 (`AppContext.use` clears it as each call starts) and drops them after every write, so a
 write's verifying re-read sees the server's answer. `routine/single` is never cached.
 """
@@ -13,7 +13,7 @@ from .catalog import CatalogExercise
 from .model import AccountData, parse_custom_exercises, parse_history_all
 
 
-class ReadCache:
+class AccountCache:
     """Not thread-safe: the server runs tool calls one at a time (DESIGN invariant 7)."""
 
     def __init__(self, client: ApiCalls) -> None:
