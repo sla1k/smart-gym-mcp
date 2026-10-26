@@ -136,7 +136,7 @@ def test_routine_exercise_of_a_custom_exercise_parses_with_its_custom_id() -> No
 
 @pytest.mark.parametrize("ref", ["Dead Hang", "dead hang", "397744"])
 def test_custom_exercise_resolves_next_to_the_bundle(ref: str) -> None:
-    catalog = ExerciseCatalog.from_exercises([PUSH_UP, _dead_hang()])
+    catalog = ExerciseCatalog([PUSH_UP, _dead_hang()])
     res = catalog.resolve(ref)
     assert (res.catalog_id, res.resolved_name, res.fuzzy) == (DEAD_HANG_ID, "Dead Hang", False)
     assert catalog.resolve("Push Up").catalog_id == 194
@@ -197,10 +197,8 @@ def test_adding_a_custom_exercise_matches_the_app_update() -> None:
         ]
     )
     exercises = {**BUNDLE, DEAD_HANG_ID: _dead_hang()}
-    change = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
-    requests = dict(
-        encode_change(change, current, exercises, timezone=TZ, now=NOW, mint=_mint())
-    )
+    change = diff_routine(current, desired, ExerciseCatalog(exercises.values()))
+    requests = dict(encode_change(change, current, timezone=TZ, now=NOW, mint=_mint()))
     ours = _encoded(requests[UPDATE])
     app = app_form("update_add_custom_exercise")
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
@@ -229,8 +227,8 @@ def _zz_f8_edit(**dead_hang: Any) -> dict[str, dict[str, str]]:
         ]
     )
     exercises = {**BUNDLE, DEAD_HANG_ID: _dead_hang()}
-    change = diff_routine(current, desired, ExerciseCatalog.from_exercises(exercises.values()))
-    return dict(encode_change(change, current, exercises, timezone=TZ, now=NOW, mint=_mint()))
+    change = diff_routine(current, desired, ExerciseCatalog(exercises.values()))
+    return dict(encode_change(change, current, timezone=TZ, now=NOW, mint=_mint()))
 
 
 def _app_dead_hang_entry(fixture: str) -> dict[str, Any]:
@@ -276,7 +274,7 @@ def test_custom_exercise_rest_and_added_set_match_the_app() -> None:
 
 
 def _service(client: FakeClient, tmp_path: Path) -> RoutineService:
-    return routine_service(client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH)
+    return routine_service(client, tmp_path, BUNDLE.values(), now=NOW, first_hash=FIRST_HASH)
 
 
 def test_create_resolves_and_sends_the_custom_exercise(tmp_path: Path) -> None:

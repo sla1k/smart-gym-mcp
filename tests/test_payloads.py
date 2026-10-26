@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint
+from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint, exercise_catalog
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import (
     ChangeSet,
@@ -214,16 +214,9 @@ ABDOMINAL = CatalogExercise(
     equipment_ids=(),
     images=("0022-1", "0022-2", "", "", "", ""),
 )
-BUNDLE = {22: ABDOMINAL}
-CATALOG = ExerciseCatalog(
-    [
-        (194, "Push Up"),
-        (20, "Plank"),
-        (207, "Cable Chest Press"),
-        (256, "Ab Machine"),
-        (22, "Abdominal 4 points Drawing In"),
-    ]
-)
+CATALOG = exercise_catalog(
+    (194, "Push Up"), (20, "Plank"), (207, "Cable Chest Press"), (256, "Ab Machine")
+).extended([ABDOMINAL])
 
 
 def _norm(form: dict[str, str]) -> dict[str, Any]:
@@ -305,7 +298,7 @@ def _encode(
 ) -> tuple[ChangeSet, dict[str, dict[str, str]]]:
     change = diff_routine(current, desired, CATALOG)
     requests = dict(
-        encode_change(change, current, BUNDLE, timezone=TZ, now=NOW, mint=mint or _counter())
+        encode_change(change, current, timezone=TZ, now=NOW, mint=mint or _counter())
     )
     return change, requests
 
@@ -670,12 +663,11 @@ def test_add_into_section_matches_capture_exactly(
     now = datetime.fromisoformat(str(app_ex["dateAdded"])).replace(tzinfo=UTC)
     current = _s7(*layout)
     desired = DesiredRoutine.model_validate({section: [*by_id(*kept), _new_like(app_ex)]})
-    change = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
+    change = diff_routine(current, desired, ExerciseCatalog([cat]))
     requests = dict(
         encode_change(
             change,
             current,
-            {cat.id: cat},
             timezone=TZ,
             now=now,
             mint=lambda _now: next(minted),
@@ -690,10 +682,8 @@ def test_app_add_at_top_of_main_matches_capture() -> None:
     app, app_ex, cat = _app_added("update_add_first_app")
     current = _s7((SC, "main"))
     desired = DesiredRoutine(main=[_new_like(app_ex), *by_id(SC)])
-    change = diff_routine(current, desired, ExerciseCatalog([(cat.id, cat.name)]))
-    requests = dict(
-        encode_change(change, current, {cat.id: cat}, timezone=TZ, now=NOW, mint=_counter())
-    )
+    change = diff_routine(current, desired, ExerciseCatalog([cat]))
+    requests = dict(encode_change(change, current, timezone=TZ, now=NOW, mint=_counter()))
     ours = _norm(requests[UPDATE])
     assert {k: v for k, v in ours.items() if k != "exercises"} == {
         k: v for k, v in app.items() if k != "exercises"

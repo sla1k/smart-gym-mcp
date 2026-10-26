@@ -19,7 +19,7 @@ from itertools import pairwise
 from pydantic import BaseModel, Field, model_validator
 
 from .inputs import DEFAULT_SET, Days, Goal, SetSpec
-from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
+from .matching import ExerciseCatalog, ExerciseResolution, Resolved, UnresolvedExercise
 from .model import SECTIONS, Routine, RoutineExercise, Section
 
 
@@ -95,6 +95,7 @@ class AddedExercise(BaseModel):
     rest_seconds: int
     note: str | None
     sets: list[SetSpec]
+    exercise: Resolved
 
 
 class RemovedExercise(BaseModel):
@@ -413,6 +414,7 @@ def diff_routine(
                 rest_seconds=slot.want.rest_seconds or 0,
                 note=_clean(slot.want.note or ""),
                 sets=sets,
+                exercise=slot.resolution.exercise,
             )
             order.append(f"new:{len(added)}")
             added.append(new)

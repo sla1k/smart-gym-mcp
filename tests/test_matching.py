@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from smartgym_mcp.matching import ExerciseCatalog, UnresolvedExercise
+from fakes import exercise_catalog
+from smartgym_mcp.matching import ExerciseResolution, UnresolvedExercise
 
-CATALOG = ExerciseCatalog(
-    [(1, "Dumbbell Bench Press"), (2, "Barbell Squat"), (194, "Push Up"), (20, "Plank")]
+CATALOG = exercise_catalog(
+    (1, "Dumbbell Bench Press"), (2, "Barbell Squat"), (194, "Push Up"), (20, "Plank")
 )
 
 
@@ -33,7 +34,7 @@ def test_unresolvable_lists_candidates() -> None:
 
 
 def test_a_name_shared_by_several_exercises_is_rejected_with_their_ids() -> None:
-    catalog = ExerciseCatalog([(194, "Push Up"), (419950, "Push Up"), (20, "Plank")])
+    catalog = exercise_catalog((194, "Push Up"), (419950, "Push Up"), (20, "Plank"))
     with pytest.raises(UnresolvedExercise, match=r"id=194.*id=419950"):
         catalog.resolve("push up")
     with pytest.raises(UnresolvedExercise, match="several exercises"):
@@ -57,7 +58,16 @@ def test_extended_catalog_resolves_old_and_new_entries() -> None:
         is_custom=True,
     )
     extended = CATALOG.extended([custom])
-    assert extended.resolve("dead hang").catalog_id == 397744
+    assert extended.resolve("dead hang").exercise is custom
     assert extended.resolve("Plank").catalog_id == 20
     with pytest.raises(UnresolvedExercise):
         CATALOG.resolve("dead hang")
+
+
+def test_a_resolution_carries_its_exercise_but_never_shows_it() -> None:
+    """The encoder reads the exercise off the resolution; tool output and schema don't."""
+    res = CATALOG.resolve("plank")
+    assert (res.exercise.id, res.exercise.name) == (20, "Plank")
+    assert "exercise" not in res.model_dump()
+    assert "exercise" not in ExerciseResolution.model_json_schema()["properties"]
+    assert "exercise" not in repr(res)

@@ -125,7 +125,7 @@ def _single(*bodies: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _service(client: FakeClient, tmp_path: Path) -> RoutineService:
-    return routine_service(client, tmp_path, BUNDLE, now=NOW, first_hash=FIRST_HASH)
+    return routine_service(client, tmp_path, BUNDLE.values(), now=NOW, first_hash=FIRST_HASH)
 
 
 def _rest(seconds: int) -> Callable[[Routine], DesiredRoutine]:
