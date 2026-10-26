@@ -20,7 +20,6 @@ from pydantic import BaseModel
 
 from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
 from .api.store import AccountStore, RoutineNotFound
-from .catalog import CatalogExercise
 from .diff import (
     ChangeSet,
     DesiredRoutine,
@@ -189,7 +188,7 @@ class RoutineService:
         self,
         client: ApiCalls,
         store: AccountStore,
-        bundle: Mapping[int, CatalogExercise],
+        bundle: ExerciseCatalog,
         *,
         backup_dir: Path,
         timezone: str,
@@ -199,23 +198,16 @@ class RoutineService:
         self._client = client
         self._store = store
         self._bundle = bundle
-        self._bundle_catalog = ExerciseCatalog.from_exercises(bundle.values())
         self._backup_dir = backup_dir
         self._tz = timezone
         self._now = now
         self._mint = mint
 
-    def _exercises(
-        self, *, custom: bool = True
-    ) -> tuple[ExerciseCatalog, Mapping[int, CatalogExercise]]:
-        """The app bundle plus (with `custom`) the account's custom exercises, by id."""
+    def _catalog(self, *, custom: bool = True) -> ExerciseCatalog:
+        """The app bundle plus (with `custom`) the account's custom exercises."""
         if not custom:
-            return self._bundle_catalog, self._bundle
-        customs = self._store.custom_exercises()
-        return self._bundle_catalog.extended(customs), {
-            **self._bundle,
-            **{c.id: c for c in customs},
-        }
+            return self._bundle
+        return self._bundle.extended(self._store.custom_exercises())
 
     # ------------------------------------------------------------------ edits
     def edit(
@@ -242,7 +234,7 @@ class RoutineService:
             for section in SECTIONS
             for want in desired.section_list(section) or []
         )
-        catalog, exercises = self._exercises(custom=adds_by_name)
+        catalog = self._catalog(custom=adds_by_name)
         change = diff_routine(current, desired, catalog)
         renamed = next((c.new for c in change.routine_changes if c.field == "name"), None)
         if renamed is not None and renamed.strip().lower() in _active_names(
@@ -250,9 +242,7 @@ class RoutineService:
         ):
             raise DiffError(f"Routine {renamed!r} already exists — rename it.")
         now = self._now()
-        requests = encode_change(
-            change, current, exercises, timezone=self._tz, now=now, mint=self._mint
-        )
+        requests = encode_change(change, current, timezone=self._tz, now=now, mint=self._mint)
         if not requests:
             return EditResult(
                 dry_run=dry_run,
@@ -333,11 +323,10 @@ class RoutineService:
         if not dry_run:
             self._store.invalidate()
         account = self._store.account()
-        catalog, exercises = self._exercises()
+        catalog = self._catalog()
         taken = _active_names(account.routines)
         problems: list[str] = []
         plans: list[CreatePlan] = []
-        resolved: list[list[CatalogExercise]] = []
         seen: set[str] = set()
         for spec in specs:
             key = spec.name.strip().lower()
@@ -348,7 +337,6 @@ class RoutineService:
             seen.add(key)
             entries = routine_entries(spec)
             resolutions: list[ExerciseResolution] = []
-            cats: list[CatalogExercise] = []
             warnings: list[str] = []
             for section, ex in entries:
                 try:
@@ -356,10 +344,8 @@ class RoutineService:
                 except UnresolvedExercise as exc:
                     problems.append(f"{spec.name} / {section}: {exc}")
                     continue
-                cat = exercises[res.catalog_id]
                 warnings.extend(resolution_warnings(res, ex.sets))
                 resolutions.append(res)
-                cats.append(cat)
             plans.append(
                 CreatePlan(
                     name=spec.name,
@@ -369,7 +355,6 @@ class RoutineService:
                     warnings=warnings,
                 )
             )
-            resolved.append(cats)
         if problems:
             raise DiffError("Rejected — nothing was created:\n- " + "\n- ".join(problems))
         if dry_run:
@@ -378,8 +363,14 @@ class RoutineService:
         now = self._now()
         top = max((r.number for r in account.routines), default=0)
         payloads = [
-            new_routine_payload(spec, cats, number=top + i + 1, now=now, mint=self._mint)
-            for i, (spec, cats) in enumerate(zip(specs, resolved, strict=True))
+            new_routine_payload(
+                spec,
+                [r.exercise for r in plan.resolutions],
+                number=top + i + 1,
+                now=now,
+                mint=self._mint,
+            )
+            for i, (spec, plan) in enumerate(zip(specs, plans, strict=True))
         ]
         try:
             self._client.post("routine/add/", add_routines_form(payloads, timezone=self._tz))

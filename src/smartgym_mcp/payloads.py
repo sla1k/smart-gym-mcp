@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import random
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -205,13 +205,7 @@ def _update_entry(u: ExerciseUpdate) -> dict[str, Any] | None:
 
 
 def _structure(
-    change: ChangeSet,
-    current: Routine,
-    catalog: Mapping[int, CatalogExercise],
-    *,
-    timezone: str,
-    now: datetime,
-    mint: Mint,
+    change: ChangeSet, current: Routine, *, timezone: str, now: datetime, mint: Mint
 ) -> dict[str, str] | None:
     form = _routine_base(change, current, timezone)
     for c in change.routine_changes:
@@ -225,7 +219,7 @@ def _structure(
         form["exercises"] = _json(
             [
                 exercise_payload(
-                    catalog[a.catalog_id],
+                    a.exercise,
                     section=a.section,
                     idx=a.position,
                     rest_seconds=a.rest_seconds,
@@ -318,7 +312,6 @@ def _exercise_edits(
 def encode_change(
     change: ChangeSet,
     current: Routine,
-    catalog: Mapping[int, CatalogExercise],
     *,
     timezone: str,
     now: datetime,
@@ -332,7 +325,7 @@ def encode_change(
     requests = (
         (
             "routine/update/",
-            _structure(change, current, catalog, timezone=timezone, now=now, mint=mint),
+            _structure(change, current, timezone=timezone, now=now, mint=mint),
         ),
         (
             "routine/updateExercise/",

@@ -32,6 +32,7 @@ from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .inputs import Days, Goal, RoutineSpec, SetSpec
+from .matching import ExerciseCatalog
 from .model import Section
 from .service import (
     ArchiveResult,
@@ -87,11 +88,10 @@ def build_services(cfg: Config) -> Services:
     )
     try:
         store = AccountStore(client)
-        exercises = catalog.load_bundle_exercises(cfg)
         service = RoutineService(
             client,
             store,
-            {e.id: e for e in exercises},
+            ExerciseCatalog(catalog.load_bundle_exercises(cfg)),
             backup_dir=cfg.backup_dir,
             timezone=local_timezone_name(),
         )

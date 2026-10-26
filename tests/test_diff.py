@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from fakes import TZ, by_id
+from fakes import TZ, by_id, exercise_catalog
 from smartgym_mcp.diff import (
     ChangeSet,
     DesiredExercise,
@@ -17,18 +17,15 @@ from smartgym_mcp.diff import (
     view_of,
 )
 from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
-from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.payloads import encode_change
 
-CATALOG = ExerciseCatalog(
-    [
-        (194, "Push Up"),
-        (20, "Plank"),
-        (207, "Cable Chest Press"),
-        (300, "Shoulder Circling"),
-        (400, "Cross Arm Stretch"),
-    ]
+CATALOG = exercise_catalog(
+    (194, "Push Up"),
+    (20, "Plank"),
+    (207, "Cable Chest Press"),
+    (300, "Shoulder Circling"),
+    (400, "Cross Arm Stretch"),
 )
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 LAYOUT = {"warmup": [10], "main": [11, 12, 13], "cooldown": [14]}
@@ -108,7 +105,7 @@ def _same(**over: DesiredExercise) -> dict[str, list[DesiredExercise]]:
 
 def _sends_nothing(change: ChangeSet, current: Routine) -> bool:
     """The change encodes to no request (an add would need the catalog and fail here)."""
-    return encode_change(change, current, {}, timezone=TZ, now=NOW) == []
+    return encode_change(change, current, timezone=TZ, now=NOW) == []
 
 
 def test_nothing_requested_is_empty_and_expected_equals_current() -> None:
@@ -191,6 +188,8 @@ def test_add_new_exercise_at_end_of_cooldown() -> None:
         added.position,
         added.rest_seconds,
     ) == (20, "Plank", "cooldown", 5, 30)
+    assert added.exercise.id == 20  # the catalog's own exercise, for the encoder
+    assert "exercise" not in added.model_dump()
     assert change.final_order is None
 
 

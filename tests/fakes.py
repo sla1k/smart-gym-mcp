@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import itertools
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +19,7 @@ from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise
+from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.payloads import Mint
 from smartgym_mcp.service import RoutineService
 
@@ -111,6 +112,11 @@ def catalog_exercise(ident: int, name: str) -> CatalogExercise:
     )
 
 
+def exercise_catalog(*entries: tuple[int, str]) -> ExerciseCatalog:
+    """An ExerciseCatalog of placeholder exercises (catalog_exercise) by (id, name)."""
+    return ExerciseCatalog(catalog_exercise(ident, name) for ident, name in entries)
+
+
 def by_id(*idents: int) -> list[DesiredExercise]:
     return [DesiredExercise(exercise_id=i) for i in idents]
 
@@ -135,7 +141,7 @@ def app_form(name: str) -> dict[str, Any]:
 def routine_service(
     client: FakeClient,
     backup_dir: Path,
-    bundle: Mapping[int, CatalogExercise],
+    bundle: Iterable[CatalogExercise],
     *,
     now: datetime,
     first_hash: int,
@@ -144,7 +150,7 @@ def routine_service(
     return RoutineService(
         client,
         AccountStore(client),
-        bundle,
+        ExerciseCatalog(bundle),
         backup_dir=backup_dir,
         timezone=TZ,
         now=lambda: now,
