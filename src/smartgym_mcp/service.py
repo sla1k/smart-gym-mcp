@@ -18,9 +18,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .account import AccountCache
 from .api import reads
 from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
-from .cache import ReadCache
 from .diff import (
     ChangeSet,
     DesiredRoutine,
@@ -202,7 +202,7 @@ class RoutineService:
     def __init__(
         self,
         client: ApiCalls,
-        cache: ReadCache,
+        cache: AccountCache,
         bundle: ExerciseCatalog,
         *,
         backup_dir: Path,
