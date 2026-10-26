@@ -15,8 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.client import ApiError
+from smartgym_mcp.cache import ReadCache
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import DesiredExercise
 from smartgym_mcp.matching import ExerciseCatalog
@@ -149,7 +149,7 @@ def routine_service(
     """A RoutineService on `client` with a fixed clock and deterministic hash ids."""
     return RoutineService(
         client,
-        AccountCache(client),
+        ReadCache(client),
         ExerciseCatalog(bundle),
         backup_dir=backup_dir,
         timezone=TZ,

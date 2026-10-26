@@ -18,10 +18,10 @@ from fakes import (
     catalog_exercise,
     routine_service,
 )
-from smartgym_mcp.account import RoutineNotFound
 from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
 from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
 from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.lookups import RoutineNotFound
 from smartgym_mcp.model import Routine
 from smartgym_mcp.service import RoutineService, WriteVerifyError, save_snapshot
 
@@ -246,6 +246,15 @@ def test_unknown_outcome_reports_partial_landing(tmp_path: Path) -> None:
         WriteOutcomeUnknown, match=r"landed only partially.*note: expected 'Slow'"
     ):
         _service(client, tmp_path).edit("ZZ-Svc", build, dry_run=False)
+
+
+def test_edit_of_a_routine_the_server_lacks_sends_nothing(tmp_path: Path) -> None:
+    client = account_client(
+        {HISTORY: _account(BEFORE), SINGLE: {"code": "SUCCESS", "routines": []}}
+    )
+    with pytest.raises(RoutineNotFound, match="SmartGym has no routine with id 3000001"):
+        _service(client, tmp_path).edit("ZZ-Svc", _rest(90), dry_run=False)
+    assert client.sent == []
 
 
 def test_failing_verification_read_reports_sent_requests_and_snapshot(tmp_path: Path) -> None:

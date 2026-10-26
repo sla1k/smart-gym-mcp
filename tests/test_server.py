@@ -39,9 +39,9 @@ from fakes import (
     catalog_exercise,
 )
 from smartgym_mcp import server
-from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.auth import Credentials, CredentialsError
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
+from smartgym_mcp.cache import ReadCache
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
 from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
@@ -77,7 +77,7 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
 
 def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
     def factory(cfg: Config) -> server.Services:
-        cache = AccountCache(client)
+        cache = ReadCache(client)
         service = RoutineService(
             client,
             cache,

@@ -1,6 +1,6 @@
 """MCPServer app over the SmartGym API (API-client spec §5, §6).
 
-Tools are thin: parse input → account / service / views. Credentials and the API
+Tools are thin: parse input → cache / lookups / service / views. Credentials and the API
 client are built on first use, so a missing credentials file becomes a clear
 tool error (and a smartgym_health report) instead of a server that won't start.
 Tool calls run one at a time (DESIGN invariant 7).
@@ -26,12 +26,13 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from . import __version__, builders, catalog, views
-from .account import AccountCache, find_routine
 from .api.auth import CredentialsError, load_credentials
 from .api.client import ApiClient, ApiError, AuthError
+from .cache import ReadCache
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .inputs import Days, Goal, RoutineSpec, SetSpec
+from .lookups import find_routine
 from .matching import ExerciseCatalog
 from .model import Section
 from .service import (
@@ -76,7 +77,7 @@ def local_timezone_name() -> str:
 @dataclass
 class Services:
     client: ApiClient
-    cache: AccountCache
+    cache: ReadCache
     service: RoutineService
     equipment: list[catalog.CatalogEquipment]
 
@@ -87,7 +88,7 @@ def build_services(cfg: Config) -> Services:
         app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION,
     )
     try:
-        cache = AccountCache(client)
+        cache = ReadCache(client)
         service = RoutineService(
             client,
             cache,
@@ -168,10 +169,10 @@ class AppContext:
     def use(self) -> Iterator[Services]:
         """Services for one tool call, one call at a time.
 
-        MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
+        MCP SDK 2 runs sync tools on worker threads, but the read cache, the client's
         lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
         can't start (see _acquire) fails before sending anything. Each call starts with an
-        empty account cache, so it never sees an earlier call's read.
+        empty read cache, so it never sees an earlier call's read.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the
