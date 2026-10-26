@@ -152,6 +152,8 @@ api/client.py    HTTP: base URL, multipart, common params, auth headers, error m
                  read retries; never logs header values
 api/auth.py      credential provider (shape decided after S1)
 model.py         Routine → Exercise → Set (pydantic), parsed from server JSON
+account.py       account reads cached for one tool call (dropped after every write), fresh
+                 routine/single fetch, routine lookups by ref / exercise id (pure)
 payloads.py      Routine → routine/add/ JSON; ChangeSet → routine/update/ form
 diff.py          (current Routine, desired Routine) → ChangeSet — pure, no I/O
 matching.py      ExerciseCatalog.resolve (kept)
@@ -344,11 +346,11 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 | The Mac editor sends set / note / rest edits inside `routine/update/`'s `updateExercises` (`updatedSets`, `addedSets`, `removedSets`, `note`, `pause`); the per-exercise entries equal what the MCP sends to `routine/updateExercise/` (S2/S3) | `update_custom_sets_rest`, `update_custom_change_set`, `update_custom_note` |
 | Removing a custom exercise from a routine = plain `removeExercises` | — (captured, not kept: no test used it) |
 
-Model: `CatalogExercise.is_custom`; `AccountStore.custom_exercises()` (removed and malformed
-ones skipped — a malformed one is logged — cached like the account read). `RoutineService`
-reads them only when a change adds an exercise by name and extends
-the bundle catalog with them, so a custom exercise made in the app is usable within the
-cache's 30 s and edits that add nothing don't depend on that read. A name shared by several
+Model: `CatalogExercise.is_custom`; `AccountCache.custom_exercises()` (removed and malformed
+ones skipped — a malformed one is logged — cached like the account read, for one tool call).
+`RoutineService` reads them only when a change adds an exercise by name and extends the bundle
+catalog with them, so a custom exercise made in the app is usable from the next tool call and
+edits that add nothing don't depend on that read. A name shared by several
 exercises (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm
 Cable Triceps Pushdown") is rejected with their ids, never picked silently. Custom
 exercises carry no `stretch` on the server (F9, §12), so they are sent with

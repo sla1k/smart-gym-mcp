@@ -39,9 +39,9 @@ from fakes import (
     catalog_exercise,
 )
 from smartgym_mcp import server
+from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.auth import Credentials, CredentialsError
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
-from smartgym_mcp.api.store import AccountStore
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
 from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
@@ -77,15 +77,15 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
 
 def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
     def factory(cfg: Config) -> server.Services:
-        store = AccountStore(client)
+        cache = AccountCache(client)
         service = RoutineService(
             client,
-            store,
+            cache,
             ExerciseCatalog(BUNDLE.values()),
             backup_dir=cfg.backup_dir,
             timezone=TZ,
         )
-        return server.Services(client=client, store=store, service=service, equipment=[])  # type: ignore[arg-type]
+        return server.Services(client=client, cache=cache, service=service, equipment=[])  # type: ignore[arg-type]
 
     return server.AppContext(cfg=_cfg(tmp_path), factory=factory)
 
@@ -399,12 +399,15 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     assert status.warning is not None and "9.0.0" in status.warning
 
 
-def test_health_reads_data_as_of_past_the_cache(tmp_path: Path) -> None:
-    """A sync check right after another call must see the server, not a 30 s-old read."""
+def test_each_call_reads_the_account_once_and_afresh(tmp_path: Path) -> None:
+    """A sync check right after another call must see the server, not that call's read."""
     synced = {**copy.deepcopy(ACCOUNT), "lastModified": "2026-10-05 16:10:00"}
-    app = _fake_app(tmp_path, account_client({HISTORY: [ACCOUNT, synced]}))
-    server.smartgym_list_routines(_ctx(app))
+    client = account_client({HISTORY: [ACCOUNT, synced]})
+    app = _fake_app(tmp_path, client)
+    server.smartgym_get_workout_history(_ctx(app), routine="zz-fb")
+    assert client.get_calls == [HISTORY]
     status = server.smartgym_health(_ctx(app))
+    assert client.get_calls == [HISTORY, HISTORY]
     assert status.data_as_of is not None
     assert datetime.fromisoformat(status.data_as_of) == datetime(
         2026, 10, 5, 16, 10, tzinfo=UTC

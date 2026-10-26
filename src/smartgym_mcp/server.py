@@ -1,6 +1,6 @@
 """MCPServer app over the SmartGym API (API-client spec §5, §6).
 
-Tools are thin: parse input → store / service / views. Credentials and the API
+Tools are thin: parse input → account / service / views. Credentials and the API
 client are built on first use, so a missing credentials file becomes a clear
 tool error (and a smartgym_health report) instead of a server that won't start.
 Tool calls run one at a time (DESIGN invariant 7).
@@ -26,9 +26,9 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from . import __version__, builders, catalog, views
+from .account import AccountCache, find_routine
 from .api.auth import CredentialsError, load_credentials
 from .api.client import ApiClient, ApiError, AuthError
-from .api.store import AccountStore
 from .config import VERIFIED_APP_VERSION, Config, load_config
 from .diff import DesiredExercise, DesiredRoutine
 from .inputs import Days, Goal, RoutineSpec, SetSpec
@@ -76,7 +76,7 @@ def local_timezone_name() -> str:
 @dataclass
 class Services:
     client: ApiClient
-    store: AccountStore
+    cache: AccountCache
     service: RoutineService
     equipment: list[catalog.CatalogEquipment]
 
@@ -87,17 +87,17 @@ def build_services(cfg: Config) -> Services:
         app_version=catalog.installed_app_version(cfg) or VERIFIED_APP_VERSION,
     )
     try:
-        store = AccountStore(client)
+        cache = AccountCache(client)
         service = RoutineService(
             client,
-            store,
+            cache,
             ExerciseCatalog(catalog.load_bundle_exercises(cfg)),
             backup_dir=cfg.backup_dir,
             timezone=local_timezone_name(),
         )
         return Services(
             client=client,
-            store=store,
+            cache=cache,
             service=service,
             equipment=catalog.load_bundle_equipment(cfg),
         )
@@ -170,7 +170,8 @@ class AppContext:
 
         MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
         lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
-        can't start (see _acquire) fails before sending anything.
+        can't start (see _acquire) fails before sending anything. Each call starts with an
+        empty account cache, so it never sees an earlier call's read.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the
@@ -182,6 +183,7 @@ class AppContext:
             if self._services is None:
                 self._services = self.factory(self.cfg)
             services = self._services
+            services.cache.invalidate()
             try:
                 yield services
             except AuthError:
@@ -314,8 +316,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
         )
     try:
         with app.use() as services:
-            services.store.invalidate()  # data_as_of must be the server's, not a cached read
-            account = services.store.account()
+            account = services.cache.account()
     except (*_ANTICIPATED, KeyError) as exc:
         return HealthStatus(
             ok=False,
@@ -350,7 +351,7 @@ def smartgym_list_routines(
     name) in the other tools.
     """
     with _services(ctx) as services:
-        account = services.store.account()
+        account = services.cache.account()
     return views.list_routines(account, include_archived=include_archived)
 
 
@@ -365,9 +366,9 @@ def smartgym_get_routine(
     latest session's top set and total volume.
     """
     with _services(ctx) as services:
-        account = services.store.account()
+        account = services.cache.account()
         return views.routine_detail(
-            services.store.resolve(routine, account=account),
+            find_routine(account, routine),
             account,
             history_depth=history_depth,
         )
@@ -390,13 +391,13 @@ def smartgym_get_workout_history(
     id). Paginated: total, has_more, next_offset.
     """
     with _services(ctx) as services:
-        account = services.store.account()
+        account = services.cache.account()
         return views.workout_history(
             account,
             days=days,
             date_from=date_from,
             date_to=date_to,
-            routine=services.store.resolve(routine, account=account) if routine else None,
+            routine=find_routine(account, routine) if routine else None,
             limit=limit,
             offset=offset,
         )
@@ -409,7 +410,7 @@ def smartgym_get_equipment(
     """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
     with _services(ctx) as services:
         return views.equipment(
-            services.store.account(), services.equipment, owned_only=owned_only
+            services.cache.account(), services.equipment, owned_only=owned_only
         )
 
 
