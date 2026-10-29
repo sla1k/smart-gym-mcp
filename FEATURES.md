@@ -1,7 +1,8 @@
 # SmartGym MCP — Feature Backlog
 
-What is not built yet. Built features and decisions are in [`DESIGN.md`](DESIGN.md).
-A new kind of server write is captured from the app first (DESIGN invariant 6).
+What is not built yet, and known tech debt. Built features and decisions are in
+[`DESIGN.md`](DESIGN.md). A new kind of server write is captured from the app first (DESIGN
+invariant 6).
 
 ---
 
@@ -49,3 +50,11 @@ shown by `smartgym_get_equipment`).
 Package as an `.mcpb` bundle for one-click install (and/or reconsider a TypeScript port for
 first-class MCPB tooling). Not needed for single-user local use; today's install is
 `uv tool install` from a release tag.
+
+---
+
+## Tech debt
+
+- `diff.ChangeSet.final_order` is a list of string keys — `"id:<identifier>"` for a kept
+  exercise, `"new:<k>"` for the k-th added one — that `payloads.py` slices back apart; a
+  tagged model (kept id / added index) would let the type checker catch a wrong key.
