@@ -129,7 +129,7 @@ architecture invariants are in DESIGN.md.
 | `diff.py` | (current `Routine`, `DesiredRoutine`) → `ChangeSet` — pure, no I/O, no wire format |
 | `payloads.py` | `RoutineSpec` → `routine/add/` JSON; `ChangeSet` → the edit requests; archive forms |
 | `lookups.py` | routine by ref / routine of an exercise id over the parsed account (pure) |
-| `account.py` | `AccountCache`: parsed `history/all` + custom exercises for one tool call, dropped after every send (`routine/single` is never cached) |
+| `account.py` | `AccountCache`: parsed `history/all` + custom exercises, kept for one tool call — emptied when the call ends (`AppContext.use`) and after every send, so a write's verifying re-read sees the server's answer; `routine/single` is never cached |
 | `model.py` | `Routine` → `RoutineExercise` → sets, workouts, equipment lists, parsed from server JSON |
 | `matching.py` | `ExerciseCatalog.resolve`: deterministic exercise-name resolution |
 | `catalog.py` | the app bundle's catalog files and installed version |
@@ -186,6 +186,8 @@ Write:
   is an error naming the differing fields.
 - Credentials are never logged and never appear in tool output or exceptions.
 - Known limit: concurrent in-app editing of the same routine → last save wins.
+- Known limit: a `history/all` answer with `hasMore=true` is refused (`model.parse_history_all`:
+  paging is not supported), rather than shown incomplete.
 
 ## 8. Automated tests
 
@@ -211,15 +213,29 @@ server and confirmed on the iPhone (custom exercises: §11).
 never reach the agent):
 
 ```sh
-mitmdump --mode local:SmartGym -s scripts/spike/capture.py --set flow_detail=0 --set confdir=<CA dir>
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain <confdir>/mitmproxy-ca-cert.pem
+mitmdump --mode local:SmartGym -s scripts/spike/capture.py --set flow_detail=0 --set confdir=<confdir>
 ```
 
 `confdir` must hold the CA the Mac trusts, or every SmartGym TLS handshake fails and nothing is
-logged. The addon appends redacted records to `scripts/spike/spike-flows.jsonl` (gitignored);
+logged. Enable the Mitmproxy Redirector network extension if macOS asks, and relaunch SmartGym
+on the Mac. The addon appends redacted records to `scripts/spike/spike-flows.jsonl`
+(gitignored). To find a record's index, list the POSTs with their form keys and map them to
+the edits by order and content:
+
+```sh
+python3 -c "
+import json
+for i, r in enumerate(map(json.loads, open('scripts/spike/spike-flows.jsonl'))):
+    if r['method'] == 'POST':
+        print(i, r['t'][11:], r['path'], sorted(k for k in r['form'] if k not in ('appVersion','authID','requestDate','timezone')))
+"
+```
+
 `uv run python scripts/spike/scrub.py <record-index> <fixture-name>` turns one into
 `tests/fixtures/api/<fixture-name>.json` with the account id scrubbed. Hand-built probes go
-through `scripts/spike/send.py` (`--save=<name>` writes a fixture). Remove the CA trust
-afterwards.
+through `scripts/spike/send.py` (`--save=<name>` writes a fixture). Afterwards remove the CA
+trust: `sudo security remove-trusted-cert -d <confdir>/mitmproxy-ca-cert.pem`.
 
 ## 10. Routine sections (warm-up / main / cool-down)
 
@@ -294,8 +310,8 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 
 Model: `CatalogExercise.is_custom`; `api.reads.custom_exercises()` fetches them,
 `model.parse_custom_exercises()` parses them (removed and malformed ones skipped — a malformed
-one is logged), `AccountCache.custom_exercises()` keeps them like the account read, for one tool
-call. `RoutineService` reads them only when a change adds an exercise by name and extends the
+one is logged), `AccountCache.custom_exercises()` keeps them like the account read (§5).
+`RoutineService` reads them only when a change adds an exercise by name and extends the
 bundle catalog with them, so a custom exercise made in the app is usable from the next tool
 call and edits that add nothing don't depend on that read. A name shared by several exercises
 (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm Cable
