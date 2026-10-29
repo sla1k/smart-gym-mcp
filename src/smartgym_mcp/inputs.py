@@ -2,28 +2,26 @@
 
 from __future__ import annotations
 
-import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field
 
 from .model import Section
 
-DAYS_FORMAT = (
-    'comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6"); '
-    '"" clears'
-)
-_DAYS = re.compile(r"[1-7](,[1-7])*")
+Weekday = Literal[1, 2, 3, 4, 5, 6, 7]  # 1 = Sunday … 7 = Saturday, as the app numbers them
 
 
-def _check_days(value: str | None) -> str | None:
-    if value is None or value.strip() == "" or _DAYS.fullmatch(value):
-        return value
-    raise ValueError(f"days must be {DAYS_FORMAT}; got {value!r}.")
+def _sorted_days(value: list[Weekday] | None) -> list[Weekday] | None:
+    return None if value is None else sorted(set(value))
 
 
 Days = Annotated[
-    str | None, AfterValidator(_check_days), Field(description=f"Days: {DAYS_FORMAT}")
+    list[Weekday] | None,
+    AfterValidator(_sorted_days),
+    Field(
+        description="Weekdays, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. [2, 4, 6]); "
+        "[] clears"
+    ),
 ]
 
 

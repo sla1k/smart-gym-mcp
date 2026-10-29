@@ -22,7 +22,7 @@ from typing import Any
 from .catalog import CatalogExercise
 from .diff import ChangeSet, ExerciseUpdate
 from .inputs import DEFAULT_SET, RoutineSpec, SetSpec, routine_entries
-from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet
+from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet, days_text
 
 _BAND_EQUIPMENT_ID = "38"
 Mint = Callable[[datetime], int]
@@ -142,7 +142,11 @@ def new_routine_payload(
     # The server 500s on JSON null here; the app omits unset optional fields.
     routine |= {
         key: value
-        for key, value in (("days", spec.days), ("goal", spec.goal), ("note", spec.note))
+        for key, value in (
+            ("days", days_text(spec.days or [])),
+            ("goal", spec.goal),
+            ("note", spec.note),
+        )
         if value and value.strip()
     }
     for i, ((section, ex_spec), cat) in enumerate(zip(entries, exercises, strict=True)):

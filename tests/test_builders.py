@@ -126,6 +126,6 @@ def test_reorder_must_keep_section_members() -> None:
 
 
 def test_update_routine_needs_a_field() -> None:
-    assert builders.update_routine(name=None, days="1,3", goal=None, note=None).days == "1,3"
+    assert builders.update_routine(name=None, days=[1, 3], goal=None, note=None).days == [1, 3]
     with pytest.raises(DiffError, match="at least one"):
         builders.update_routine(name=None, days=None, goal=None, note=None)

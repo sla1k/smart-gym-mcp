@@ -89,7 +89,9 @@ def test_sets_of_a_workoutless_history_fall_back_to_their_logged_day() -> None:
 
 
 def test_workout_history_date_range_routine_filter_and_paging() -> None:
-    ranged = workout_history(DATA, date_from="2026-09-20", date_to="2026-09-30", tz=UTC)
+    ranged = workout_history(
+        DATA, date_from=date(2026, 9, 20), date_to=date(2026, 9, 30), tz=UTC
+    )
     assert [s.identifier for s in ranged.sessions] == [7000002]
     other = DATA.routines[1]
     assert workout_history(DATA, days=30, routine=other, today=TODAY, tz=UTC).total == 0
@@ -148,7 +150,9 @@ def _with_workouts(starts: list[str]) -> AccountData:
 
 def test_local_time_is_dst_aware_for_an_injected_zone() -> None:
     data = _with_workouts(["2026-03-28 23:30:00", "2026-03-29 22:30:00"])
-    result = workout_history(data, date_from="2026-03-01", date_to="2026-04-30", tz=MADRID)
+    result = workout_history(
+        data, date_from=date(2026, 3, 1), date_to=date(2026, 4, 30), tz=MADRID
+    )
     assert [s.date for s in result.sessions] == ["2026-03-30 00:30", "2026-03-29 00:30"]
     detail = routine_detail(data.routines[0], data, history_depth=5, tz=MADRID)
     assert [s.date for s in detail.main[0].sessions] == ["2026-03-30", "2026-03-29"]
@@ -159,7 +163,7 @@ def test_local_time_is_dst_aware_for_the_system_zone(monkeypatch: pytest.MonkeyP
     time.tzset()
     try:
         data = _with_workouts(["2026-03-28 23:30:00", "2026-03-29 22:30:00"])
-        result = workout_history(data, date_from="2026-03-01", date_to="2026-04-30")
+        result = workout_history(data, date_from=date(2026, 3, 1), date_to=date(2026, 4, 30))
         assert [s.date for s in result.sessions] == ["2026-03-30 00:30", "2026-03-29 00:30"]
     finally:
         monkeypatch.undo()

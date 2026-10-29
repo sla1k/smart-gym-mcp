@@ -448,8 +448,9 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
         ),
         ("smartgym_move_exercise", {"exercise_id": 1, "section": "main", "position": -1}, "position"),
         ("smartgym_create_program", {"routines": []}, "routines"),
-        ("smartgym_update_routine", {"routine": "ZZ", "days": "Monday"}, "days"),
-        ("smartgym_apply_routine", {"routine": "ZZ", "days": "2,3,"}, "days"),
+        ("smartgym_update_routine", {"routine": "ZZ", "days": "2,4,6"}, "days"),
+        ("smartgym_apply_routine", {"routine": "ZZ", "days": [2, 8]}, "days"),
+        ("smartgym_get_workout_history", {"date_from": "05.10.2026"}, "date_from"),
         (
             "smartgym_create_program",
             {"routines": [{"name": "ZZ", "exercises": [{"exercise": "Plank"}]}]},
@@ -459,7 +460,8 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
         ("smartgym_apply_routine", {"routine": "ZZ", "goal": " "}, "goal must not be blank"),
     ],
     ids=["add-negative-position", "move-negative-position", "empty-program", "update-days",
-         "apply-days", "create-no-goal", "update-blank-goal", "apply-blank-goal"],
+         "apply-days", "history-date", "create-no-goal", "update-blank-goal",
+         "apply-blank-goal"],
 )  # fmt: skip
 def test_write_tools_reject_bad_arguments(
     tool: str, arguments: dict[str, Any], pattern: str
@@ -468,18 +470,22 @@ def test_write_tools_reject_bad_arguments(
         asyncio.run(server.mcp.call_tool(tool, arguments))
 
 
-def test_days_format_is_documented_in_the_tool_schemas() -> None:
+def test_days_are_weekday_numbers_in_the_tool_schemas() -> None:
     tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
-    for name in (
-        "smartgym_update_routine",
-        "smartgym_apply_routine",
-        "smartgym_create_program",
-    ):
-        tool = tools[name]
-        assert "1 = Sunday, 2 = Monday" in (tool.description or ""), name
-    for name in ("smartgym_update_routine", "smartgym_apply_routine"):
-        days = tools[name].input_schema["properties"]["days"]
-        assert "1 = Sunday" in days["description"], name
+    create = tools["smartgym_create_program"].input_schema
+    schemas = {
+        "smartgym_update_routine": tools["smartgym_update_routine"].input_schema,
+        "smartgym_apply_routine": tools["smartgym_apply_routine"].input_schema,
+        "smartgym_create_program": create["$defs"]["RoutineSpec"],
+    }
+    for name, schema in schemas.items():
+        days = schema["properties"]["days"]
+        assert "1 = Sunday, 2 = Monday" in days["description"], name
+        weekdays = {
+            "type": "array",
+            "items": {"enum": [1, 2, 3, 4, 5, 6, 7], "type": "integer"},
+        }
+        assert weekdays in days["anyOf"], name
 
 
 def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:

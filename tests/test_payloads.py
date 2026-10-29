@@ -66,7 +66,7 @@ def test_new_routine_payload_matches_captured_shape() -> None:
     spec = RoutineSpec(
         name="ZZ-FB — Test",
         goal="G",
-        days="2,3",
+        days=[2, 3],
         note="note",
         exercises=[
             ExerciseSpec(
@@ -340,7 +340,12 @@ def test_remove_exercise_matches_capture() -> None:
             {"name": "ZZ-SPIKE", "days": None, "goal": "asd"},
             DesiredRoutine(name="ZZ-SPIKE2"),
         ),
-        ("update_days", {"days": None, "goal": "asd"}, DesiredRoutine(days="2,4,6")),
+        ("update_days", {"days": None, "goal": "asd"}, DesiredRoutine(days=[2, 4, 6])),
+        (  # the same days in another order, repeated: the same request
+            "update_days",
+            {"days": None, "goal": "asd"},
+            DesiredRoutine.model_validate({"days": [6, 2, 4, 2]}),
+        ),
         ("update_goal", {"goal": "asd"}, DesiredRoutine(goal="changed goal")),
         ("update_note", {}, DesiredRoutine(note="changed routine note")),
     ],
@@ -350,6 +355,13 @@ def test_routine_field_edits_match_capture(
 ) -> None:
     _, requests = _encode(_routine(*SPIKE, **before), desired)  # type: ignore[arg-type]
     assert _norm(requests[UPDATE]) == app_form(fixture)
+
+
+def test_days_go_on_the_wire_as_the_apps_comma_list() -> None:
+    _, requests = _encode(_routine(*SPIKE, days=None), DesiredRoutine(days=[2, 4, 6]))
+    assert requests[UPDATE]["days"] == "2,4,6"
+    _, requests = _encode(_routine(*SPIKE), DesiredRoutine(days=[]))
+    assert requests[UPDATE]["days"] == ""
 
 
 def test_exercise_note_goes_to_update_exercise_matching_capture() -> None:
@@ -465,7 +477,7 @@ def test_create_payload_omits_unset_days_and_note() -> None:
 
 def test_create_payload_omits_blank_days_and_note() -> None:
     spec = RoutineSpec(
-        name="ZZ", days="", goal="G", note="", exercises=[ExerciseSpec(exercise="Push Up")]
+        name="ZZ", days=[], goal="G", note="", exercises=[ExerciseSpec(exercise="Push Up")]
     )
     p = new_routine_payload(spec, [PUSH_UP], number=1, now=NOW, mint=_counter())
     assert not {"days", "note"} & p.keys()
@@ -474,7 +486,7 @@ def test_create_payload_omits_blank_days_and_note() -> None:
 def test_create_payload_carries_days_goal_and_note_when_set() -> None:
     spec = RoutineSpec(
         name="ZZ",
-        days="2,4",
+        days=[4, 2],
         goal="strength",
         note="n",
         exercises=[ExerciseSpec(exercise="Push Up")],

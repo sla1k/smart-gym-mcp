@@ -3,13 +3,15 @@
 The API sends every scalar as a string ("pause": "10"), mixes template, logged
 and removed sets in one `sets[]`, and marks absent dates as null or "". Parsing
 coerces and filters once, here, so nothing downstream sees raw API strings.
-Sections: listGroup 1 = warm-up, 0 = main, 2 = cool-down (spec §10.1).
+Sections: listGroup 1 = warm-up, 0 = main, 2 = cool-down (spec §10.1). Days are
+weekday numbers sent as "2,4,6" (days_text) and kept as the server's text when read
+(a routine created without days reads "0001").
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -20,6 +22,12 @@ Section = Literal["warmup", "main", "cooldown"]
 SECTIONS: tuple[Section, ...] = ("warmup", "main", "cooldown")
 LIST_GROUP_BY_SECTION: dict[Section, int] = {"warmup": 1, "main": 0, "cooldown": 2}
 SECTION_BY_LIST_GROUP: dict[int, Section] = {g: s for s, g in LIST_GROUP_BY_SECTION.items()}
+
+
+def days_text(days: Iterable[int]) -> str:
+    """Weekday numbers as the API's `days` text, e.g. "2,4,6"; no days → "" (clears)."""
+    return ",".join(str(d) for d in days)
+
 
 logger = logging.getLogger("smartgym_mcp.model")
 
