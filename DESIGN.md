@@ -55,11 +55,13 @@ Modules and their layering: spec §5.
 5. Credentials only via `api/auth.py`; never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`; how: spec §9).
-7. Tool calls run one at a time (`AppContext.use`): the account cache (`account.AccountCache`,
+7. Tool calls run one at a time (`AppContext.run`: async tools take one `anyio.Lock`, then run
+   their blocking work on a worker thread): the account cache (`account.AccountCache`,
    lifetime: spec §5), the API client's lifetime and each write's re-read → rewrite assume
    calls don't overlap. A call that can't start in time, is cancelled while waiting, or
-   arrives once shutdown began sends nothing; shutdown closes the client only after the call in
-   flight. Input checks that need no network run before the wait.
+   arrives once shutdown began sends nothing; a call cancelled after its thread started runs
+   to the end, holding the lock until it has. Shutdown closes the client only after the call
+   in flight. Input checks that need no network run before the wait.
 
 ## Decisions
 

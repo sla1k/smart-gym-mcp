@@ -7,9 +7,8 @@ import copy
 import json
 import plistlib
 import threading
-import time
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +18,7 @@ from typing import Any, override
 import anyio
 import anyio.to_thread
 import pytest
+from anyio.abc import TaskStatus
 from mcp import Client
 from mcp.server.mcpserver.exceptions import (
     ResourceError,
@@ -46,7 +46,7 @@ from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.diff import DesiredExercise
 from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.service import RoutineService
+from smartgym_mcp.service import ArchiveResult, RoutineService
 
 EXPECTED_TOOLS = {
     "smartgym_health", "smartgym_list_routines", "smartgym_get_routine",
@@ -186,13 +186,14 @@ def test_server_wide_rules_live_in_the_instructions_not_in_each_tool() -> None:
     ],
     ids=["missing", "world-readable", "incomplete"],
 )
-def test_health_reports_credentials_problem(
+@pytest.mark.anyio
+async def test_health_reports_credentials_problem(
     tmp_path: Path, content: object, mode: int, fix: str
 ) -> None:
     cfg = _cfg(tmp_path)
     if content is not None:
         _write_credentials(cfg.credentials_path, content, mode)
-    status = server.smartgym_health(_ctx(server.AppContext(cfg=cfg)))
+    status = await server.smartgym_health(_ctx(server.AppContext(cfg=cfg)))
     assert not status.ok and status.data_as_of is None
     assert status.problem is not None
     assert str(cfg.credentials_path) in status.problem
@@ -200,11 +201,12 @@ def test_health_reports_credentials_problem(
     assert SECRET not in status.problem
 
 
-def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     app = server.AppContext(cfg=cfg)
     with pytest.raises(ToolError, match=r"capture_credentials\.py") as exc:
-        server.smartgym_list_routines(_ctx(app))
+        await server.smartgym_list_routines(_ctx(app))
     assert isinstance(exc.value.__cause__, CredentialsError)
     assert str(cfg.credentials_path) in str(exc.value)
 
@@ -214,10 +216,11 @@ def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
         0o644,
     )
     with pytest.raises(ToolError, match="chmod 600"):
-        server.smartgym_update_routine(_ctx(app), routine="ZZ", note="x")
+        await server.smartgym_update_routine(_ctx(app), routine="ZZ", note="x")
 
 
-def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None:
     attempts: list[int] = []
     good = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
 
@@ -228,9 +231,9 @@ def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None:
         return good.factory(cfg)
 
     app = server.AppContext(cfg=_cfg(tmp_path), factory=flaky)
-    assert not server.smartgym_health(_ctx(app)).ok
-    assert server.smartgym_health(_ctx(app)).ok
-    server.smartgym_list_routines(_ctx(app))
+    assert not (await server.smartgym_health(_ctx(app))).ok
+    assert (await server.smartgym_health(_ctx(app))).ok
+    await server.smartgym_list_routines(_ctx(app))
     assert len(attempts) == 2
 
 
@@ -247,7 +250,8 @@ class _SessionClient(FakeClient):
         return super().get(path)
 
 
-def test_recaptured_credentials_take_effect_after_an_auth_error(
+@pytest.mark.anyio
+async def test_recaptured_credentials_take_effect_after_an_auth_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The real build_services re-reads the file once an AuthError dropped the services."""
@@ -263,19 +267,20 @@ def test_recaptured_credentials_take_effect_after_an_auth_error(
     creds = {"authID": "1", "app_headers": APP}
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer expired"})
     with pytest.raises(ToolError, match="rejected the credentials") as exc:
-        server.smartgym_list_routines(_ctx(app))
+        await server.smartgym_list_routines(_ctx(app))
     assert isinstance(exc.value.__cause__, AuthError)
     assert built[0].closed
 
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer fresh"})
-    result = server.smartgym_list_routines(_ctx(app))
+    result = await server.smartgym_list_routines(_ctx(app))
     assert [r.name for r in result.routines] == ["ZZ-FB — Test"]
     assert len(built) == 2 and not built[1].closed
-    assert server.smartgym_health(_ctx(app)).ok
+    assert (await server.smartgym_health(_ctx(app))).ok
     assert len(built) == 2
 
 
-def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
     built: list[_SessionClient] = []
 
     def factory(cfg: Config) -> server.Services:
@@ -284,9 +289,9 @@ def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
         return _fake_app(tmp_path, client).factory(cfg)
 
     app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
-    status = server.smartgym_health(_ctx(app))
+    status = await server.smartgym_health(_ctx(app))
     assert not status.ok and status.problem is not None and "rejected" in status.problem
-    assert server.smartgym_health(_ctx(app)).ok
+    assert (await server.smartgym_health(_ctx(app))).ok
     assert len(built) == 2 and built[0].closed
 
 
@@ -300,23 +305,20 @@ class _UnknownOutcomeClient(FakeClient):
         )
 
 
-def test_anticipated_errors_reach_the_model_with_their_message(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_anticipated_errors_reach_the_model_with_their_message(tmp_path: Path) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
     app = _fake_app(tmp_path, client)
     with pytest.raises(ToolError, match="No routine matching 'nope'") as exc:
-        asyncio.run(
-            server.mcp.call_tool(
-                "smartgym_get_routine", {"routine": "nope"}, context=_ctx(app)
-            )
+        await server.mcp.call_tool(
+            "smartgym_get_routine", {"routine": "nope"}, context=_ctx(app)
         )
     assert not isinstance(exc.value, UnexpectedToolError)
 
     app = _fake_app(tmp_path, _UnknownOutcomeClient({HISTORY: ACCOUNT, SINGLE: _single()}))
     arguments = {"exercise_id": 40000012, "rest_seconds": 120, "dry_run": False}
     with pytest.raises(ToolError) as exc:
-        asyncio.run(
-            server.mcp.call_tool("smartgym_update_exercise", arguments, context=_ctx(app))
-        )
+        await server.mcp.call_tool("smartgym_update_exercise", arguments, context=_ctx(app))
     assert "re-fetch before retrying" in str(exc.value)
     assert "Snapshot of the routine before this edit" in str(exc.value)
 
@@ -379,7 +381,8 @@ def test_build_services_closes_the_client_when_a_later_step_fails(
 
 
 # ---------------------------------------------------------------------- health
-def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
+@pytest.mark.anyio
+async def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     tmp_path: Path,
 ) -> None:
     app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
@@ -387,7 +390,7 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     contents.mkdir(parents=True)
     with (contents / "Info.plist").open("wb") as f:
         plistlib.dump({"CFBundleShortVersionString": "9.0.0"}, f)
-    status = server.smartgym_health(_ctx(app))
+    status = await server.smartgym_health(_ctx(app))
     assert status.ok and status.problem is None
     assert status.routines == 1
     # history/all's lastModified (UTC), shown in local time with its offset
@@ -399,14 +402,15 @@ def test_health_ok_counts_active_routines_and_warns_on_other_app_version(
     assert status.warning is not None and "9.0.0" in status.warning
 
 
-def test_each_call_reads_the_account_once_and_afresh(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_each_call_reads_the_account_once_and_afresh(tmp_path: Path) -> None:
     """A sync check right after another call must see the server, not that call's read."""
     synced = {**copy.deepcopy(ACCOUNT), "lastModified": "2026-10-05 16:10:00"}
     client = account_client({HISTORY: [ACCOUNT, synced]})
     app = _fake_app(tmp_path, client)
-    server.smartgym_get_workout_history(_ctx(app), routine="zz-fb")
+    await server.smartgym_get_workout_history(_ctx(app), routine="zz-fb")
     assert client.get_calls == [HISTORY]
-    status = server.smartgym_health(_ctx(app))
+    status = await server.smartgym_health(_ctx(app))
     assert client.get_calls == [HISTORY, HISTORY]
     assert status.data_as_of is not None
     assert datetime.fromisoformat(status.data_as_of) == datetime(
@@ -415,15 +419,17 @@ def test_each_call_reads_the_account_once_and_afresh(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------- reads
-def test_list_routines_through_injected_services(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_list_routines_through_injected_services(tmp_path: Path) -> None:
     app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
-    result = server.smartgym_list_routines(_ctx(app))
+    result = await server.smartgym_list_routines(_ctx(app))
     assert [r.name for r in result.routines] == ["ZZ-FB — Test"]
 
 
-def test_get_routine_splits_sections(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_get_routine_splits_sections(tmp_path: Path) -> None:
     app = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
-    detail = server.smartgym_get_routine(_ctx(app), routine="zz-fb")
+    detail = await server.smartgym_get_routine(_ctx(app), routine="zz-fb")
     assert [e.exercise_id for e in detail.warmup] == [40000010]
     assert [e.exercise_id for e in detail.main] == [40000012]
     assert [e.exercise_id for e in detail.cooldown] == [40000014]
@@ -488,18 +494,20 @@ def test_days_are_weekday_numbers_in_the_tool_schemas() -> None:
         assert weekdays in days["anyOf"], name
 
 
-def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_update_exercise_dry_run_sends_nothing(tmp_path: Path) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
-    result = server.smartgym_update_exercise(
+    result = await server.smartgym_update_exercise(
         _ctx(_fake_app(tmp_path, client)), exercise_id=40000012, rest_seconds=120
     )
     assert result.dry_run and result.requests == ["routine/update/"]
     assert client.sent == []
 
 
-def test_add_exercise_builds_on_the_fresh_routine(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_add_exercise_builds_on_the_fresh_routine(tmp_path: Path) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
-    result = server.smartgym_add_exercise(
+    result = await server.smartgym_add_exercise(
         _ctx(_fake_app(tmp_path, client)),
         routine="ZZ-FB",
         exercise="plank",
@@ -548,21 +556,23 @@ DRY_RUN_CALLS: dict[str, WriteCall] = {
 
 
 @pytest.mark.parametrize("call", DRY_RUN_CALLS.values(), ids=DRY_RUN_CALLS.keys())
-def test_write_tools_dry_run_by_default_and_send_nothing(
+@pytest.mark.anyio
+async def test_write_tools_dry_run_by_default_and_send_nothing(
     tmp_path: Path, call: WriteCall
 ) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
-    result = call(_ctx(_fake_app(tmp_path, client)))
+    result = await call(_ctx(_fake_app(tmp_path, client)))
     assert result.dry_run
     assert client.sent == []
     assert not (tmp_path / "backups").exists()
 
 
-def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_archive_applies_when_dry_run_is_false(tmp_path: Path) -> None:
     archived = copy.deepcopy(ACCOUNT)
     archived["routines"][0]["dateArchived"] = "2026-10-06 10:00:00"
     client = account_client({HISTORY: [ACCOUNT, archived]})
-    result = server.smartgym_archive_routines(
+    result = await server.smartgym_archive_routines(
         _ctx(_fake_app(tmp_path, client)), routines=["ZZ-FB"], dry_run=False
     )
     assert not result.dry_run
@@ -580,23 +590,50 @@ READ_CALLS: dict[str, WriteCall] = {
 
 
 ALL_CALLS = {**READ_CALLS, **DRY_RUN_CALLS}
+SHORT_WAIT_S = 0.05  # how long a test call waits for the one in flight
 
 
+async def _hold(
+    app: server.AppContext, *, task_status: TaskStatus[None] = anyio.TASK_STATUS_IGNORED
+) -> None:
+    async with app._calls:
+        task_status.started()
+        await anyio.sleep_forever()
+
+
+@asynccontextmanager
+async def _call_in_flight(app: server.AppContext) -> AsyncIterator[None]:
+    """Another call holds the lock, from its own task as each MCP request has."""
+    async with anyio.create_task_group() as tg:
+        await tg.start(_hold, app)
+        try:
+            yield
+        finally:
+            tg.cancel_scope.cancel()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("call", ALL_CALLS.values(), ids=ALL_CALLS.keys())
-def test_every_tool_waits_for_the_call_in_flight(tmp_path: Path, call: WriteCall) -> None:
+async def test_every_tool_waits_for_the_call_in_flight(
+    tmp_path: Path, call: WriteCall
+) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
-    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
-    with app.use(), pytest.raises(ToolError, match="nothing was sent") as exc:
-        call(_ctx(app))
+    app = replace(_fake_app(tmp_path, client), call_wait_s=SHORT_WAIT_S)
+    async with _call_in_flight(app):
+        with pytest.raises(ToolError, match="nothing was sent") as exc:
+            await call(_ctx(app))
     assert isinstance(exc.value.__cause__, server.ServerBusy)
     assert client.get_calls == [] and client.sent == []
-    assert call(_ctx(app))  # free again once the other call is done
+    assert await call(_ctx(app))  # free again once the other call is done
 
 
-def test_health_reports_a_busy_server(tmp_path: Path) -> None:
-    app = replace(_fake_app(tmp_path, account_client({HISTORY: ACCOUNT})), call_wait_s=0)
-    with app.use():
-        status = server.smartgym_health(_ctx(app))
+@pytest.mark.anyio
+async def test_health_reports_a_busy_server(tmp_path: Path) -> None:
+    app = replace(
+        _fake_app(tmp_path, account_client({HISTORY: ACCOUNT})), call_wait_s=SHORT_WAIT_S
+    )
+    async with _call_in_flight(app):
+        status = await server.smartgym_health(_ctx(app))
     assert (
         not status.ok and status.problem is not None and "nothing was sent" in status.problem
     )
@@ -616,54 +653,105 @@ class _GatedClient(FakeClient):
         return super().post(path, form)
 
 
-def test_a_read_cannot_overlap_a_write_in_flight(tmp_path: Path) -> None:
+def _archived_after_one_post() -> _GatedClient:
     archived = copy.deepcopy(ACCOUNT)
     archived["routines"][0]["dateArchived"] = "2026-10-06 10:00:00"
-    client = _GatedClient({HISTORY: [ACCOUNT, archived, archived]})
-    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        write = pool.submit(
-            server.smartgym_archive_routines, _ctx(app), routines=["ZZ-FB"], dry_run=False
-        )
-        assert client.posting.wait(5)
+    return _GatedClient({HISTORY: [ACCOUNT, archived, archived]})
+
+
+async def _archive(app: server.AppContext) -> ArchiveResult:
+    return await server.smartgym_archive_routines(_ctx(app), ["ZZ-FB"], dry_run=False)
+
+
+@pytest.mark.anyio
+async def test_a_read_cannot_overlap_a_write_in_flight(tmp_path: Path) -> None:
+    client = _archived_after_one_post()
+    app = replace(_fake_app(tmp_path, client), call_wait_s=SHORT_WAIT_S)
+    results: list[ArchiveResult] = []
+
+    async def write() -> None:
+        results.append(await _archive(app))
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(write)
+        assert await anyio.to_thread.run_sync(client.posting.wait, 5)
         reads_before = len(client.get_calls)
         with pytest.raises(ToolError, match="nothing was sent"):
-            server.smartgym_list_routines(_ctx(app))
+            await server.smartgym_list_routines(_ctx(app))
         assert len(client.get_calls) == reads_before
         client.release.set()
-        assert not write.result(timeout=5).dry_run
+    assert [r.dry_run for r in results] == [False]
     assert [path for path, _ in client.sent] == ["routine/archive/"]
-    assert server.smartgym_list_routines(_ctx(app)).routines == []  # free again; FB archived
+    assert (await server.smartgym_list_routines(_ctx(app))).routines == []  # FB archived
 
 
-def test_close_waits_for_the_call_in_flight(tmp_path: Path) -> None:
-    client = account_client({HISTORY: ACCOUNT})
-    app = replace(_fake_app(tmp_path, client), call_wait_s=0)
-    with app.use():
-        app.close()
+@pytest.mark.anyio
+async def test_a_call_cancelled_mid_write_keeps_the_lock_until_its_thread_is_done(
+    tmp_path: Path,
+) -> None:
+    """A thread can't be stopped: the cancelled call's post and re-read still run, and no
+    other call may start meanwhile."""
+    client = _archived_after_one_post()
+    app = replace(_fake_app(tmp_path, client), call_wait_s=SHORT_WAIT_S)
+    write_scope = anyio.CancelScope()
+
+    async def write() -> None:
+        with write_scope:
+            await _archive(app)
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(write)
+        assert await anyio.to_thread.run_sync(client.posting.wait, 5)
+        write_scope.cancel()  # the client gave up on the call
+        with pytest.raises(ToolError, match="nothing was sent"):
+            await server.smartgym_list_routines(_ctx(app))
+        client.release.set()
+    assert [path for path, _ in client.sent] == ["routine/archive/"]
+    assert (await server.smartgym_list_routines(_ctx(app))).routines == []  # FB archived
+
+
+@pytest.mark.anyio
+async def test_close_waits_for_the_call_in_flight(tmp_path: Path) -> None:
+    client = _archived_after_one_post()
+    app = _fake_app(tmp_path, client)
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_archive, app)
+        assert await anyio.to_thread.run_sync(client.posting.wait, 5)
+        tg.start_soon(app.close)
+        await anyio.sleep(SHORT_WAIT_S)
         assert not client.closed
-    app.close()
+        client.release.set()
     assert client.closed
 
 
-def test_a_cancelled_call_stops_waiting_and_sends_nothing(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_close_leaves_the_client_open_while_a_call_overruns_the_wait(
+    tmp_path: Path,
+) -> None:
+    client = account_client({HISTORY: ACCOUNT})
+    app = replace(_fake_app(tmp_path, client), call_wait_s=SHORT_WAIT_S)
+    await server.smartgym_list_routines(_ctx(app))  # builds the services
+    async with _call_in_flight(app):
+        await app.close()
+        assert not client.closed
+    await app.close()
+    assert client.closed
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_call_stops_waiting_and_sends_nothing(tmp_path: Path) -> None:
     client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
     app = replace(_fake_app(tmp_path, client), call_wait_s=3)  # far past the cancellation
-
-    def archive() -> Any:
-        return server.smartgym_archive_routines(_ctx(app), routines=["ZZ-FB"], dry_run=False)
-
-    async def cancel_while_waiting() -> None:
-        with app.use(), anyio.move_on_after(0.5):  # another call in flight
-            await anyio.to_thread.run_sync(archive)  # as MCP SDK 2 runs sync tools
-
-    started = time.monotonic()
-    asyncio.run(cancel_while_waiting())
-    assert time.monotonic() - started < 2
+    started = anyio.current_time()
+    async with _call_in_flight(app):
+        with anyio.move_on_after(0.5):
+            await _archive(app)
+    assert anyio.current_time() - started < 2
     assert client.get_calls == [] and client.sent == []
 
 
-def test_no_call_starts_after_close(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_no_call_starts_after_close(tmp_path: Path) -> None:
     client = account_client({HISTORY: ACCOUNT})
     built: list[Config] = []
     app = _fake_app(tmp_path, client)
@@ -674,15 +762,16 @@ def test_no_call_starts_after_close(tmp_path: Path) -> None:
         return factory(cfg)
 
     app.factory = recording
-    app.close()
+    await app.close()
     with pytest.raises(ToolError, match="shutting down"):
-        server.smartgym_list_routines(_ctx(app))
-    status = server.smartgym_health(_ctx(app))
+        await server.smartgym_list_routines(_ctx(app))
+    status = await server.smartgym_health(_ctx(app))
     assert not status.ok and status.problem is not None and "shutting down" in status.problem
     assert built == [] and client.get_calls == []
 
 
-def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
     app = server.AppContext(cfg=_cfg(tmp_path))  # no credentials file, full wait
     calls: dict[str, WriteCall] = {
         "update_routine": lambda c: server.smartgym_update_routine(c, routine="ZZ-FB"),
@@ -694,16 +783,12 @@ def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
     }
     for call in calls.values():
         with pytest.raises(ToolError, match=r"Pass at least one of|exactly one of"):
-            call(_ctx(app))  # the input problem, not the missing credentials
-    assert app._calls.acquire(timeout=1)  # another call in flight
-    try:
-        started = time.monotonic()
-        for call in calls.values():
-            with pytest.raises(ToolError, match=r"Pass at least one of|exactly one of"):
-                call(_ctx(app))
-        assert time.monotonic() - started < 5
-    finally:
-        app._calls.release()
+            await call(_ctx(app))  # the input problem, not the missing credentials
+    async with _call_in_flight(app):
+        with anyio.fail_after(5):
+            for call in calls.values():
+                with pytest.raises(ToolError, match=r"Pass at least one of|exactly one of"):
+                    await call(_ctx(app))
 
 
 CATALOGS = {
