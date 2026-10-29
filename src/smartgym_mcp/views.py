@@ -211,8 +211,8 @@ def workout_history(
     account: AccountData,
     *,
     days: RangeDays = 7,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     routine: Routine | None = None,
     limit: int = 20,
     offset: int = 0,
@@ -220,8 +220,8 @@ def workout_history(
     tz: tzinfo | None = None,
 ) -> WorkoutHistoryResult:
     if date_from or date_to:
-        start = date.fromisoformat(date_from) if date_from else date.min
-        end = date.fromisoformat(date_to) if date_to else date.max
+        start = date_from or date.min
+        end = date_to or date.max
     else:
         end = today or datetime.now(tz).date()
         start = end - timedelta(days=days)

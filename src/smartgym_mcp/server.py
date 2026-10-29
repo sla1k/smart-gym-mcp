@@ -17,6 +17,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Annotated
 
 import anyio.from_thread
@@ -380,8 +381,8 @@ def smartgym_get_routine(
 def smartgym_get_workout_history(
     ctx: Context[AppContext],
     days: views.RangeDays = 7,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     routine: str | None = None,
     limit: Annotated[int, Field(ge=1)] = 20,
     offset: Annotated[int, Field(ge=0)] = 0,
@@ -389,8 +390,8 @@ def smartgym_get_workout_history(
     """List past workouts (newest first) with duration, calories and heart rate.
 
     Defaults to the last 7 days (or 14/30 via `days`); explicit `date_from` / `date_to`
-    (YYYY-MM-DD, inclusive, local time) override it. Optional `routine` filter (name or
-    id). Paginated: total, has_more, next_offset.
+    (inclusive, local time) override it. Optional `routine` filter (name or id).
+    Paginated: total, has_more, next_offset.
     """
     with _services(ctx) as services:
         account = services.cache.account()
@@ -428,9 +429,8 @@ def smartgym_create_program(
     "Strength" — the app can't save a routine without one), optional days/note, and three
     ordered sections — `warmup` (optional), `exercises` (= main, required), `cooldown`
     (optional). Each exercise: catalog name or id, optional rest_seconds, note and template
-    sets. `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
-    (e.g. "2,4,6"). Validation is all-or-nothing; dry_run=false creates the routines and
-    verifies them on the server.
+    sets. Validation is all-or-nothing; dry_run=false creates the routines and verifies them
+    on the server.
     """
     with _services(ctx) as services:
         return services.service.create(routines, dry_run=dry_run)
@@ -446,12 +446,12 @@ def smartgym_update_routine(
     note: str | None = None,
     dry_run: bool = True,
 ) -> EditResult:
-    """Edit a routine's name, days, goal or note (only the fields you pass; "" clears).
+    """Edit a routine's name, days, goal or note (only the fields you pass; "" or, for
+    days, [] clears).
 
     The goal can be changed but not cleared (the app can't save a routine without one).
-    `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
-    (e.g. "2,4,6"). A new name must not match another active routine. dry_run=false
-    snapshots the routine, sends the edit, and verifies it on the server.
+    A new name must not match another active routine. dry_run=false snapshots the
+    routine, sends the edit, and verifies it on the server.
     """
     with _tool_errors():
         desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
@@ -592,8 +592,7 @@ def smartgym_apply_routine(
     exercises by exercise_id (optionally with new rest/note/sets), new ones by catalog
     name (built-in or custom). An existing exercise listed under another section moves
     there; one you leave out of a passed section is removed. Omitted sections stay as they
-    are. `days` is comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday
-    (e.g. "2,4,6").
+    are.
     """
     with _tool_errors():
         desired = DesiredRoutine(

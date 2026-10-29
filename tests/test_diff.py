@@ -124,7 +124,7 @@ def test_listing_every_section_unchanged_is_empty() -> None:
 
 def test_routine_fields_change_and_empty_string_clears() -> None:
     change = diff_routine(
-        _routine(), DesiredRoutine(name="ZZ-R2", note="", days="2,4,6"), CATALOG
+        _routine(), DesiredRoutine(name="ZZ-R2", note="", days=[2, 4, 6]), CATALOG
     )
     assert [(c.field, c.old, c.new) for c in change.routine_changes] == [
         ("name", "ZZ-R", "ZZ-R2"),
@@ -370,21 +370,35 @@ def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
     assert change.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
 
 
-@pytest.mark.parametrize("days", ["1", "2,3", "1,2,3,4,5,6,7", "", "  ", None])
-def test_days_accepts_weekday_numbers_or_empty(days: str | None) -> None:
-    assert DesiredRoutine(days=days).days == days
-    spec = RoutineSpec(
-        name="ZZ", goal="G", days=days, exercises=[ExerciseSpec(exercise="Plank")]
+@pytest.mark.parametrize(
+    ("days", "kept"),
+    [
+        ([1], [1]),
+        ([2, 3], [2, 3]),
+        ([1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6, 7]),
+        ([6, 2, 4, 2], [2, 4, 6]),  # sorted, repeats dropped
+        ([], []),
+        (None, None),
+    ],
+)
+def test_days_takes_weekday_numbers_sorted_once_each(
+    days: list[int] | None, kept: list[int] | None
+) -> None:
+    assert DesiredRoutine.model_validate({"days": days}).days == kept
+    spec = RoutineSpec.model_validate(
+        {"name": "ZZ", "goal": "G", "days": days, "exercises": [{"exercise": "Plank"}]}
     )
-    assert spec.days == days
+    assert spec.days == kept
 
 
-@pytest.mark.parametrize("days", ["0", "8", "Monday", "2, 3", "2,3,", ",2", "2;3", "23"])
-def test_days_rejects_anything_else_naming_the_format(days: str) -> None:
-    with pytest.raises(ValidationError, match="1 = Sunday, 2 = Monday"):
-        DesiredRoutine(days=days)
-    with pytest.raises(ValidationError, match="comma-separated weekday numbers"):
-        RoutineSpec(name="ZZ", goal="G", days=days, exercises=[ExerciseSpec(exercise="Plank")])
+@pytest.mark.parametrize("days", [[0], [8], ["2"], [2.5], "2,4,6", "Monday", ""])
+def test_days_rejects_anything_but_weekday_numbers(days: object) -> None:
+    with pytest.raises(ValidationError, match="days"):
+        DesiredRoutine.model_validate({"days": days})
+    with pytest.raises(ValidationError, match="days"):
+        RoutineSpec.model_validate(
+            {"name": "ZZ", "goal": "G", "days": days, "exercises": [{"exercise": "Plank"}]}
+        )
 
 
 @pytest.mark.parametrize("goal", ["", "  "])
@@ -406,7 +420,7 @@ def test_goal_less_routine_gets_a_goal() -> None:
 def test_new_routine_view_is_what_the_create_payload_sends() -> None:
     spec = RoutineSpec(
         name="ZZ-New",
-        days=" ",
+        days=[],
         goal="Strength",
         note="",
         warmup=[

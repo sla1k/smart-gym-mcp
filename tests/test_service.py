@@ -441,7 +441,7 @@ def test_create_with_blank_days_accepts_the_servers_default_days(tmp_path: Path)
         {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
     )
     spec = RoutineSpec(
-        name="ZZ-New", goal="G", days="", exercises=[ExerciseSpec(exercise="Plank")]
+        name="ZZ-New", goal="G", days=[], exercises=[ExerciseSpec(exercise="Plank")]
     )
     result = _service(client, tmp_path).create([spec], dry_run=False)
     assert [c.name for c in result.created] == ["ZZ-New"]
@@ -452,7 +452,7 @@ def test_create_with_days_still_verifies_them(tmp_path: Path) -> None:
         {HISTORY: [_account(BEFORE), _account(BEFORE, _created_with_days("0001"))]}
     )
     spec = RoutineSpec(
-        name="ZZ-New", goal="G", days="2,4", exercises=[ExerciseSpec(exercise="Plank")]
+        name="ZZ-New", goal="G", days=[2, 4], exercises=[ExerciseSpec(exercise="Plank")]
     )
     with pytest.raises(WriteVerifyError, match="days: expected '2,4', got '0001'"):
         _service(client, tmp_path).create([spec], dry_run=False)

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .inputs import DEFAULT_SET, Days, Goal, RoutineSpec, SetSpec, routine_entries
 from .matching import ExerciseCatalog, ExerciseResolution, Resolved, UnresolvedExercise
-from .model import SECTIONS, Routine, RoutineExercise, Section, TemplateSet
+from .model import SECTIONS, Routine, RoutineExercise, Section, TemplateSet, days_text
 
 
 class DiffError(ValueError):
@@ -198,7 +198,7 @@ def new_routine_view(
     `resolutions[i]` resolves `routine_entries(spec)[i]`."""
     return RoutineView(
         name=spec.name,
-        days=_sent(spec.days),
+        days=days_text(spec.days or []) or None,
         goal=_sent(spec.goal),
         note=_sent(spec.note),
         exercises=[
@@ -218,8 +218,13 @@ def _routine_changes(
     current: Routine, desired: DesiredRoutine, problems: list[str]
 ) -> list[FieldChange]:
     changes: list[FieldChange] = []
-    for field in ("name", "days", "goal", "note"):
-        requested = getattr(desired, field)
+    days = None if desired.days is None else days_text(desired.days)
+    for field, requested in (
+        ("name", desired.name),
+        ("days", days),
+        ("goal", desired.goal),
+        ("note", desired.note),
+    ):
         if requested is None:
             continue
         new = _clean(requested)

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .diff import DesiredExercise, DesiredRoutine, DiffError
-from .inputs import SetSpec
+from .inputs import SetSpec, Weekday
 from .model import Routine, Section
 
 
@@ -126,7 +126,7 @@ def reorder(
 
 
 def update_routine(
-    *, name: str | None, days: str | None, goal: str | None, note: str | None
+    *, name: str | None, days: list[Weekday] | None, goal: str | None, note: str | None
 ) -> DesiredRoutine:
     if all(v is None for v in (name, days, goal, note)):
         raise DiffError("Pass at least one of name, days, goal, note.")
