@@ -1,7 +1,7 @@
 """The account cache: the reads one tool call shares (API-client spec §5, §11).
 
 AccountCache keeps the parsed `history/all` and custom-exercises reads for one tool call
-(`AppContext.use` clears it as each call starts) and drops them after every write, so a
+(`AppContext.use` clears it when each call ends) and drops them after every write, so a
 write's verifying re-read sees the server's answer. `routine/single` is never cached.
 """
 
@@ -19,7 +19,7 @@ class AccountCache:
     def __init__(self, client: ApiCalls) -> None:
         self._client = client
         self._account: AccountData | None = None
-        self._customs: list[CatalogExercise] | None = None
+        self._custom_exercises: list[CatalogExercise] | None = None
 
     def account(self) -> AccountData:
         if self._account is None:
@@ -27,9 +27,11 @@ class AccountCache:
         return self._account
 
     def custom_exercises(self) -> list[CatalogExercise]:
-        if self._customs is None:
-            self._customs = parse_custom_exercises(reads.custom_exercises(self._client))
-        return self._customs
+        if self._custom_exercises is None:
+            self._custom_exercises = parse_custom_exercises(
+                reads.custom_exercises(self._client)
+            )
+        return self._custom_exercises
 
     def invalidate(self) -> None:
-        self._account = self._customs = None
+        self._account = self._custom_exercises = None
