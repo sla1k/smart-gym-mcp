@@ -25,17 +25,16 @@ from .diff import (
     ChangeSet,
     DesiredRoutine,
     DiffError,
-    ExerciseView,
     RoutineView,
     diff_routine,
+    new_routine_view,
     resolution_warnings,
-    round3,
     view_of,
 )
-from .inputs import DEFAULT_SET, RoutineSpec
+from .inputs import DEFAULT_SET, RoutineSpec, routine_entries
 from .lookups import RoutineNotFound, find_routine, routine_of_exercise
 from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
-from .model import SECTION_BY_LIST_GROUP, SECTIONS, ApiPayloadError, Routine, parse_routine
+from .model import SECTIONS, ApiPayloadError, Routine, parse_routine
 from .payloads import (
     Mint,
     add_routines_form,
@@ -43,7 +42,6 @@ from .payloads import (
     encode_change,
     mint_unique_hashid,
     new_routine_payload,
-    routine_entries,
     unarchive_form,
 )
 
@@ -126,28 +124,6 @@ def compare_views(
                     f"expected {ev!r}, got {av!r}"
                 )
     return problems
-
-
-def _payload_view(payload: Mapping[str, Any]) -> RoutineView:
-    return RoutineView(
-        name=str(payload["name"]),
-        days=payload.get("days") or None,
-        goal=payload.get("goal") or None,
-        note=payload.get("note") or None,
-        exercises=[
-            ExerciseView(
-                catalog_id=int(e["id"]),
-                section=SECTION_BY_LIST_GROUP[int(e["listGroup"])],
-                rest_seconds=int(e["pause"]),
-                note=e.get("note") or None,
-                sets=[
-                    (round3(float(s["secondValue"])), round3(float(s["thirdValue"])))
-                    for s in e["sets"]
-                ],
-            )
-            for e in payload["exercises"]
-        ],
-    )
 
 
 def save_snapshot(backup_dir: Path, routine_raw: Mapping[str, Any], *, now: datetime) -> Path:
@@ -437,17 +413,18 @@ class RoutineService:
         )
         created: list[RoutineId] = []
         mismatches: list[str] = []
-        for spec, payload in zip(specs, payloads, strict=True):
+        for spec, plan, payload in zip(specs, plans, payloads, strict=True):
             routine = by_hash.get(int(payload["uniqueHashID"]))
             if routine is None:
                 mismatches.append(f"{spec.name!r} is missing after the create")
                 continue
             created.append(RoutineId(identifier=routine.identifier, name=routine.name))
+            expected = new_routine_view(spec, plan.resolutions)
             # Without days in the payload the server picks its own default ("0001").
-            ignore = frozenset() if payload.get("days") else frozenset({"days"})
+            ignore = frozenset() if expected.days else frozenset({"days"})
             mismatches += [
                 f"{spec.name}: {p}"
-                for p in compare_views(_payload_view(payload), view_of(routine), ignore=ignore)
+                for p in compare_views(expected, view_of(routine), ignore=ignore)
             ]
         if mismatches:
             raise WriteVerifyError(

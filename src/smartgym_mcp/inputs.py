@@ -7,6 +7,8 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, Field
 
+from .model import Section
+
 DAYS_FORMAT = (
     'comma-separated weekday numbers, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. "2,4,6"); '
     '"" clears'
@@ -78,3 +80,13 @@ class RoutineSpec(BaseModel):
     cooldown: list[ExerciseSpec] = Field(
         default_factory=list, description="Cool-down section, in order (optional)"
     )
+
+
+def routine_entries(spec: RoutineSpec) -> list[tuple[Section, ExerciseSpec]]:
+    """The spec's exercises with their sections, in routine order (warm-up, main, cool-down)."""
+    groups: tuple[tuple[Section, list[ExerciseSpec]], ...] = (
+        ("warmup", spec.warmup),
+        ("main", spec.exercises),
+        ("cooldown", spec.cooldown),
+    )
+    return [(section, e) for section, items in groups for e in items]

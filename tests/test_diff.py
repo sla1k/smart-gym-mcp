@@ -13,10 +13,13 @@ from smartgym_mcp.diff import (
     DesiredExercise,
     DesiredRoutine,
     DiffError,
+    ExerciseView,
+    RoutineView,
     diff_routine,
+    new_routine_view,
     view_of,
 )
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec, routine_entries
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.payloads import encode_change
 
@@ -398,3 +401,39 @@ def test_goal_less_routine_gets_a_goal() -> None:
         ("goal", None, "Strength")
     ]
     assert change.expected.goal == "Strength"
+
+
+def test_new_routine_view_is_what_the_create_payload_sends() -> None:
+    spec = RoutineSpec(
+        name="ZZ-New",
+        days=" ",
+        goal="Strength",
+        note="",
+        warmup=[
+            ExerciseSpec(
+                exercise="Plank", rest_seconds=30, note="slow", sets=[SetSpec(reps=45.0004)]
+            )
+        ],
+        exercises=[ExerciseSpec(exercise="Push Up")],
+    )
+    resolutions = [CATALOG.resolve(ex.exercise) for _, ex in routine_entries(spec)]
+
+    # Blank optional fields are left out of the payload; omitted sets become DEFAULT_SET.
+    assert new_routine_view(spec, resolutions) == RoutineView(
+        name="ZZ-New",
+        days=None,
+        goal="Strength",
+        note=None,
+        exercises=[
+            ExerciseView(
+                catalog_id=20,
+                section="warmup",
+                rest_seconds=30,
+                note="slow",
+                sets=[(45.0, 0.0)],
+            ),
+            ExerciseView(
+                catalog_id=194, section="main", rest_seconds=0, note=None, sets=[(10.0, 0.0)]
+            ),
+        ],
+    )
