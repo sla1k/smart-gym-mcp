@@ -171,8 +171,8 @@ class AppContext:
 
         MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
         lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
-        can't start (see _acquire) fails before sending anything. Each call starts with an
-        empty account cache, so it never sees an earlier call's read.
+        can't start (see _acquire) fails before sending anything. The account cache is
+        emptied when a call ends, so no call sees an earlier call's read.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the
@@ -184,13 +184,14 @@ class AppContext:
             if self._services is None:
                 self._services = self.factory(self.cfg)
             services = self._services
-            services.cache.invalidate()
             try:
                 yield services
             except AuthError:
                 self._services = None
                 services.client.close()
                 raise
+            finally:
+                services.cache.invalidate()  # the reads live only as long as the call
         finally:
             self._calls.release()
 

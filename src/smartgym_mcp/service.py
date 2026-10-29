@@ -196,8 +196,9 @@ def _active_names(routines: Sequence[Routine], *, besides: int | None = None) ->
 
 
 class RoutineService:
-    """`cache` lives for one tool call (AppContext.use clears it), so a write plans against
-    the account as the call found it; every send clears it for the verifying re-read."""
+    """`cache` lives for one tool call (AppContext.use empties it when the call ends), so a
+    write plans against the account as the call found it; every send clears it for the
+    verifying re-read."""
 
     def __init__(
         self,
