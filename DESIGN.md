@@ -1,156 +1,97 @@
-# SmartGym MCP — Design Index
+# SmartGym MCP — Design
 
-Python + MCP SDK 2.x (`MCPServer`) · stdio · single-user local server that edits SmartGym routines through SmartGym's own server API.
-Notion stays on its own MCP; a thin `smartgym-sync` skill orchestrates both and holds personal config.
+Python + MCP SDK 2.x (`MCPServer`) · stdio · single-user local server that edits SmartGym
+routines through SmartGym's own server API. Notion stays on its own MCP; a thin
+`smartgym-sync` skill orchestrates both and holds personal config.
 
-The technical design is split into specs by risk profile:
-
-| Spec | Scope | Risk | Status |
-|---|---|---|---|
-| [`specs/00-foundation.md`](specs/00-foundation.md) | Shared: stack, DB facts, WAL/PK rules, epoch, config, layout | — | historical (DB era); the local DB is no longer used |
-| [`specs/01-read-data.md`](specs/01-read-data.md) | Read tools + catalog resources | — | superseded by the API client (reads come from `history/all`) |
-| [`specs/02-write-and-sync.md`](specs/02-write-and-sync.md) | Write tools + sync model (DB era) | — | superseded by the API client (DB write path removed) |
-| [`specs/03-create-program.md`](specs/03-create-program.md) | Full program creation via the DB (DB era) | — | superseded by the API client (DB write path removed) |
-| [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md) | API client: reads + writes over SmartGym's server, sections, custom exercises in routines (§11) | high — Phase 0 + S7 + F8 verified | ✅ implemented (Plan 2, F8) |
-
-Backlog and deferred work: [`FEATURES.md`](FEATURES.md).
-
-## One-paragraph summary
 The MCP is a client of SmartGym's backend, like any SmartGym device. Reads come from one
 `history/all` call (routines, workouts, equipment). Every write is a dry run first; applying
-fetches the routine fresh, snapshots it, sends the app's own edit requests (`routine/update/`,
-`routine/updateExercise/`, `routine/add/`, archive/unarchive), re-reads and verifies. Routines
-have warm-up / main / cool-down sections (`listGroup` 1/0/2). The app is never quit, relaunched,
-or written to; the local DB is no longer used.
+fetches the routine fresh, snapshots it, sends the app's own edit requests, re-reads and
+verifies. Routines have warm-up / main / cool-down sections. The app is never quit,
+relaunched or written to.
 
-## Verified facts (2026-07-10, SmartGym v7.10.1; amended 2026-10-05 for v8.0.3) — settled, don't re-derive
-Each fact's full evidence lives in the linked spec; this is the canonical short list. These are
-DB-era facts kept for history; the API facts (Phase 0, S7) live in the API-client spec §3/§10.
+## Where things live
 
-- **SmartGym 8.0.3 (verified 2026-10-05, MITM capture + iPhone checks, spec 02 Part A §8.0):**
-  the launch resync sends every pending routine to **`routine/add/` only**. The server dedupes
-  that endpoint by the routine's `ZUNIQUEHASHID`: a known hash → `SUCCESS` with the existing ids,
-  **content discarded**. `routine/update/` is reachable only from the in-app editor's Save (an
-  editor-tracked diff, never stored state). A **fresh routine hash** makes the server store the
-  full current tree as a NEW routine (removed exercises travel with `dateRemoved`); the app
-  remaps the local row. A launch also **re-imports recently modified server routines over local
-  routine fields** (observed: unpublished note reverted, flag flipped to synced) → edits must
-  not meet a running app before publishing. Archive = `routine/archive/` with
-  `routinesIDs=<server id>`, sent by the app for whatever local row is archived — so a local
-  tombstone carrying the old server id retires the stale copy everywhere (verified).
+Each fact lives in one place:
 
-- **Sync is NOT iCloud/CloudKit.** SmartGym's own backend: `api.smartgymapp.com/v1.1/`. The app
-  pushes every routine with `ZHASSYNCED = 0` within ~20 s of launch, then sets it to `1`. Under
-  v7.10.1 write + `ZHASSYNCED=0` + relaunch was the cross-device force-push; under v8 that holds
-  for NEW routines only (see above).
-  ([spec 03 §A + Phase 0 results](specs/03-create-program.md))
-- `ZIDENTIFIER` = **server-assigned** on push (insert a placeholder via `db.generate_identifier`).
-  `ZUNIQUEHASHID` = client-generated identity (`YYMMDD`+8 digits), survives the push.
-- Domain hierarchy: **Program → Routine (`ZROUTINE`) → Exercise (`ZUNIQEXERCISE`) → Set
-  (`ZVALUES`)**. Template sets have `ZDATELOGGED IS NULL`; reps=`ZSECONDVALUE`,
-  kg=`ZTHIRDVALUE`, `ZFIRSTVALUE=1.0`, `ZTYPE=0`. ([spec 03 §B](specs/03-create-program.md))
-- `ZDATEADDED` is midnight-local; `ZPRECISEDATEADDED` is the real timestamp. CoreData epoch =
-  unix − 978307200. Critical read join: `ZVALUES.ZEXERCISE → ZUNIQEXERCISE.Z_PK`.
-  ([spec 00](specs/00-foundation.md))
-- WAL can be a week ahead of the main file: reads use `mode=ro`, **never `immutable=1`**.
-- Process probe must stay `pgrep -ix SmartGym` (exact). Substring matching hits our own
-  `smartgym-mcp` process and wedges every write path (regression-tested).
-- **The push response is authoritative for a synced routine's content** (spec 02 Part A,
-  reconciliation observations): exercise ADDs need a `ZEXERCISESTATEQUEUE` row (`ZSTATE=1`,
-  `writes.enqueue_exercise_added`) or the app deletes them ~5 s after relaunch; field edits,
-  reorders, and removals need only the dirty flag; **`ZHIDDEN=1` is reverted by the push**
-  (archived state is server-side, `routine/archive/` only → no archive tool *on the DB path*;
-  superseded 2026-10-05: the API path's `smartgym_archive_routines` sends `routine/archive/`
-  itself); routine soft-delete propagates.
+| Doc | Holds |
+|---|---|
+| `DESIGN.md` (this file) | status, architecture invariants, decisions |
+| [API-client spec](docs/superpowers/specs/2026-10-05-api-client-design.md) | wire protocol and verified server behaviour (§3, §4, §10, §11), modules (§5), tool surface (§6), safety and errors (§7), tests, live checks and captures (§8, §9) |
+| [`FEATURES.md`](FEATURES.md) | backlog: what is not built yet |
+| [`AGENTS.md`](AGENTS.md) | working rules, branches, releases, commands |
+
+## Status
+
+Verified against SmartGym **8.0.3** (`config.VERIFIED_APP_VERSION`).
+
+| Area | Status |
+|---|---|
+| Reads: health, routines, routine detail with recent sessions, workout history, equipment, catalog resources | ✅ implemented |
+| Writes: create program, update routine, add / move / remove / reorder / update exercise, apply routine, archive / unarchive | ✅ implemented; live pass 2026-10-05 (spec §9) |
+| Sections (warm-up / main / cool-down) | ✅ implemented (spec §10) |
+| Custom exercises in routines (F8) | ✅ implemented; live pass 2026-10-18 (spec §11) |
+| Custom exercise definitions, analytics, set logging, … | backlog ([`FEATURES.md`](FEATURES.md)) |
+
+## Verified facts — settled, don't re-derive or re-litigate
+
+They live in the API-client spec, each with its evidence and fixture:
+§3 wire protocol · §4 Phase 0 results S1–S7 (auth, edit wire format, round trip, read
+coverage, Mac coexistence, minimal create) and later findings (null workouts, unset days,
+empty goal) · §10.1 / §10.3 sections and in-place moves · §11 custom exercises.
 
 ## Architecture invariants
-Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-client-design.md).
+
+Modules and their layering: spec §5.
 
 1. Tools in `server.py` are thin — no HTTP or payload code in tool bodies.
-2. Every write = fetch fresh → plan (`diff.py`) → dry run returns the plan → snapshot → send →
-   re-fetch → verify (`service.py`).
-3. Every edit of an existing routine goes through `diff_routine`; single-field tools are
-   `builders.py` wrappers.
+2. Every write goes through `service.RoutineService`: fetch fresh → plan (`diff.py`) → dry run
+   returns the plan (every write tool defaults to `dry_run=true`) → snapshot of the routine
+   before an edit (`~/.smartgym-mcp/backups/<ts>/`) → send each request once, never re-sent →
+   re-fetch → verify against the plan.
+3. Every edit of an existing routine goes through `diff_routine`, one `ChangeSet` per call;
+   single-field tools are `builders.py` wrappers.
 4. Only template sets are changed; logged history is never touched.
 5. Credentials only via `api/auth.py`; never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
-   fixture (`tests/fixtures/api/`).
-7. Tool calls run one at a time (`AppContext.use` lock): MCP SDK 2 runs sync tools on worker
-   threads, but the account cache (`account.AccountCache`, emptied when each call ends and after
-   every write), the API client's lifetime and each write's re-read → rewrite assume
-   calls don't overlap. A waiting call sends nothing if it can't start within 10 min
-   (longer than a write's worst case), if its client cancels it or disconnects meanwhile, or
-   once shutdown began; shutdown closes the client only after the call in flight. Input
-   checks that need no network run before the lock.
+   fixture (`tests/fixtures/api/`; how: spec §9).
+7. Tool calls run one at a time (`AppContext.use`): the account cache (`account.AccountCache`,
+   emptied when each call ends and after every send), the API client's lifetime and each
+   write's re-read → rewrite assume calls don't overlap. A call that can't start in time, is
+   cancelled while waiting, or arrives once shutdown began sends nothing; shutdown closes the
+   client only after the call in flight. Input checks that need no network run before the
+   wait.
+8. Live checks run only on `ZZ-`-prefixed throwaway routines, with the user confirming on the
+   iPhone (spec §9); re-run after every SmartGym update (`smartgym_health` warns).
 
-## Decision log (2026-07-10)
-- **Write mechanism:** direct DB write + managed relaunch (primary); crafted `.gym` share file
-  is the documented fallback only. Rejected: backend-API replication (token extraction,
-  ToS-gray), UI automation of Import-from-Text (non-deterministic LLM parsing), Shortcuts/App
-  Intents (start-only, no create actions). ([spec 03 §A/§C](specs/03-create-program.md))
-- **App lifecycle:** full-auto quit/relaunch by the server (never `kill -9`).
-- **Exercise matching:** deterministic fuzzy (threshold 0.85, alias map, no LLM); below
-  threshold rejects the whole program with candidates.
-- **Program semantics:** additive-only; omitted sets → one default 1×10 set, flagged in the plan.
-- **Process rule:** verify sync behavior of any NEW mutation kind with a Phase-0-style
-  observation (throwaway `ZZ-` routine + iPhone check) before trusting it. The rule has now
-  paid off twice: it caught the add-exercise reconciliation deletion (fixed via
-  `ZEXERCISESTATEQUEUE`) and the archive revert (tool removed) — spec 02 Part A.
-- **Archive (2026-07-10) — superseded 2026-10-05 by the API path's archive tool
-  (`smartgym_archive_routines` / `smartgym_unarchive_routine` → `routine/archive/` /
-  `routine/unarchive/`):** implemented, live-verified self-defeating (push resets `ZHIDDEN`),
-  removed from the tool surface. Rejected again: token-based `routine/archive/` call (ToS-gray).
-  Users archive in-app; a `smartgym_delete_routine` (soft-delete propagates) is backlog F7.
+## Decisions
 
-## Decision log (2026-10-05, SmartGym 8.0.3 sync break)
-- **Edits publish explicitly** (`smartgym_publish_routines`), not on every write: each publish
-  leaves one stale server copy per routine, so batching edits keeps it to one tombstone.
-- **Stale copy retirement = local tombstone** (`OLD — <name>`, old hash + old server id,
-  synced, no exercises) archived by the user in the Mac app → the app's own `routine/archive/`.
-  Direct `routine/archive/` replay with the app's session credentials was the user's first
-  choice but is blocked (credential access denied by the permission system) — tombstone is the
-  fallback the user chose.
-- Rejected: in-app editor Save as push trigger (sends only an editor-tracked diff, and takes the
-  `routine/add/` path when `hasSynced=0`); App Intents (no routine-update intent in v8.0.3).
-
-## Decision log (2026-10-06, API client)
-- **DB write path + publish/tombstone retired:** `db.py`, `lifecycle.py`, `writes.py`,
-  `queries.py` and `smartgym_publish_routines` are gone (git history keeps them); every tool
-  works over SmartGym's server API.
+- **The server API is the only backend (2026-10-05):** the MCP talks to
+  `api.smartgymapp.com/v1.1/` like any SmartGym device and reads no local app data besides the
+  bundle's catalog files and version. The ToS risk (unofficial API, reuse of the account
+  session) is explicitly accepted by the user.
 - **Credentials = user-captured 0600 file** (`~/.smartgym-mcp/credentials.json`, written by
-  `scripts/capture_credentials.py`): `phrase` is unchecked by the server and never sent; the
-  app's `user-agent` / `accept` / `accept-language` headers are required.
-- **Sections modelled as three lists** (warm-up / main / cool-down; user choice A).
-- **Routine delete stays out** — archive only.
-- **Section display needs a main exercise:** the iPhone shows Warm Up / Cool Down headers (the
-  Mac shows separate cards) only when the routine has at least one main exercise; the Mac app
-  has no section editor (S7).
-- **Return routines restructured (2026-10-06):** FB-A/B/C — Return W1/W2 split into warm-up /
-  main / cool-down in place via `apply_routine` (section moves only; the core block Crunch /
-  Side Plank / Bird Dog kept in warm-up, user choice); snapshots in
-  `~/.smartgym-mcp/backups/`. The older duplicate "Return W2" copies (3681263, 3681262,
-  3681264) were archived, keeping 3681294 / 3681296 / 3681295.
-
-## Decision log (2026-10-18, routine goal)
-- **Verified: the app's editor can't save a routine whose goal is empty.** `routine/add/`
-  accepts a routine without `goal` and stores `""`; opening it in the app and tapping Save
-  errors that no goal was found. After `smartgym_update_routine(goal=…)` the same Save works.
-- **Goal is required on create and can't be cleared on edit:** `RoutineSpec.goal` is a
-  non-blank string; `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""`
-  (shared `inputs.Goal` validator). Changing a goal still works (user choice).
-
-## Decision log (2026-10-18, custom exercises)
-- **F8 — custom exercises in routines:** the account's custom exercises (from
-  `exercise/allCustomExercises/` — `history/all/` lists only those used in a routine)
-  resolve by name with the bundle catalog and are sent in the app's captured shape
-  (spec §11); live-verified on `ZZ-F8*`. Managing the definitions (create / edit / delete) is
-  split off as F9 (user choice).
-
-## Decision log (2026-10-19, delivery)
-- **Releases are GitHub tags + Releases, installed with
-  `uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>`**. The signed PyInstaller
-  binary is gone: it was signed only to keep the macOS TCC grant for the container DB, which
-  nothing reads any more.
+  `scripts/capture_credentials.py`, run by the user), not read from the app's storage; what
+  it holds and sends follows spec §4 S1. An `AuthError` drops the client, so a re-captured
+  session takes effect on the next call without restarting the server.
+- **Sections are three lists** (warm-up / main / cool-down; user choice "A", spec §10.2).
+- **Archive, never delete (2026-10-05, formerly backlog F7):** archive / unarchive send
+  `routine/archive/` / `routine/unarchive/`. The app's `routine/delete/` was seen in the
+  2026-10-05 capture but is deliberately not exposed (no fixture kept).
+- **Goal is required on create and can't be cleared on edit (2026-10-18):** the app's editor
+  can't save a routine without one (spec §4). `RoutineSpec.goal` is a non-blank string;
+  `smartgym_update_routine` / `smartgym_apply_routine` reject `goal=""` (shared `inputs.Goal`
+  validator). Changing a goal still works (user choice).
+- **Exercise matching is deterministic:** numeric id, exact name, then token-set fuzzy match
+  (threshold 0.85, alias map, no LLM). Below threshold — or a name shared by several
+  exercises — rejects the whole change with candidates / ids.
+- **Program semantics:** create is additive-only (a name must not match an active routine);
+  omitted sets → one default 1×10 bodyweight set, flagged in the plan.
+- **Custom exercises (F8, 2026-10-18):** the account's custom exercises resolve by name with
+  the bundle catalog and are sent in the app's captured shape (spec §11). Managing the
+  definitions (create / edit / delete) is split off as F9 (user choice).
+- **Releases are GitHub tags + Releases (2026-10-19)**, installed with
+  `uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>`; no signed binary.
 - **Versions come from git tags** (hatch-vcs): main builds are `0.(minor+1).0.devN`
   (`0.1.0.devN` before the first tag); only `vX.Y.Z` tags become GitHub Releases, so the page
   isn't flooded by a dev release per merge (immutable releases can't be replaced, only added).

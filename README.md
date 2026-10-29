@@ -33,7 +33,7 @@ archive / unarchive.
 
 **Safely** — every write is a dry run first; applying snapshots the routine to
 `~/.smartgym-mcp/backups/`, sends the change straight to SmartGym's server, re-reads it and
-verifies it. The app no longer needs to be quit or relaunched.
+verifies it. The SmartGym app keeps running and is never written to.
 
 ## Connecting to your account
 
