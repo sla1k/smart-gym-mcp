@@ -1,11 +1,11 @@
 # AGENTS.md
 
 Project knowledge lives in shared docs — read them, don't rediscover:
-- [`DESIGN.md`](DESIGN.md) — **start here**: status table, verified facts (settled — do not
-  re-derive or re-litigate them), architecture invariants, decision log
+- [`DESIGN.md`](DESIGN.md) — **start here**: status table, architecture invariants, decisions,
+  and where the verified facts live (settled — do not re-derive or re-litigate them)
 - [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md)
-  — source of truth for the API client (module layering §5, tool surface §6, sections §10);
-  `specs/` holds the superseded DB-era specs
+  — source of truth for the API client (verified facts §3/§4, module layering §5, tool
+  surface §6, sections §10, custom exercises §11)
 - [`FEATURES.md`](FEATURES.md) — backlog
 
 ## Working rules for this repo
