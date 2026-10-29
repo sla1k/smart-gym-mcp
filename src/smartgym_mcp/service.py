@@ -1,4 +1,4 @@
-"""Write orchestration over the SmartGym API (API-client spec §5 invariant 2, §7).
+"""Write orchestration over the SmartGym API (DESIGN invariant 2, API-client spec §7).
 
 Every edit: resolve → fetch the routine fresh → plan (diff) → dry run returns
 the plan → snapshot → send (`routine/update/`, then `routine/updateExercise/`)
