@@ -129,7 +129,7 @@ architecture invariants are in DESIGN.md.
 | `diff.py` | (current `Routine`, `DesiredRoutine`) → `ChangeSet` — pure, no I/O, no wire format |
 | `payloads.py` | `RoutineSpec` → `routine/add/` JSON; `ChangeSet` → the edit requests; archive forms |
 | `lookups.py` | routine by ref / routine of an exercise id over the parsed account (pure) |
-| `account.py` | `AccountCache`: parsed `history/all` + custom exercises, kept for one tool call — emptied when the call ends (`AppContext.use`) and after every send, so a write's verifying re-read sees the server's answer; `routine/single` is never cached |
+| `account.py` | `AccountCache`: parsed `history/all` + custom exercises, kept for one tool call — emptied when the call ends (`AppContext._call`) and after every send, so a write's verifying re-read sees the server's answer; `routine/single` is never cached |
 | `model.py` | `Routine` → `RoutineExercise` → sets, workouts, equipment lists, parsed from server JSON |
 | `matching.py` | `ExerciseCatalog.resolve`: deterministic exercise-name resolution |
 | `catalog.py` | the app bundle's catalog files and installed version |

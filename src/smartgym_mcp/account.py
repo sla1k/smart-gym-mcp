@@ -1,7 +1,7 @@
 """The account cache: the reads one tool call shares (API-client spec §5, §11).
 
 AccountCache keeps the parsed `history/all` and custom-exercises reads for one tool call
-(`AppContext.use` clears it when each call ends) and drops them after every write, so a
+(`AppContext._call` clears it when each call ends) and drops them after every write, so a
 write's verifying re-read sees the server's answer. `routine/single` is never cached.
 """
 
