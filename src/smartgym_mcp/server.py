@@ -8,19 +8,17 @@ Tool calls run one at a time (DESIGN invariant 7).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
-import threading
-import time
 from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import asynccontextmanager, contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Annotated
 
-import anyio.from_thread
+import anyio
+import anyio.to_thread
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ToolAnnotations
@@ -110,9 +108,8 @@ def build_services(cfg: Config) -> Services:
 
 # Longer than a write can run: one read is up to 3 attempts × 30 s plus backoff (~92 s),
 # and an edit makes up to five reads and one 30 s post (~8 min). A call whose client
-# cancels it or disconnects stops waiting at once (see _stop_if_cancelled).
+# cancels it or disconnects stops waiting at once.
 CALL_WAIT_S = 600.0
-_POLL_S = 0.2  # how often a waiting call checks whether it was cancelled
 
 
 class ServerBusy(RuntimeError):
@@ -123,85 +120,73 @@ class ServerClosed(RuntimeError):
     """The server is shutting down; no new call may start."""
 
 
-def _stop_if_cancelled() -> None:
-    """Raise if the client cancelled this tool call or disconnected.
-
-    MCP SDK 2 runs sync tools via anyio.to_thread.run_sync, which can't stop the thread:
-    cancelling the call only cancels the host task's scope, and the thread runs on. A call
-    waiting for the lock checks that scope, so a call nobody waits for never sends anything.
-    """
-    with suppress(RuntimeError):  # not on an AnyIO worker thread (e.g. a direct call)
-        anyio.from_thread.check_cancelled()
-
-
 @dataclass
 class AppContext:
+    """Built in `lifespan`, so the call lock belongs to the server's event loop."""
+
     cfg: Config
     factory: Callable[[Config], Services] = build_services
     call_wait_s: float = CALL_WAIT_S
-    _calls: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _calls: anyio.Lock = field(default_factory=anyio.Lock, init=False, repr=False)
     _services: Services | None = field(default=None, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
-    def _acquire(self) -> None:
-        """Take the call lock, or raise before anything is sent: ServerBusy after
-        `call_wait_s`, ServerClosed after close(), or the cancellation of this call."""
-        deadline = time.monotonic() + self.call_wait_s
-        while not self._calls.acquire(
-            timeout=max(0.0, min(_POLL_S, deadline - time.monotonic()))
-        ):
-            _stop_if_cancelled()
-            if time.monotonic() >= deadline:
-                raise ServerBusy(
-                    "Another SmartGym call was still running after waiting "
-                    f"{self.call_wait_s:.0f} s; nothing was sent. Try again once it finishes."
-                )
+    async def run[T](self, fn: Callable[[Services], T]) -> T:
+        """`fn(services)` on a worker thread, one call at a time.
+
+        The account cache, the client's lifetime and each write's re-read → rewrite assume
+        calls don't overlap. A call that can't start fails before sending anything:
+        ServerBusy after `call_wait_s`, ServerClosed after close(), or its cancellation
+        while it waits. Once started, `fn` runs to the end even if the call is cancelled
+        (a thread can't be stopped), and the lock is held until it has. The account cache
+        is emptied when a call ends, so no call sees an earlier call's read.
+        """
         try:
-            _stop_if_cancelled()
+            with anyio.fail_after(self.call_wait_s):
+                await self._calls.acquire()
+        except TimeoutError:
+            raise ServerBusy(
+                "Another SmartGym call was still running after waiting "
+                f"{self.call_wait_s:.0f} s; nothing was sent. Try again once it finishes."
+            ) from None
+        try:
             if self._closed:
                 raise ServerClosed(
                     "The SmartGym MCP server is shutting down; nothing was sent."
                 )
-        except BaseException:
+            return await anyio.to_thread.run_sync(self._call, fn)
+        finally:
             self._calls.release()
-            raise
 
-    @contextmanager
-    def use(self) -> Iterator[Services]:
-        """Services for one tool call, one call at a time.
-
-        MCP SDK 2 runs sync tools on worker threads, but the account cache, the client's
-        lifetime and each write's re-read → rewrite assume calls don't overlap. A call that
-        can't start (see _acquire) fails before sending anything. The account cache is
-        emptied when a call ends, so no call sees an earlier call's read.
+    def _call[T](self, fn: Callable[[Services], T]) -> T:
+        """One call on the worker thread, under the lock.
 
         Services are built on first use; a failed build is not cached, so the next call
         retries. An AuthError drops them (closing the client) so the next call re-reads the
         credentials file — a re-captured session takes effect without restarting the
         server. The error itself propagates unchanged.
         """
-        self._acquire()
+        if self._services is None:
+            self._services = self.factory(self.cfg)
+        services = self._services
         try:
-            if self._services is None:
-                self._services = self.factory(self.cfg)
-            services = self._services
-            try:
-                yield services
-            except AuthError:
-                self._services = None
-                services.client.close()
-                raise
-            finally:
-                services.cache.invalidate()  # the reads live only as long as the call
+            return fn(services)
+        except AuthError:
+            self._services = None
+            services.client.close()
+            raise
         finally:
-            self._calls.release()
+            services.cache.invalidate()  # the reads live only as long as the call
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Stop new calls, then close the client once the call in flight (if any) is done.
         If it is still running after `call_wait_s`, the client is left open rather than
         closed under its requests."""
         self._closed = True  # a call queued behind this one must not rebuild the services
-        if not self._calls.acquire(timeout=self.call_wait_s):
+        try:
+            with anyio.fail_after(self.call_wait_s):
+                await self._calls.acquire()
+        except TimeoutError:
             logger.warning("a tool call is still running; leaving its client open")
             return
         try:
@@ -219,8 +204,8 @@ async def lifespan(_server: MCPServer[AppContext]) -> AsyncIterator[AppContext]:
     try:
         yield app
     finally:
-        # close() may wait for the call in flight; keep the event loop free meanwhile.
-        await asyncio.to_thread(app.close)
+        with anyio.CancelScope(shield=True):  # close the client on a cancelled shutdown too
+            await app.close()
 
 
 INSTRUCTIONS = """\
@@ -279,12 +264,11 @@ def _tool_errors() -> Iterator[None]:
         raise ToolError(str(exc)) from exc
 
 
-@contextmanager
-def _services(ctx: Context[AppContext]) -> Iterator[Services]:
-    """The one way tools reach the services (see AppContext.use). Keep the rest of the tool
-    body inside it, so its anticipated errors reach the model with their message."""
-    with _tool_errors(), _app(ctx).use() as services:
-        yield services
+async def _run[T](ctx: Context[AppContext], fn: Callable[[Services], T]) -> T:
+    """The one way tools reach the services (see AppContext.run). Keep the rest of the tool
+    body inside `fn`, so its anticipated errors reach the model with their message."""
+    with _tool_errors():
+        return await _app(ctx).run(fn)
 
 
 class HealthStatus(BaseModel):
@@ -299,7 +283,7 @@ class HealthStatus(BaseModel):
 
 
 @mcp.tool(annotations=_read_only("Health check"))
-def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
+async def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
     """Check the credentials file, the SmartGym server, and the installed app version.
 
     ok=true means the server answered with your account data. `problem` explains
@@ -318,8 +302,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
             "trusting edits."
         )
     try:
-        with app.use() as services:
-            account = services.cache.account()
+        account = await app.run(lambda services: services.cache.account())
     except (*_ANTICIPATED, KeyError) as exc:
         return HealthStatus(
             ok=False,
@@ -345,7 +328,7 @@ def smartgym_health(ctx: Context[AppContext]) -> HealthStatus:
 
 
 @mcp.tool(annotations=_read_only("List routines"))
-def smartgym_list_routines(
+async def smartgym_list_routines(
     ctx: Context[AppContext], include_archived: bool = False
 ) -> views.RoutineListResult:
     """List routines: id, name, days, and exercise counts per section (warm-up/main/cool-down).
@@ -353,13 +336,12 @@ def smartgym_list_routines(
     Archived routines are listed only with include_archived=true. Use the id (or the
     name) in the other tools.
     """
-    with _services(ctx) as services:
-        account = services.cache.account()
+    account = await _run(ctx, lambda services: services.cache.account())
     return views.list_routines(account, include_archived=include_archived)
 
 
 @mcp.tool(annotations=_read_only("Get routine detail"))
-def smartgym_get_routine(
+async def smartgym_get_routine(
     ctx: Context[AppContext], routine: str, history_depth: Annotated[int, Field(ge=0)] = 5
 ) -> views.RoutineDetail:
     """Get a routine split into warmup, main and cooldown sections.
@@ -368,7 +350,8 @@ def smartgym_get_routine(
     template sets, and up to `history_depth` recent sessions (reps + weight_kg) with the
     latest session's top set and total volume.
     """
-    with _services(ctx) as services:
+
+    def detail(services: Services) -> views.RoutineDetail:
         account = services.cache.account()
         return views.routine_detail(
             find_routine(account, routine),
@@ -376,9 +359,11 @@ def smartgym_get_routine(
             history_depth=history_depth,
         )
 
+    return await _run(ctx, detail)
+
 
 @mcp.tool(annotations=_read_only("Get workout history"))
-def smartgym_get_workout_history(
+async def smartgym_get_workout_history(
     ctx: Context[AppContext],
     days: views.RangeDays = 7,
     date_from: date | None = None,
@@ -393,7 +378,8 @@ def smartgym_get_workout_history(
     (inclusive, local time) override it. Optional `routine` filter (name or id).
     Paginated: total, has_more, next_offset.
     """
-    with _services(ctx) as services:
+
+    def history(services: Services) -> views.WorkoutHistoryResult:
         account = services.cache.account()
         return views.workout_history(
             account,
@@ -405,20 +391,24 @@ def smartgym_get_workout_history(
             offset=offset,
         )
 
+    return await _run(ctx, history)
+
 
 @mcp.tool(annotations=_read_only("Get equipment"))
-def smartgym_get_equipment(
+async def smartgym_get_equipment(
     ctx: Context[AppContext], owned_only: bool = True
 ) -> views.EquipmentListResult:
     """List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights."""
-    with _services(ctx) as services:
-        return views.equipment(
+    return await _run(
+        ctx,
+        lambda services: views.equipment(
             services.cache.account(), services.equipment, owned_only=owned_only
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Create program", idempotent=False))
-def smartgym_create_program(
+async def smartgym_create_program(
     ctx: Context[AppContext],
     routines: Annotated[list[RoutineSpec], Field(min_length=1)],
     dry_run: bool = True,
@@ -432,12 +422,11 @@ def smartgym_create_program(
     sets. Validation is all-or-nothing; dry_run=false creates the routines and verifies them
     on the server.
     """
-    with _services(ctx) as services:
-        return services.service.create(routines, dry_run=dry_run)
+    return await _run(ctx, lambda services: services.service.create(routines, dry_run=dry_run))
 
 
 @mcp.tool(annotations=_write("Update routine", idempotent=True))
-def smartgym_update_routine(
+async def smartgym_update_routine(
     ctx: Context[AppContext],
     routine: str,
     name: str | None = None,
@@ -455,12 +444,14 @@ def smartgym_update_routine(
     """
     with _tool_errors():
         desired = builders.update_routine(name=name, days=days, goal=goal, note=note)
-    with _services(ctx) as services:
-        return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
+    return await _run(
+        ctx,
+        lambda services: services.service.edit(routine, lambda _r: desired, dry_run=dry_run),
+    )
 
 
 @mcp.tool(annotations=_write("Add exercise", idempotent=False))
-def smartgym_add_exercise(
+async def smartgym_add_exercise(
     ctx: Context[AppContext],
     routine: str,
     exercise: str,
@@ -477,8 +468,9 @@ def smartgym_add_exercise(
     `position` counts within the section (0 = first; omitted = last). Optional rest,
     note and template sets.
     """
-    with _services(ctx) as services:
-        return services.service.edit(
+    return await _run(
+        ctx,
+        lambda services: services.service.edit(
             routine,
             lambda r: builders.add_exercise(
                 r,
@@ -490,11 +482,12 @@ def smartgym_add_exercise(
                 sets=sets,
             ),
             dry_run=dry_run,
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Move exercise", idempotent=False))
-def smartgym_move_exercise(
+async def smartgym_move_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
     section: Section,
@@ -505,29 +498,33 @@ def smartgym_move_exercise(
 
     `position` counts within the target section (0 = first; omitted = last).
     """
-    with _services(ctx) as services:
-        return services.service.edit_exercise(
+    return await _run(
+        ctx,
+        lambda services: services.service.edit_exercise(
             exercise_id,
             lambda r: builders.move_exercise(
                 r, exercise_id, section=section, position=position
             ),
             dry_run=dry_run,
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Remove exercise", idempotent=False))
-def smartgym_remove_exercise(
+async def smartgym_remove_exercise(
     ctx: Context[AppContext], exercise_id: int, dry_run: bool = True
 ) -> EditResult:
     """Remove an exercise from its routine (logged history is kept)."""
-    with _services(ctx) as services:
-        return services.service.edit_exercise(
+    return await _run(
+        ctx,
+        lambda services: services.service.edit_exercise(
             exercise_id, lambda r: builders.remove_exercise(r, exercise_id), dry_run=dry_run
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Reorder routine", idempotent=False))
-def smartgym_reorder_routine(
+async def smartgym_reorder_routine(
     ctx: Context[AppContext],
     routine: str,
     warmup: list[int] | None = None,
@@ -541,16 +538,18 @@ def smartgym_reorder_routine(
     order; omitted sections stay as they are. To change an exercise's section use
     smartgym_move_exercise.
     """
-    with _services(ctx) as services:
-        return services.service.edit(
+    return await _run(
+        ctx,
+        lambda services: services.service.edit(
             routine,
             lambda r: builders.reorder(r, warmup=warmup, main=main, cooldown=cooldown),
             dry_run=dry_run,
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Update exercise", idempotent=True))
-def smartgym_update_exercise(
+async def smartgym_update_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
     rest_seconds: int | None = None,
@@ -563,18 +562,20 @@ def smartgym_update_exercise(
     `sets` is the FULL planned list [{reps, weight_kg}] — sets beyond it are removed,
     extra ones added.
     """
-    with _services(ctx) as services:
-        return services.service.edit_exercise(
+    return await _run(
+        ctx,
+        lambda services: services.service.edit_exercise(
             exercise_id,
             lambda r: builders.update_exercise(
                 r, exercise_id, rest_seconds=rest_seconds, note=note, sets=sets
             ),
             dry_run=dry_run,
-        )
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Apply routine", idempotent=False))
-def smartgym_apply_routine(
+async def smartgym_apply_routine(
     ctx: Context[AppContext],
     routine: str,
     name: str | None = None,
@@ -604,29 +605,39 @@ def smartgym_apply_routine(
             main=main,
             cooldown=cooldown,
         )
-    with _services(ctx) as services:
-        return services.service.edit(routine, lambda _r: desired, dry_run=dry_run)
+    return await _run(
+        ctx,
+        lambda services: services.service.edit(routine, lambda _r: desired, dry_run=dry_run),
+    )
 
 
 @mcp.tool(annotations=_write("Archive routines", idempotent=True))
-def smartgym_archive_routines(
+async def smartgym_archive_routines(
     ctx: Context[AppContext], routines: list[str], dry_run: bool = True
 ) -> ArchiveResult:
     """Archive routines (names or ids) on every device.
 
     Reversible with smartgym_unarchive_routine.
     """
-    with _services(ctx) as services:
-        return services.service.set_archived(routines, archived=True, dry_run=dry_run)
+    return await _run(
+        ctx,
+        lambda services: services.service.set_archived(
+            routines, archived=True, dry_run=dry_run
+        ),
+    )
 
 
 @mcp.tool(annotations=_write("Unarchive routine", idempotent=True))
-def smartgym_unarchive_routine(
+async def smartgym_unarchive_routine(
     ctx: Context[AppContext], routine: str, dry_run: bool = True
 ) -> ArchiveResult:
     """Bring an archived routine back to the active list."""
-    with _services(ctx) as services:
-        return services.service.set_archived([routine], archived=False, dry_run=dry_run)
+    return await _run(
+        ctx,
+        lambda services: services.service.set_archived(
+            [routine], archived=False, dry_run=dry_run
+        ),
+    )
 
 
 def _read_catalog(name: catalog.CatalogName) -> str:

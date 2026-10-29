@@ -75,13 +75,14 @@ Module layering: [API-client spec §5](docs/superpowers/specs/2026-10-05-api-cli
 5. Credentials only via `api/auth.py`; never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`).
-7. Tool calls run one at a time (`AppContext.use` lock): MCP SDK 2 runs sync tools on worker
-   threads, but the account cache (`account.AccountCache`, emptied when each call ends and after
-   every write), the API client's lifetime and each write's re-read → rewrite assume
-   calls don't overlap. A waiting call sends nothing if it can't start within 10 min
-   (longer than a write's worst case), if its client cancels it or disconnects meanwhile, or
-   once shutdown began; shutdown closes the client only after the call in flight. Input
-   checks that need no network run before the lock.
+7. Tool calls run one at a time (`AppContext.run`: async tools take one `anyio.Lock`, then run
+   their blocking work on a worker thread): the account cache (`account.AccountCache`,
+   emptied when each call ends and after every write), the API client's lifetime and each
+   write's re-read → rewrite assume calls don't overlap. A waiting call sends nothing if it
+   can't start within 10 min (longer than a write's worst case), if its client cancels it or
+   disconnects meanwhile, or once shutdown began; a call cancelled after its thread started
+   runs to the end, holding the lock until it has. Shutdown closes the client only after the
+   call in flight. Input checks that need no network run before the lock.
 
 ## Decision log (2026-07-10)
 - **Write mechanism:** direct DB write + managed relaunch (primary); crafted `.gym` share file
