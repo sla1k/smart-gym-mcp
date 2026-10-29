@@ -21,7 +21,7 @@ from typing import Any
 
 from .catalog import CatalogExercise
 from .diff import ChangeSet, ExerciseUpdate
-from .inputs import DEFAULT_SET, ExerciseSpec, RoutineSpec, SetSpec
+from .inputs import DEFAULT_SET, RoutineSpec, SetSpec, routine_entries
 from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet
 
 _BAND_EQUIPMENT_ID = "38"
@@ -46,15 +46,6 @@ def _num(value: float) -> float | int:
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
-def routine_entries(spec: RoutineSpec) -> list[tuple[Section, ExerciseSpec]]:
-    groups: tuple[tuple[Section, list[ExerciseSpec]], ...] = (
-        ("warmup", spec.warmup),
-        ("main", spec.exercises),
-        ("cooldown", spec.cooldown),
-    )
-    return [(section, e) for section, items in groups for e in items]
 
 
 def _set_payload(index: int, s: SetSpec, *, hashid: int, added: str) -> dict[str, Any]:

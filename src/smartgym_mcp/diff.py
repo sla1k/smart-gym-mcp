@@ -9,18 +9,22 @@ exercise listed under another section is a move and one listed nowhere (and
 not in a kept section) is removed. Sets are matched by position: overlap →
 update, extra desired → add, extra current → remove; kept sets are renumbered
 0..n-1. Reps/weights compare at 3 decimals. Validation is all-or-nothing.
+
+A RoutineView is what a write is verified against: view_of(routine) for what the
+server holds, ChangeSet.expected for an edit, new_routine_view for a create.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 
 from pydantic import BaseModel, Field, model_validator
 
-from .inputs import DEFAULT_SET, Days, Goal, SetSpec
+from .inputs import DEFAULT_SET, Days, Goal, RoutineSpec, SetSpec, routine_entries
 from .matching import ExerciseCatalog, ExerciseResolution, Resolved, UnresolvedExercise
-from .model import SECTIONS, Routine, RoutineExercise, Section
+from .model import SECTIONS, Routine, RoutineExercise, Section, TemplateSet
 
 
 class DiffError(ValueError):
@@ -138,8 +142,9 @@ class _Slot:
     resolution: ExerciseResolution | None
 
 
-def round3(value: float) -> float:
-    return round(float(value), 3)
+def _set_view(sets: Iterable[TemplateSet | SetSpec]) -> list[tuple[float, float]]:
+    """Sets as compared and shown in a RoutineView: (reps, weight_kg) at 3 decimals."""
+    return [(round(float(s.reps), 3), round(float(s.weight_kg), 3)) for s in sets]
 
 
 def _clean(value: str) -> str | None:
@@ -174,9 +179,37 @@ def view_of(routine: Routine) -> RoutineView:
                 section=e.section,
                 rest_seconds=e.rest_seconds,
                 note=e.note,
-                sets=[(round3(s.reps), round3(s.weight_kg)) for s in e.template_sets],
+                sets=_set_view(e.template_sets),
             )
             for e in routine.active_exercises()
+        ],
+    )
+
+
+def _sent(value: str | None) -> str | None:
+    """An optional routine field as created: a blank one is left out of the payload."""
+    return value if value and value.strip() else None
+
+
+def new_routine_view(
+    spec: RoutineSpec, resolutions: Sequence[ExerciseResolution]
+) -> RoutineView:
+    """The view a routine created from `spec` re-reads as (payloads.new_routine_payload);
+    `resolutions[i]` resolves `routine_entries(spec)[i]`."""
+    return RoutineView(
+        name=spec.name,
+        days=_sent(spec.days),
+        goal=_sent(spec.goal),
+        note=_sent(spec.note),
+        exercises=[
+            ExerciseView(
+                catalog_id=res.catalog_id,
+                section=section,
+                rest_seconds=ex.rest_seconds or 0,
+                note=ex.note or None,
+                sets=_set_view(ex.sets or [DEFAULT_SET]),
+            )
+            for (section, ex), res in zip(routine_entries(spec), resolutions, strict=True)
         ],
     )
 
@@ -203,6 +236,7 @@ def _set_edits(
     ex: RoutineExercise, sets: list[SetSpec]
 ) -> tuple[list[AddedSet], list[UpdatedSet], list[int]]:
     current = ex.template_sets
+    have, want = _set_view(current), _set_view(sets)
     added: list[AddedSet] = []
     updated: list[UpdatedSet] = []
     for i, s in enumerate(sets):
@@ -210,12 +244,7 @@ def _set_edits(
             added.append(AddedSet(index=i, reps=s.reps, weight_kg=s.weight_kg))
             continue
         cur = current[i]
-        same = (cur.index, round3(cur.reps), round3(cur.weight_kg)) == (
-            i,
-            round3(s.reps),
-            round3(s.weight_kg),
-        )
-        if not same:
+        if cur.index != i or have[i] != want[i]:
             updated.append(
                 UpdatedSet(
                     identifier=cur.identifier, index=i, reps=s.reps, weight_kg=s.weight_kg
@@ -263,14 +292,14 @@ def _expected_existing(
 ) -> ExerciseView:
     rest = ex.rest_seconds
     note = ex.note
-    sets = [(round3(s.reps), round3(s.weight_kg)) for s in ex.template_sets]
+    sets = _set_view(ex.template_sets)
     if want is not None:
         if want.rest_seconds is not None:
             rest = want.rest_seconds
         if want.note is not None:
             note = _clean(want.note)
         if want.sets is not None:
-            sets = [(round3(s.reps), round3(s.weight_kg)) for s in want.sets]
+            sets = _set_view(want.sets)
     return ExerciseView(
         catalog_id=ex.catalog_id, section=section, rest_seconds=rest, note=note, sets=sets
     )
@@ -424,7 +453,7 @@ def diff_routine(
                     section=section,
                     rest_seconds=new.rest_seconds,
                     note=new.note,
-                    sets=[(round3(s.reps), round3(s.weight_kg)) for s in sets],
+                    sets=_set_view(sets),
                 )
             )
 
