@@ -25,7 +25,15 @@ from . import __version__, builders, catalog, views
 from .api.auth import CredentialsError
 from .api.client import ApiError
 from .config import VERIFIED_APP_VERSION, load_config
-from .inputs import Days, DesiredExercise, DesiredRoutine, Goal, RoutineSpec, SetSpec
+from .inputs import (
+    Days,
+    DesiredExercise,
+    DesiredRoutine,
+    Goal,
+    RestSeconds,
+    RoutineSpec,
+    TemplateSets,
+)
 from .lookups import find_routine
 from .model import Section
 from .runtime import AppContext, ServerBusy, ServerClosed, Services
@@ -315,9 +323,9 @@ async def smartgym_add_exercise(
     exercise: str,
     section: Section = "main",
     position: Annotated[int | None, Field(ge=0)] = None,
-    rest_seconds: int | None = None,
+    rest_seconds: RestSeconds | None = None,
     note: str | None = None,
-    sets: list[SetSpec] | None = None,
+    sets: TemplateSets | None = None,
     dry_run: bool = True,
 ) -> EditResult:
     """Add a catalog exercise (built-in or custom) to a routine section (warmup / main /
@@ -410,9 +418,9 @@ async def smartgym_reorder_routine(
 async def smartgym_update_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
-    rest_seconds: int | None = None,
+    rest_seconds: RestSeconds | None = None,
     note: str | None = None,
-    sets: list[SetSpec] | None = None,
+    sets: TemplateSets | None = None,
     dry_run: bool = True,
 ) -> EditResult:
     """Change an exercise's rest time, note ("" clears) or template sets.

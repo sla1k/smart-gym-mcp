@@ -56,18 +56,25 @@ class SetSpec(BaseModel):
 # What an exercise gets when no sets are given (flagged in the dry run).
 DEFAULT_SET = SetSpec(reps=10, weight_kg=0.0)
 
+RestSeconds = Annotated[int, Field(ge=0, description="Rest between sets, in seconds")]
+
+TemplateSets = Annotated[
+    list[SetSpec],
+    Field(
+        min_length=1,
+        description="Template sets [{reps, weight_kg}], in order; omit to keep (edit) or to "
+        "get one default set (new exercise, flagged in the dry run)",
+    ),
+]
+
 
 class ExerciseSpec(BaseModel):
     exercise: str = Field(
         description="Catalog exercise name (fuzzy-matched) or a numeric catalog id"
     )
-    rest_seconds: int | None = Field(default=None, ge=0)
+    rest_seconds: RestSeconds | None = None
     note: str | None = None
-    sets: list[SetSpec] | None = Field(
-        default=None,
-        min_length=1,
-        description="Template sets; omitted = one default set (flagged in dry-run)",
-    )
+    sets: TemplateSets | None = None
 
 
 class RoutineSpec(BaseModel):
@@ -87,9 +94,9 @@ class RoutineSpec(BaseModel):
 class DesiredExercise(BaseModel):
     exercise_id: int | None = None
     exercise: str | None = None
-    rest_seconds: int | None = Field(default=None, ge=0)
+    rest_seconds: RestSeconds | None = None
     note: str | None = None
-    sets: list[SetSpec] | None = None
+    sets: TemplateSets | None = None
 
     @model_validator(mode="after")
     def _one_reference(self) -> DesiredExercise:

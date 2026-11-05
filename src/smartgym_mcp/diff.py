@@ -331,9 +331,6 @@ def _slots(
     slots: list[_Slot] = []
     for pos, want in enumerate(wanted):
         label = f"{section} #{pos + 1}"
-        if want.sets is not None and not want.sets:
-            problems.append(f"{label}: sets must not be empty (omit sets to keep them).")
-            continue
         if want.exercise_id is not None:
             if claimed.get(want.exercise_id) == section:
                 slots.append(_Slot(by_id[want.exercise_id], want, None))
