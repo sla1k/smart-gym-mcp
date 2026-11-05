@@ -39,6 +39,18 @@ class DiffError(ValueError):
     """The desired routine was rejected — nothing should be sent."""
 
 
+def nameless_problem(routine: Routine) -> str | None:
+    """Old routines can have no name, but the app now requires one: a routine must be
+    named before it is edited or unarchived."""
+    if routine.name.strip():
+        return None
+    return (
+        f"Routine id={routine.identifier} has no name, and SmartGym requires one. Ask the "
+        f"user for a name, set it with smartgym_update_routine(routine={routine.identifier}, "
+        "name=...), then retry."
+    )
+
+
 class FieldChange(BaseModel):
     field: str
     old: str | None
@@ -241,13 +253,6 @@ def _routine_changes(
         old = getattr(current, field)
         if new != old:
             changes.append(FieldChange(field=field, old=old, new=new))
-    if desired.name is None and not current.name.strip():
-        # Old routines can be nameless, but the app now requires a name.
-        problems.append(
-            f"Routine id={current.identifier} has no name, and SmartGym requires one. "
-            "Ask the user for a name and pass it as `name` (smartgym_update_routine or "
-            "smartgym_apply_routine)."
-        )
     return changes
 
 
@@ -421,6 +426,9 @@ def diff_routine(
     problems: list[str] = []
     warnings: list[str] = []
     routine_changes = _routine_changes(current, desired, problems)
+    nameless = nameless_problem(current)
+    if nameless and desired.name is None:
+        problems.append(nameless)
     active = current.active_exercises()
     by_id = {e.identifier: e for e in active}
     given = {s: desired.section_list(s) for s in SECTIONS}

@@ -113,8 +113,9 @@ local placeholder ids; the server doesn't need them.
   accepts a routine without `goal` and stores `""`; opening it in the app and tapping Save
   errors that no goal was found. After a `routine/update/` with a goal the same Save works.
 - **Old routines can have no name** (2026-11-05): `history/all/` lists two archived routines
-  with `"name": ""`; reads show them as is. The app now requires a name, so `diff_routine`
-  rejects any edit of a nameless routine that doesn't also set `name`.
+  with `"name": ""`; reads show them as is. The app's editor now requires a name (seen in
+  the app by the user, not captured), so an edit that doesn't also set `name`, or an
+  unarchive, of a nameless routine is rejected and asks for a name first.
 
 ## 5. Modules
 

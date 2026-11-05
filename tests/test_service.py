@@ -502,6 +502,14 @@ def test_archive_and_skip_already_archived(tmp_path: Path) -> None:
     assert [r.name for r in result.skipped] == ["ZZ-Old"]
 
 
+def test_unarchive_of_a_nameless_routine_asks_for_a_name_first(tmp_path: Path) -> None:
+    nameless = _raw_routine(ident="3000002", name="", hashid="2", archived="2026-09-30")
+    client = account_client({HISTORY: [_account(BEFORE, nameless)]})
+    with pytest.raises(DiffError, match=r"id=3000002 has no name"):
+        _service(client, tmp_path).set_archived([3000002], archived=False, dry_run=True)
+    assert client.sent == []
+
+
 def test_archive_not_reflected_is_a_verify_error(tmp_path: Path) -> None:
     client = account_client({HISTORY: _account(BEFORE)})
     with pytest.raises(WriteVerifyError, match="ZZ-Svc"):

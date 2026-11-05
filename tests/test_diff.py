@@ -146,13 +146,17 @@ def test_empty_name_rejected() -> None:
         diff_routine(_routine(), DesiredRoutine(name="  "), CATALOG)
 
 
-def test_a_nameless_routine_must_be_named_before_any_edit() -> None:
-    nameless = _routine().model_copy(update={"name": ""})
-    with pytest.raises(DiffError, match=r"id=1 has no name.*Ask the user for a name"):
+@pytest.mark.parametrize("name", ["", "  "])
+def test_a_nameless_routine_must_be_named_before_any_edit(name: str) -> None:
+    nameless = _routine().model_copy(update={"name": name})
+    with pytest.raises(DiffError, match=r"id=1 has no name.*smartgym_update_routine"):
         diff_routine(nameless, DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
+    with pytest.raises(DiffError) as blank:
+        diff_routine(nameless, DesiredRoutine(name=" "), CATALOG)
+    assert str(blank.value).count("\n- ") == 1  # only "must be non-empty"
     change = diff_routine(nameless, DesiredRoutine(name="Push day"), CATALOG)
     assert [(c.field, c.old, c.new) for c in change.routine_changes] == [
-        ("name", "", "Push day")
+        ("name", name, "Push day")
     ]
 
 
