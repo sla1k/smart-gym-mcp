@@ -53,9 +53,10 @@ def _write(title: str, *, idempotent: bool) -> ToolAnnotations:
     """Every write may overwrite or remove the user's data, so all are destructive.
 
     idempotent=True: repeating the call with the same arguments leaves the same state (set
-    a value, move to a place, remove, reorder, archive an archived routine), so a client
-    may retry it. False: a repeat may change the account again (add_exercise adds a second
-    copy, create_program a second program), or is not guaranteed not to — the conservative
+    a value, move to a place, reorder, archive an archived routine) and answers the same, so
+    a client may retry it. False: a repeat may change the account again (add_exercise adds a
+    second copy, create_program a second program), fails where the first call succeeded
+    (remove_exercise: the exercise is gone), or is not guaranteed not to — the conservative
     default.
     """
     return ToolAnnotations(
@@ -380,7 +381,7 @@ async def smartgym_move_exercise(
     )
 
 
-@mcp.tool(annotations=_write("Remove exercise", idempotent=True))
+@mcp.tool(annotations=_write("Remove exercise", idempotent=False))
 async def smartgym_remove_exercise(
     ctx: Context[AppContext], exercise_id: int, dry_run: bool = True
 ) -> EditResult:
