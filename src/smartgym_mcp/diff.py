@@ -19,8 +19,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .inputs import (
     DEFAULT_SET,
@@ -99,12 +100,29 @@ class RoutineView(BaseModel):
     exercises: list[ExerciseView]
 
 
+class KeptInOrder(BaseModel):
+    """A kept exercise's place in `ChangeSet.final_order`."""
+
+    kind: Literal["kept"] = "kept"
+    exercise_id: int
+
+
+class AddedInOrder(BaseModel):
+    """An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[added]`."""
+
+    kind: Literal["added"] = "added"
+    added: int
+
+
+OrderEntry = Annotated[KeptInOrder | AddedInOrder, Field(discriminator="kind")]
+
+
 class ChangeSet(BaseModel):
     routine_changes: list[FieldChange]
     added: list[AddedExercise]
     removed: list[RemovedExercise]
     updated: list[ExerciseUpdate]
-    final_order: list[str] | None
+    final_order: list[OrderEntry] | None
     warnings: list[str]
     expected: RoutineView
 
@@ -347,27 +365,27 @@ def _slots(
 
 
 def _final_order(
-    order: list[str],
+    order: list[OrderEntry],
     added: list[AddedExercise],
     active: list[RoutineExercise],
-    sections: dict[str, Section],
-) -> list[str] | None:
+    sections: dict[int, Section],
+) -> list[OrderEntry] | None:
     """`order` when the server must renumber `idx`, None when every kept exercise keeps it.
 
     Renumber when the kept exercises' relative order changes, or when any of them changes
-    section (`sections` maps a key to its section after the change) while their current idx,
+    section (`sections` maps a kept exercise_id to its section after the change) while their current idx,
     taken in final order, are not strictly increasing — a move on a routine whose idx
     disagree with its sections would otherwise re-read in a different order. An append
     counts as "no renumbering" only when the kept idx are exactly 0..n-1 and every add
     lands after all kept; otherwise the new exercise's idx would collide with an existing one.
     """
-    by_key = {f"id:{e.identifier}": e for e in active}
-    kept = [k for k in order if k in by_key]
+    by_id = {e.identifier: e for e in active}
+    kept = [o.exercise_id for o in order if isinstance(o, KeptInOrder)]
     kept_set = set(kept)
-    if kept != [k for k in by_key if k in kept_set]:
+    if kept != [i for i in by_id if i in kept_set]:
         return order
-    idxs = [by_key[k].index for k in kept]
-    moved = any(sections[k] != by_key[k].section for k in kept)
+    idxs = [by_id[i].index for i in kept]
+    moved = any(sections[i] != by_id[i].section for i in kept)
     if moved and any(a >= b for a, b in pairwise(idxs)):
         return order
     if not added:
@@ -398,17 +416,16 @@ def diff_routine(
     added: list[AddedExercise] = []
     updated: list[ExerciseUpdate] = []
     expected: list[ExerciseView] = []
-    order: list[str] = []
-    new_sections: dict[str, Section] = {}
+    order: list[OrderEntry] = []
+    new_sections: dict[int, Section] = {}
     for section in SECTIONS:
         for slot in slots[section]:
             if slot.existing is not None:
                 upd = _exercise_update(slot.existing, slot.want, section)
                 if upd is not None:
                     updated.append(upd)
-                key = f"id:{slot.existing.identifier}"
-                order.append(key)
-                new_sections[key] = section
+                order.append(KeptInOrder(exercise_id=slot.existing.identifier))
+                new_sections[slot.existing.identifier] = section
                 expected.append(_expected_existing(slot.existing, slot.want, section))
                 continue
             assert slot.want is not None and slot.resolution is not None
@@ -423,7 +440,7 @@ def diff_routine(
                 sets=sets,
                 exercise=slot.resolution.exercise,
             )
-            order.append(f"new:{len(added)}")
+            order.append(AddedInOrder(added=len(added)))
             added.append(new)
             expected.append(
                 ExerciseView(
@@ -435,11 +452,10 @@ def diff_routine(
                 )
             )
 
-    kept = set(order)
     removed = [
         RemovedExercise(identifier=e.identifier, name=e.name)
         for e in active
-        if f"id:{e.identifier}" not in kept
+        if e.identifier not in new_sections
     ]
     fields = {c.field: c.new for c in routine_changes}
 

@@ -18,7 +18,7 @@ Each fact lives in one place:
 |---|---|
 | `DESIGN.md` (this file) | status, architecture invariants, decisions |
 | [API-client spec](docs/specs/2026-10-05-api-client-design.md) | wire protocol and verified server behaviour (§3, §4, §10, §11), modules (§5), tool surface (§6), safety and errors (§7), tests, live checks and captures (§8, §9) |
-| [`FEATURES.md`](FEATURES.md) | backlog: what is not built yet; tech debt |
+| [`FEATURES.md`](FEATURES.md) | backlog: what is not built yet |
 | [`AGENTS.md`](AGENTS.md) | working rules, branches, releases, commands |
 
 ## Status

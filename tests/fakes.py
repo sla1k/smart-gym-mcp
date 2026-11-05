@@ -18,6 +18,7 @@ from typing import Any
 from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.catalog import CatalogExercise
+from smartgym_mcp.diff import AddedInOrder, KeptInOrder
 from smartgym_mcp.inputs import DesiredExercise
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.payloads import Mint
@@ -156,3 +157,13 @@ def routine_service(
         now=lambda: now,
         mint=counter_mint(first_hash),
     )
+
+
+def kept(*exercise_ids: int) -> list[KeptInOrder]:
+    """`ChangeSet.final_order` entries for kept exercises."""
+    return [KeptInOrder(exercise_id=i) for i in exercise_ids]
+
+
+def added(index: int) -> AddedInOrder:
+    """The `final_order` entry for `ChangeSet.added[index]`."""
+    return AddedInOrder(added=index)

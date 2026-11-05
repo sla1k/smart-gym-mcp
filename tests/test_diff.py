@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from fakes import TZ, by_id, exercise_catalog
+from fakes import TZ, added, by_id, exercise_catalog, kept
 from smartgym_mcp.diff import (
     ChangeSet,
     DiffError,
@@ -149,7 +149,7 @@ def test_empty_name_rejected() -> None:
 
 def test_reorder_within_main() -> None:
     change = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
-    assert change.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
+    assert change.final_order == kept(10, 13, 11, 12, 14)
     assert not (change.added or change.removed or change.updated)
 
 
@@ -166,7 +166,7 @@ def test_move_main_to_warmup_listing_only_warmup() -> None:
     assert (upd.identifier, upd.new_section) == (13, "warmup")
     assert [(c.field, c.old, c.new) for c in upd.changes] == [("section", "main", "warmup")]
     assert change.removed == []
-    assert change.final_order == ["id:10", "id:13", "id:11", "id:12", "id:14"]
+    assert change.final_order == kept(10, 13, 11, 12, 14)
     assert [e.section for e in change.expected.exercises] == [
         "warmup",
         "warmup",
@@ -188,16 +188,16 @@ def test_add_new_exercise_at_end_of_cooldown() -> None:
     change = diff_routine(
         _routine(), DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
     )
-    (added,) = change.added
+    (new,) = change.added
     assert (
-        added.catalog_id,
-        added.name,
-        added.section,
-        added.position,
-        added.rest_seconds,
+        new.catalog_id,
+        new.name,
+        new.section,
+        new.position,
+        new.rest_seconds,
     ) == (20, "Plank", "cooldown", 5, 30)
-    assert added.exercise.id == 20  # the catalog's own exercise, for the encoder
-    assert "exercise" not in added.model_dump()
+    assert new.exercise.id == 20  # the catalog's own exercise, for the encoder
+    assert "exercise" not in new.model_dump()
     assert change.final_order is None
 
 
@@ -210,7 +210,7 @@ def test_add_at_end_of_warmup_is_mid_routine_and_needs_order() -> None:
         CATALOG,
     )
     assert change.added[0].position == 1
-    assert change.final_order == ["id:10", "new:0", "id:11", "id:12", "id:13", "id:14"]
+    assert change.final_order == [*kept(10), added(0), *kept(11, 12, 13, 14)]
 
 
 def test_new_exercise_without_sets_gets_default_set_and_warning() -> None:
@@ -349,7 +349,7 @@ def test_append_after_remove_renumbers_so_idx_never_collides() -> None:
     )
     assert [r.identifier for r in change.removed] == [12]
     assert change.added[0].position == 4  # exercise 14 still has idx 4 on the server
-    assert change.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+    assert change.final_order == [*kept(10, 11, 13, 14), added(0)]
 
 
 def test_append_to_routine_with_idx_gap_renumbers() -> None:
@@ -359,7 +359,7 @@ def test_append_to_routine_with_idx_gap_renumbers() -> None:
     change = diff_routine(
         routine, DesiredRoutine(cooldown=[DesiredExercise(exercise_id=14), plank]), CATALOG
     )
-    assert change.final_order == ["id:10", "id:11", "id:13", "id:14", "new:0"]
+    assert change.final_order == [*kept(10, 11, 13, 14), added(0)]
 
 
 def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
@@ -368,7 +368,7 @@ def test_order_keeping_move_on_inconsistent_idx_needs_order_request() -> None:
     change = diff_routine(routine, DesiredRoutine(warmup=by_id(10, 11)), CATALOG)
     (upd,) = change.updated
     assert (upd.identifier, upd.new_section) == (11, "warmup")
-    assert change.final_order == ["id:10", "id:11", "id:12", "id:13", "id:14"]
+    assert change.final_order == kept(10, 11, 12, 13, 14)
 
 
 @pytest.mark.parametrize(
