@@ -54,9 +54,9 @@ def _write(title: str, *, idempotent: bool) -> ToolAnnotations:
 
     idempotent=True: repeating the call with the same arguments leaves the same state (set
     a value, move to a place, remove, reorder, archive an archived routine), so a client
-    may retry it. False: a repeat may
-    change the account again (add_exercise adds a second copy, create_program a second
-    program), or is not guaranteed not to — the conservative default.
+    may retry it. False: a repeat may change the account again (add_exercise adds a second
+    copy, create_program a second program), or is not guaranteed not to — the conservative
+    default.
     """
     return ToolAnnotations(
         title=title,
