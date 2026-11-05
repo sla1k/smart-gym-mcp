@@ -115,17 +115,21 @@ local placeholder ids; the server doesn't need them.
 
 ## 5. Modules
 
-Imports point one way: `server` on top, then `runtime`; `service`, `builders` and `views`
-over `diff`, `payloads`, `lookups` and `account`; those over `model`, `matching`, `catalog`
-and `inputs`; `api/` and `config` at the bottom. `api/` imports neither the model nor the
-catalog. The architecture invariants are in DESIGN.md.
+Imports point one way: `server` on top, then `runtime`; `service` over `writes/`; `writes/`,
+`builders` and `views` over `diff`, `payloads`, `lookups` and `account`; those over `model`,
+`matching`, `catalog` and `inputs`; `api/` and `config` at the bottom. `api/` imports
+neither the model nor the catalog. The architecture invariants are in DESIGN.md.
 
 | Module | Holds |
 |---|---|
 | `server.py` | MCPServer app: thin tools, catalog resources and the lifespan |
 | `runtime.py` | `Services` (client, account cache, routine service, bundle equipment) and `AppContext`, which builds them on first use and runs calls one at a time |
 | `builders.py` | single-field tool inputs → a `DesiredRoutine` (the same diff path as `apply_routine`) |
-| `service.py` | `RoutineService`: every write (edit, create, archive) — plan, dry run, snapshot, send, re-read, verify |
+| `service.py` | `RoutineService`: the one entry point for writes; resolves the routine(s) a call names and hands the write to `writes/` |
+| `writes/common.py` | `WriteContext`: send each request once, the verifying re-read, snapshots; `compare_views`, `WriteVerifyError` |
+| `writes/edit.py` | edit a routine: plan, dry run, snapshot, send, re-read, verify |
+| `writes/create.py` | create a program: resolve, plan, one `routine/add/`, verify |
+| `writes/archive.py` | archive / unarchive, verify |
 | `views.py` | read-tool outputs over the parsed account (pure) |
 | `diff.py` | (current `Routine`, `DesiredRoutine`) → `ChangeSet` — pure, no I/O, no wire format |
 | `payloads.py` | `RoutineSpec` → `routine/add/` JSON; `ChangeSet` → the edit requests; archive forms |
@@ -312,7 +316,7 @@ add-exercise payloads. Creating or editing the custom exercise definitions thems
 Model: `CatalogExercise.is_custom`; `api.reads.custom_exercises()` fetches them,
 `model.parse_custom_exercises()` parses them (removed and malformed ones skipped — a malformed
 one is logged), `AccountCache.custom_exercises()` keeps them like the account read (§5).
-`RoutineService` reads them only when a change adds an exercise by name and extends the
+An edit (`writes/edit.py`) reads them only when it adds an exercise by name and extends the
 bundle catalog with them, so a custom exercise made in the app is usable from the next tool
 call and edits that add nothing don't depend on that read. A name shared by several exercises
 (a custom one named like a built-in one, or the bundle's own duplicate "Single Arm Cable
