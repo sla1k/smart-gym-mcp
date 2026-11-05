@@ -29,7 +29,8 @@ from smartgym_mcp.inputs import (
 )
 from smartgym_mcp.lookups import RoutineNotFound
 from smartgym_mcp.model import Routine
-from smartgym_mcp.service import RoutineService, WriteVerifyError, save_snapshot
+from smartgym_mcp.service import RoutineService
+from smartgym_mcp.writes.common import WriteVerifyError, save_snapshot
 
 NOW = datetime(2026, 10, 6, 10, 0, tzinfo=UTC)
 FIRST_HASH = 26100600000001

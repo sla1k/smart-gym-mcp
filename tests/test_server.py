@@ -45,7 +45,8 @@ from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.config import Config, load_config
 from smartgym_mcp.inputs import DesiredExercise, ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
-from smartgym_mcp.service import ArchiveResult, RoutineService
+from smartgym_mcp.service import RoutineService
+from smartgym_mcp.writes.archive import ArchiveResult
 
 EXPECTED_TOOLS = {
     "smartgym_health", "smartgym_list_routines", "smartgym_get_routine",
