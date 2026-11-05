@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint, exercise_catalog
+from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint, exercise_catalog, kept
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import ChangeSet, diff_routine
 from smartgym_mcp.inputs import (
@@ -555,7 +555,7 @@ def test_move_main_to_warmup_matches_capture() -> None:
     change, requests = _encode(
         _s7((AB, "main"), (SC, "main")), DesiredRoutine(warmup=by_id(SC))
     )
-    assert change.final_order == [f"id:{SC}", f"id:{AB}"]
+    assert change.final_order == kept(SC, AB)
     assert list(requests) == [UPDATE]
     assert _norm(requests[UPDATE]) == app_form("update_move_to_warmup")
 
