@@ -19,8 +19,14 @@ from fakes import (
     routine_service,
 )
 from smartgym_mcp.api.client import ApiError, WriteOutcomeUnknown
-from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.diff import DiffError
+from smartgym_mcp.inputs import (
+    DesiredExercise,
+    DesiredRoutine,
+    ExerciseSpec,
+    RoutineSpec,
+    SetSpec,
+)
 from smartgym_mcp.lookups import RoutineNotFound
 from smartgym_mcp.model import Routine
 from smartgym_mcp.service import RoutineService, WriteVerifyError, save_snapshot

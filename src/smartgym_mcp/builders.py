@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .diff import DesiredExercise, DesiredRoutine, DiffError
-from .inputs import SetSpec, Weekday
+from .diff import DiffError
+from .inputs import DesiredExercise, DesiredRoutine, SetSpec, Weekday
 from .model import Routine, Section
 
 

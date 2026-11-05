@@ -43,8 +43,7 @@ from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.auth import Credentials, CredentialsError
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
 from smartgym_mcp.config import Config, load_config
-from smartgym_mcp.diff import DesiredExercise
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.inputs import DesiredExercise, ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.service import ArchiveResult, RoutineService
 

@@ -11,13 +11,14 @@ from pydantic import ValidationError
 
 from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint, exercise_catalog
 from smartgym_mcp.catalog import CatalogExercise
-from smartgym_mcp.diff import (
-    ChangeSet,
+from smartgym_mcp.diff import ChangeSet, diff_routine
+from smartgym_mcp.inputs import (
     DesiredExercise,
     DesiredRoutine,
-    diff_routine,
+    ExerciseSpec,
+    RoutineSpec,
+    SetSpec,
 )
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.payloads import (

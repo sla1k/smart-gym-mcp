@@ -31,8 +31,14 @@ from fakes import (
 )
 from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.catalog import CatalogExercise
-from smartgym_mcp.diff import DesiredExercise, DesiredRoutine, DiffError, diff_routine
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec
+from smartgym_mcp.diff import DiffError, diff_routine
+from smartgym_mcp.inputs import (
+    DesiredExercise,
+    DesiredRoutine,
+    ExerciseSpec,
+    RoutineSpec,
+    SetSpec,
+)
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.model import parse_custom_exercises, parse_routine
 from smartgym_mcp.payloads import Mint, encode_change, new_routine_payload
