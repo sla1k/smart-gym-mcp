@@ -3,7 +3,7 @@
 Project knowledge lives in shared docs — read them, don't rediscover:
 - [`DESIGN.md`](DESIGN.md) — **start here**: status table, architecture invariants, decisions,
   and where the verified facts live (settled — do not re-derive or re-litigate them)
-- [`docs/superpowers/specs/2026-10-05-api-client-design.md`](docs/superpowers/specs/2026-10-05-api-client-design.md)
+- [`docs/specs/2026-10-05-api-client-design.md`](docs/specs/2026-10-05-api-client-design.md)
   — source of truth for the API client (verified facts §3/§4, module layering §5, tool
   surface §6, sections §10, custom exercises §11)
 - [`FEATURES.md`](FEATURES.md) — backlog

@@ -29,7 +29,7 @@ be the first write that touches it.
 ## F9 — Custom exercise definitions  ·  priority: low
 
 Create / edit / delete the account's own custom exercises (F8 only uses existing ones in
-routines; [API-client spec](docs/superpowers/specs/2026-10-05-api-client-design.md) §11).
+routines; [API-client spec](docs/specs/2026-10-05-api-client-design.md) §11).
 Captures of the app doing it are already committed, unused by any test until F9 is built:
 `tests/fixtures/api/add_custom_exercise.json`
 (`exercise/addCustomExercise/`) and `remove_custom_exercise.json`
