@@ -1,4 +1,4 @@
-"""server.py: tool wiring with injected services — no credentials file, no network."""
+"""server.py and runtime.py: tool wiring with injected services — no credentials file, no network."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ from fakes import (
     account_client,
     catalog_exercise,
 )
-from smartgym_mcp import server
+from smartgym_mcp import runtime, server
 from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.auth import Credentials, CredentialsError
 from smartgym_mcp.api.client import ApiClient, AuthError, WriteOutcomeUnknown
@@ -60,7 +60,7 @@ EXPECTED_TOOLS = {
 BUNDLE = {207: catalog_exercise(207, "Cable Chest Press"), 20: catalog_exercise(20, "Plank")}
 
 
-def _ctx(app: server.AppContext) -> Any:
+def _ctx(app: runtime.AppContext) -> Any:
     return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app))
 
 
@@ -75,8 +75,8 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
     return replace(base, **overrides)
 
 
-def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
-    def factory(cfg: Config) -> server.Services:
+def _fake_app(tmp_path: Path, client: FakeClient) -> runtime.AppContext:
+    def factory(cfg: Config) -> runtime.Services:
         cache = AccountCache(client)
         service = RoutineService(
             client,
@@ -85,9 +85,9 @@ def _fake_app(tmp_path: Path, client: FakeClient) -> server.AppContext:
             backup_dir=cfg.backup_dir,
             timezone=TZ,
         )
-        return server.Services(client=client, cache=cache, service=service, equipment=[])  # type: ignore[arg-type]
+        return runtime.Services(client=client, cache=cache, service=service, equipment=[])  # type: ignore[arg-type]
 
-    return server.AppContext(cfg=_cfg(tmp_path), factory=factory)
+    return runtime.AppContext(cfg=_cfg(tmp_path), factory=factory)
 
 
 def _write_credentials(path: Path, data: object, mode: int = 0o600) -> Path:
@@ -113,7 +113,7 @@ def _single() -> dict[str, Any]:
 
 
 def test_local_timezone_name_is_iana_or_utc() -> None:
-    name = server.local_timezone_name()
+    name = runtime.local_timezone_name()
     assert name == "UTC" or "/" in name
 
 
@@ -193,7 +193,7 @@ async def test_health_reports_credentials_problem(
     cfg = _cfg(tmp_path)
     if content is not None:
         _write_credentials(cfg.credentials_path, content, mode)
-    status = await server.smartgym_health(_ctx(server.AppContext(cfg=cfg)))
+    status = await server.smartgym_health(_ctx(runtime.AppContext(cfg=cfg)))
     assert not status.ok and status.data_as_of is None
     assert status.problem is not None
     assert str(cfg.credentials_path) in status.problem
@@ -204,7 +204,7 @@ async def test_health_reports_credentials_problem(
 @pytest.mark.anyio
 async def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
-    app = server.AppContext(cfg=cfg)
+    app = runtime.AppContext(cfg=cfg)
     with pytest.raises(ToolError, match=r"capture_credentials\.py") as exc:
         await server.smartgym_list_routines(_ctx(app))
     assert isinstance(exc.value.__cause__, CredentialsError)
@@ -224,13 +224,13 @@ async def test_services_are_retried_after_a_failed_build(tmp_path: Path) -> None
     attempts: list[int] = []
     good = _fake_app(tmp_path, account_client({HISTORY: ACCOUNT}))
 
-    def flaky(cfg: Config) -> server.Services:
+    def flaky(cfg: Config) -> runtime.Services:
         attempts.append(1)
         if len(attempts) == 1:
             raise CredentialsError("not yet")
         return good.factory(cfg)
 
-    app = server.AppContext(cfg=_cfg(tmp_path), factory=flaky)
+    app = runtime.AppContext(cfg=_cfg(tmp_path), factory=flaky)
     assert not (await server.smartgym_health(_ctx(app))).ok
     assert (await server.smartgym_health(_ctx(app))).ok
     await server.smartgym_list_routines(_ctx(app))
@@ -261,8 +261,8 @@ async def test_recaptured_credentials_take_effect_after_an_auth_error(
         built.append(_SessionClient(credentials.authorization))
         return built[-1]
 
-    monkeypatch.setattr(server, "ApiClient", client_from)
-    app = server.AppContext(cfg=_cfg(tmp_path))
+    monkeypatch.setattr(runtime, "ApiClient", client_from)
+    app = runtime.AppContext(cfg=_cfg(tmp_path))
     _write_bundle(app.cfg)
     creds = {"authID": "1", "app_headers": APP}
     _write_credentials(app.cfg.credentials_path, {**creds, "authorization": "Bearer expired"})
@@ -283,12 +283,12 @@ async def test_recaptured_credentials_take_effect_after_an_auth_error(
 async def test_health_drops_services_on_an_auth_error(tmp_path: Path) -> None:
     built: list[_SessionClient] = []
 
-    def factory(cfg: Config) -> server.Services:
+    def factory(cfg: Config) -> runtime.Services:
         client = _SessionClient("Bearer expired" if not built else "Bearer fresh")
         built.append(client)
         return _fake_app(tmp_path, client).factory(cfg)
 
-    app = server.AppContext(cfg=_cfg(tmp_path), factory=factory)
+    app = runtime.AppContext(cfg=_cfg(tmp_path), factory=factory)
     status = await server.smartgym_health(_ctx(app))
     assert not status.ok and status.problem is not None and "rejected" in status.problem
     assert (await server.smartgym_health(_ctx(app))).ok
@@ -347,7 +347,7 @@ def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> 
     _write_credentials(
         cfg.credentials_path, {"authorization": SECRET, "authID": "42", "app_headers": APP}
     )
-    services = server.build_services(cfg)
+    services = runtime.build_services(cfg)
     try:
         assert services.client.user_id == "42"
         assert [e.name for e in services.equipment] == ["Barbell"]
@@ -370,13 +370,13 @@ def test_build_services_closes_the_client_when_a_later_step_fails(
             self.closed = True
             super().close()
 
-    monkeypatch.setattr(server, "ApiClient", _RecordingClient)
+    monkeypatch.setattr(runtime, "ApiClient", _RecordingClient)
     cfg = _cfg(tmp_path)  # no app bundle → loading Exercises.json fails
     _write_credentials(
         cfg.credentials_path, {"authorization": SECRET, "authID": "42", "app_headers": APP}
     )
     with pytest.raises(FileNotFoundError):
-        server.build_services(cfg)
+        runtime.build_services(cfg)
     assert len(built) == 1 and built[0].closed
 
 
@@ -594,7 +594,7 @@ SHORT_WAIT_S = 0.05  # how long a test call waits for the one in flight
 
 
 async def _hold(
-    app: server.AppContext, *, task_status: TaskStatus[None] = anyio.TASK_STATUS_IGNORED
+    app: runtime.AppContext, *, task_status: TaskStatus[None] = anyio.TASK_STATUS_IGNORED
 ) -> None:
     async with app._calls:
         task_status.started()
@@ -602,7 +602,7 @@ async def _hold(
 
 
 @asynccontextmanager
-async def _call_in_flight(app: server.AppContext) -> AsyncIterator[None]:
+async def _call_in_flight(app: runtime.AppContext) -> AsyncIterator[None]:
     """Another call holds the lock, from its own task as each MCP request has."""
     async with anyio.create_task_group() as tg:
         await tg.start(_hold, app)
@@ -622,7 +622,7 @@ async def test_every_tool_waits_for_the_call_in_flight(
     async with _call_in_flight(app):
         with pytest.raises(ToolError, match="nothing was sent") as exc:
             await call(_ctx(app))
-    assert isinstance(exc.value.__cause__, server.ServerBusy)
+    assert isinstance(exc.value.__cause__, runtime.ServerBusy)
     assert client.get_calls == [] and client.sent == []
     assert await call(_ctx(app))  # free again once the other call is done
 
@@ -659,7 +659,7 @@ def _archived_after_one_post() -> _GatedClient:
     return _GatedClient({HISTORY: [ACCOUNT, archived, archived]})
 
 
-async def _archive(app: server.AppContext) -> ArchiveResult:
+async def _archive(app: runtime.AppContext) -> ArchiveResult:
     return await server.smartgym_archive_routines(_ctx(app), ["ZZ-FB"], dry_run=False)
 
 
@@ -757,7 +757,7 @@ async def test_no_call_starts_after_close(tmp_path: Path) -> None:
     app = _fake_app(tmp_path, client)
     factory = app.factory
 
-    def recording(cfg: Config) -> server.Services:
+    def recording(cfg: Config) -> runtime.Services:
         built.append(cfg)
         return factory(cfg)
 
@@ -772,7 +772,7 @@ async def test_no_call_starts_after_close(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_input_errors_need_no_services_and_never_wait(tmp_path: Path) -> None:
-    app = server.AppContext(cfg=_cfg(tmp_path))  # no credentials file, full wait
+    app = runtime.AppContext(cfg=_cfg(tmp_path))  # no credentials file, full wait
     calls: dict[str, WriteCall] = {
         "update_routine": lambda c: server.smartgym_update_routine(c, routine="ZZ-FB"),
         "apply_routine": lambda c: server.smartgym_apply_routine(
