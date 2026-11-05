@@ -1,4 +1,4 @@
-"""Write orchestration over the SmartGym API (API-client spec §5 invariant 2, §7).
+"""Write orchestration over the SmartGym API (DESIGN invariant 2, API-client spec §7).
 
 Every edit: resolve → fetch the routine fresh → plan (diff) → dry run returns
 the plan → snapshot → send (`routine/update/`, then `routine/updateExercise/`)
@@ -172,7 +172,7 @@ def _active_names(routines: Sequence[Routine], *, besides: int | None = None) ->
 
 
 class RoutineService:
-    """`cache` lives for one tool call (AppContext.use empties it when the call ends), so a
+    """`cache` lives for one tool call (AppContext._call empties it when the call ends), so a
     write plans against the account as the call found it; every send clears it for the
     verifying re-read."""
 
