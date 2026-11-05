@@ -13,16 +13,27 @@ class RoutineNotFound(ValueError):
     pass
 
 
+def routine_id(ref: str | int) -> int | None:
+    """The id `ref` gives, or None when it is a name. A ref of digits is always an id."""
+    s = str(ref).strip()
+    return int(s) if s.isdigit() else None
+
+
+def no_routine_with_id(identifier: int) -> RoutineNotFound:
+    return RoutineNotFound(f"No routine with id {identifier}. Use smartgym_list_routines.")
+
+
 def find_routine(account: AccountData, ref: str | int) -> Routine:
     """The routine `ref` names: its id, its exact name, or a unique part of its name
     (case-insensitive; archived routines included, removed ones not)."""
     live = [r for r in account.routines if not r.removed]
-    s = str(ref).strip()
-    if s.isdigit():
+    identifier = routine_id(ref)
+    if identifier is not None:
         for r in live:
-            if r.identifier == int(s):
+            if r.identifier == identifier:
                 return r
-        raise RoutineNotFound(f"No routine with id {s}. Use smartgym_list_routines.")
+        raise no_routine_with_id(identifier)
+    s = str(ref).strip()
     exact = [r for r in live if r.name.lower() == s.lower()]
     matches = exact or [r for r in live if s.lower() in r.name.lower()]
     if not matches:

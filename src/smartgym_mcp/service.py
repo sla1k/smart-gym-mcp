@@ -15,7 +15,7 @@ from pathlib import Path
 from .account import AccountCache
 from .api.client import ApiCalls
 from .inputs import DesiredRoutine, RoutineSpec
-from .lookups import find_routine, routine_of_exercise
+from .lookups import find_routine, routine_id, routine_of_exercise
 from .matching import ExerciseCatalog
 from .model import Routine
 from .payloads import Mint, mint_unique_hashid
@@ -56,8 +56,11 @@ class RoutineService:
     def edit(
         self, ref: str | int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool
     ) -> EditResult:
-        routine = find_routine(self._cache.account(), ref)
-        return edit.edit_routine(self._ctx, routine.identifier, build, dry_run=dry_run)
+        """An id goes straight to the routine's own read; only a name needs the account."""
+        identifier = routine_id(ref)
+        if identifier is None:
+            identifier = find_routine(self._cache.account(), ref).identifier
+        return edit.edit_routine(self._ctx, identifier, build, dry_run=dry_run)
 
     def edit_exercise(
         self, exercise_id: int, build: Callable[[Routine], DesiredRoutine], *, dry_run: bool

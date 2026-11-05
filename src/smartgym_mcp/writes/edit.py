@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from ..diff import ChangeSet, DiffError, RoutineView, diff_routine, view_of
 from ..inputs import DesiredRoutine
+from ..lookups import no_routine_with_id
 from ..model import SECTIONS, Routine, parse_routine
 from ..payloads import encode_change
 from .common import (
@@ -46,6 +47,8 @@ def edit_routine(
 ) -> EditResult:
     raw = ctx.routine_raw(identifier)
     current = parse_routine(raw)
+    if current.removed:
+        raise no_routine_with_id(identifier)
     handle = RoutineId(identifier=current.identifier, name=current.name)
     desired = build(current)
     # Custom exercises are read only when a change adds one.

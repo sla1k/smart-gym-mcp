@@ -125,7 +125,7 @@ neither the model nor the catalog. The architecture invariants are in DESIGN.md.
 | `server.py` | MCPServer app: thin tools, catalog resources and the lifespan |
 | `runtime.py` | `Services` (client, account cache, routine service, bundle equipment) and `AppContext`, which builds them on first use and runs calls one at a time |
 | `builders.py` | single-field tool inputs → a `DesiredRoutine` (the same diff path as `apply_routine`) |
-| `service.py` | `RoutineService`: the one entry point for writes; resolves the routine(s) a call names and hands the write to `writes/` |
+| `service.py` | `RoutineService`: the one entry point for writes; resolves the routine(s) a call names and hands the write to `writes/`. An edit by routine id skips `history/all` and reads only `routine/single` (plus `history/all` for a rename's name check); a removed routine is refused |
 | `writes/common.py` | `WriteContext`: send each request once, the verifying re-read, snapshots; `compare_views`, `WriteVerifyError` |
 | `writes/edit.py` | edit a routine: plan, dry run, snapshot, send, re-read, verify |
 | `writes/create.py` | create a program: resolve, plan, one `routine/add/`, verify |

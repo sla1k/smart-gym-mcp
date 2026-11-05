@@ -16,7 +16,7 @@ from ..account import AccountCache
 from ..api import reads
 from ..api.client import ApiCalls, ApiError, WriteOutcomeUnknown
 from ..diff import RoutineView, view_of
-from ..lookups import RoutineNotFound
+from ..lookups import RoutineNotFound, no_routine_with_id
 from ..matching import ExerciseCatalog
 from ..model import ApiPayloadError, Routine, parse_routine
 from ..payloads import Mint
@@ -164,7 +164,7 @@ class WriteContext:
         """The routine's JSON from `routine/single/<id>/`, read fresh every time."""
         routines = reads.routine_single(self.client, identifier).get("routines") or []
         if not routines:
-            raise RoutineNotFound(f"SmartGym has no routine with id {identifier}.")
+            raise no_routine_with_id(identifier)
         return dict(routines[0])
 
     def view(self, identifier: int) -> RoutineView:

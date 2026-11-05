@@ -259,8 +259,32 @@ def test_edit_of_a_routine_the_server_lacks_sends_nothing(tmp_path: Path) -> Non
     client = account_client(
         {HISTORY: _account(BEFORE), SINGLE: {"code": "SUCCESS", "routines": []}}
     )
-    with pytest.raises(RoutineNotFound, match="SmartGym has no routine with id 3000001"):
+    with pytest.raises(RoutineNotFound, match="No routine with id 3000001"):
         _service(client, tmp_path).edit("ZZ-Svc", _rest(90), dry_run=False)
+    assert client.sent == []
+
+
+def test_edit_by_id_reads_only_the_routine(tmp_path: Path) -> None:
+    after = _raw_routine(WARM, {**CHEST, "pause": "90"})
+    client = account_client({SINGLE: _single(BEFORE, after)})
+    _service(client, tmp_path).edit(" 3000001 ", _rest(90), dry_run=False)
+    assert HISTORY not in client.get_calls and len(client.sent) == 1
+
+
+def test_edit_by_id_still_checks_a_new_name(tmp_path: Path) -> None:
+    other = _raw_routine(ident="3000002", name="ZZ-Two", hashid="2")
+    client = account_client({HISTORY: _account(BEFORE, other), SINGLE: _single(BEFORE)})
+    with pytest.raises(DiffError, match="already exists"):
+        _service(client, tmp_path).edit(
+            3000001, lambda _r: DesiredRoutine(name="zz-two"), dry_run=True
+        )
+
+
+def test_edit_by_id_of_a_removed_routine_sends_nothing(tmp_path: Path) -> None:
+    removed = {**BEFORE, "dateRemoved": "2026-10-01 10:00:00"}
+    client = account_client({SINGLE: _single(removed)})
+    with pytest.raises(RoutineNotFound, match="No routine with id 3000001"):
+        _service(client, tmp_path).edit("3000001", _rest(90), dry_run=False)
     assert client.sent == []
 
 
