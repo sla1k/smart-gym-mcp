@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
+from ..diff import DiffError, nameless_problem
 from ..model import Routine
 from ..payloads import archive_form, unarchive_form
 from .common import (
@@ -33,6 +34,10 @@ def set_archived(
 ) -> ArchiveResult:
     """`targets` are distinct routines; those already in the wanted state are skipped."""
     todo = [t for t in targets if t.archived != archived]
+    if not archived:
+        nameless = [p for p in map(nameless_problem, todo) if p]
+        if nameless:
+            raise DiffError("Rejected — nothing was changed:\n- " + "\n- ".join(nameless))
     handles = [RoutineId(identifier=t.identifier, name=t.name) for t in todo]
     skipped = [
         RoutineId(identifier=t.identifier, name=t.name)
