@@ -146,6 +146,16 @@ def test_empty_name_rejected() -> None:
         diff_routine(_routine(), DesiredRoutine(name="  "), CATALOG)
 
 
+def test_a_nameless_routine_must_be_named_before_any_edit() -> None:
+    nameless = _routine().model_copy(update={"name": ""})
+    with pytest.raises(DiffError, match=r"id=1 has no name.*Ask the user for a name"):
+        diff_routine(nameless, DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
+    change = diff_routine(nameless, DesiredRoutine(name="Push day"), CATALOG)
+    assert [(c.field, c.old, c.new) for c in change.routine_changes] == [
+        ("name", "", "Push day")
+    ]
+
+
 def test_reorder_within_main() -> None:
     change = diff_routine(_routine(), DesiredRoutine(main=by_id(13, 11, 12)), CATALOG)
     assert change.final_order == kept(10, 13, 11, 12, 14)

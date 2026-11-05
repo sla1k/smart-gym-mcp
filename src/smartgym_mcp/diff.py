@@ -241,6 +241,13 @@ def _routine_changes(
         old = getattr(current, field)
         if new != old:
             changes.append(FieldChange(field=field, old=old, new=new))
+    if desired.name is None and not current.name.strip():
+        # Old routines can be nameless, but the app now requires a name.
+        problems.append(
+            f"Routine id={current.identifier} has no name, and SmartGym requires one. "
+            "Ask the user for a name and pass it as `name` (smartgym_update_routine or "
+            "smartgym_apply_routine)."
+        )
     return changes
 
 
