@@ -4,7 +4,7 @@
 > custom exercises 2026-10-18). This doc holds how the MCP talks to the SmartGym server: the
 > wire protocol, the verified server behaviour, the modules and the tool surface. The
 > project status, the architecture invariants and the decisions live in
-> [`DESIGN.md`](../../../DESIGN.md); the backlog in [`FEATURES.md`](../../../FEATURES.md).
+> [`DESIGN.md`](../../DESIGN.md); the backlog in [`FEATURES.md`](../../FEATURES.md).
 
 ## 1. Scope
 
@@ -298,7 +298,7 @@ trust: `sudo security remove-trusted-cert -d <confdir>/mitmproxy-ca-cert.pem`.
 
 The account's own exercises resolve by name next to the bundle catalog and go into create /
 add-exercise payloads. Creating or editing the custom exercise definitions themselves is F9
-([`FEATURES.md`](../../../FEATURES.md)).
+([`FEATURES.md`](../../FEATURES.md)).
 
 | Fact | Evidence (fixture) |
 |---|---|
