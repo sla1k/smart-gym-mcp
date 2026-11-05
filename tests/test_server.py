@@ -463,16 +463,31 @@ def test_workout_history_rejects_bad_paging(arguments: dict[str, int]) -> None:
         ),
         ("smartgym_update_routine", {"routine": "ZZ", "goal": ""}, "goal must not be blank"),
         ("smartgym_apply_routine", {"routine": "ZZ", "goal": " "}, "goal must not be blank"),
+        (
+            "smartgym_add_exercise",
+            {"routine": "ZZ", "exercise": "Plank", "rest_seconds": -5},
+            "rest_seconds",
+        ),
+        ("smartgym_update_exercise", {"exercise_id": 1, "sets": []}, "sets"),
     ],
     ids=["add-negative-position", "move-negative-position", "empty-program", "update-days",
          "apply-days", "history-date", "create-no-goal", "update-blank-goal",
-         "apply-blank-goal"],
+         "apply-blank-goal", "add-negative-rest", "update-empty-sets"],
 )  # fmt: skip
 def test_write_tools_reject_bad_arguments(
     tool: str, arguments: dict[str, Any], pattern: str
 ) -> None:
     with pytest.raises(ToolError, match=pattern):
         asyncio.run(server.mcp.call_tool(tool, arguments))
+
+
+def test_exercise_tools_advertise_rest_and_set_limits() -> None:
+    tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
+    for name in ("smartgym_add_exercise", "smartgym_update_exercise"):
+        props = tools[name].input_schema["properties"]
+        rest = next(o for o in props["rest_seconds"]["anyOf"] if o["type"] == "integer")
+        sets = next(o for o in props["sets"]["anyOf"] if o["type"] == "array")
+        assert rest["minimum"] == 0 and sets["minItems"] == 1, name
 
 
 def test_days_are_weekday_numbers_in_the_tool_schemas() -> None:

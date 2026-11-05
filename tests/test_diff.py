@@ -297,12 +297,8 @@ def test_exercise_note_change_and_clear() -> None:
 
 
 def test_empty_sets_list_rejected() -> None:
-    with pytest.raises(DiffError, match="sets must not be empty"):
-        diff_routine(
-            _routine(),
-            DesiredRoutine.model_validate(_same(e13=DesiredExercise(exercise_id=13, sets=[]))),
-            CATALOG,
-        )
+    with pytest.raises(ValueError, match="at least 1 item"):
+        DesiredExercise(exercise_id=13, sets=[])
 
 
 def test_all_problems_reported_together() -> None:
