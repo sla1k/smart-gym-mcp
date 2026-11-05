@@ -9,7 +9,17 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from fakes import EDIT, TZ, UPDATE, app_form, by_id, counter_mint, exercise_catalog, kept
+from fakes import (
+    EDIT,
+    TZ,
+    UPDATE,
+    app_form,
+    by_id,
+    counter_mint,
+    exercise_catalog,
+    kept,
+    routine_exercise,
+)
 from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import ChangeSet, diff_routine
 from smartgym_mcp.inputs import (
@@ -233,17 +243,8 @@ def _ex(
     rest: int = 15,
     sets: tuple[TemplateSet, ...] = (),
 ) -> RoutineExercise:
-    return RoutineExercise(
-        identifier=ident,
-        catalog_id=cat,
-        name=name,
-        section="main",
-        index=idx,
-        rest_seconds=rest,
-        note=None,
-        removed=False,
-        template_sets=list(sets),
-        logged_sets=[],
+    return routine_exercise(
+        ident, catalog_id=cat, name=name, index=idx, rest_seconds=rest, template_sets=sets
     )
 
 
@@ -521,17 +522,14 @@ S7_EXERCISES = {
 
 def _sx(ident: int, section: Section, idx: int, note: str | None = None) -> RoutineExercise:
     cat, name = S7_EXERCISES.get(ident, (194, f"Ex {ident}"))
-    return RoutineExercise(
-        identifier=ident,
+    return routine_exercise(
+        ident,
         catalog_id=cat,
         name=name,
         section=section,
         index=idx,
         rest_seconds=30,
         note=note,
-        removed=False,
-        template_sets=[],
-        logged_sets=[],
     )
 
 
