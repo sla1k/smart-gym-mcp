@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from fakes import TZ, added, by_id, exercise_catalog, kept
+from fakes import TZ, added, by_id, exercise_catalog, kept, routine_exercise
 from smartgym_mcp.diff import (
     AddedInOrder,
     ChangeSet,
@@ -64,17 +64,14 @@ def _ex(
     sets: list[TemplateSet],
     note: str | None = None,
 ) -> RoutineExercise:
-    return RoutineExercise(
-        identifier=ident,
+    return routine_exercise(
+        ident,
         catalog_id=cat,
         name=name,
         section=section,
         index=idx,
-        rest_seconds=60,
         note=note,
-        removed=False,
         template_sets=sets,
-        logged_sets=[],
     )
 
 

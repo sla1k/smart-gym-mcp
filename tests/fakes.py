@@ -21,6 +21,7 @@ from smartgym_mcp.catalog import CatalogExercise
 from smartgym_mcp.diff import AddedInOrder, KeptInOrder
 from smartgym_mcp.inputs import DesiredExercise
 from smartgym_mcp.matching import ExerciseCatalog
+from smartgym_mcp.model import RoutineExercise, Section, TemplateSet
 from smartgym_mcp.payloads import Mint
 from smartgym_mcp.service import RoutineService
 
@@ -167,3 +168,29 @@ def kept(*exercise_ids: int) -> list[KeptInOrder]:
 def added(index: int) -> AddedInOrder:
     """The `final_order` entry for `ChangeSet.added[index]`."""
     return AddedInOrder(index=index)
+
+
+def routine_exercise(
+    identifier: int,
+    *,
+    catalog_id: int = 207,
+    name: str | None = None,
+    section: Section = "main",
+    index: int = 0,
+    rest_seconds: int = 60,
+    note: str | None = None,
+    template_sets: Iterable[TemplateSet] = (),
+) -> RoutineExercise:
+    """An active routine exercise with no logged sets."""
+    return RoutineExercise(
+        identifier=identifier,
+        catalog_id=catalog_id,
+        name=name or f"Ex {identifier}",
+        section=section,
+        index=index,
+        rest_seconds=rest_seconds,
+        note=note,
+        removed=False,
+        template_sets=list(template_sets),
+        logged_sets=[],
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from fakes import exercise_catalog
+from fakes import exercise_catalog, routine_exercise
 from smartgym_mcp import builders
 from smartgym_mcp.diff import DiffError, diff_routine
 from smartgym_mcp.inputs import SetSpec
@@ -16,18 +16,7 @@ CATALOG = exercise_catalog(
 
 
 def _ex(ident: int, section: Section, idx: int) -> RoutineExercise:
-    return RoutineExercise(
-        identifier=ident,
-        catalog_id=207,
-        name=f"Ex {ident}",
-        section=section,
-        index=idx,
-        rest_seconds=60,
-        note=None,
-        removed=False,
-        template_sets=[],
-        logged_sets=[],
-    )
+    return routine_exercise(ident, section=section, index=idx)
 
 
 ROUTINE = Routine(
