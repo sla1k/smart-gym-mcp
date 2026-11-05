@@ -18,7 +18,7 @@ from typing import Any
 from smartgym_mcp.account import AccountCache
 from smartgym_mcp.api.client import ApiError
 from smartgym_mcp.catalog import CatalogExercise
-from smartgym_mcp.diff import DesiredExercise
+from smartgym_mcp.inputs import DesiredExercise
 from smartgym_mcp.matching import ExerciseCatalog
 from smartgym_mcp.payloads import Mint
 from smartgym_mcp.service import RoutineService

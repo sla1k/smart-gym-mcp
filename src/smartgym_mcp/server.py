@@ -25,8 +25,7 @@ from . import __version__, builders, catalog, views
 from .api.auth import CredentialsError
 from .api.client import ApiError
 from .config import VERIFIED_APP_VERSION, load_config
-from .diff import DesiredExercise, DesiredRoutine
-from .inputs import Days, Goal, RoutineSpec, SetSpec
+from .inputs import Days, DesiredExercise, DesiredRoutine, Goal, RoutineSpec, SetSpec
 from .lookups import find_routine
 from .model import Section
 from .runtime import AppContext, ServerBusy, ServerClosed, Services

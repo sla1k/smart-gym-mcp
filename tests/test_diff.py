@@ -10,8 +10,6 @@ from pydantic import ValidationError
 from fakes import TZ, by_id, exercise_catalog
 from smartgym_mcp.diff import (
     ChangeSet,
-    DesiredExercise,
-    DesiredRoutine,
     DiffError,
     ExerciseView,
     RoutineView,
@@ -19,7 +17,14 @@ from smartgym_mcp.diff import (
     new_routine_view,
     view_of,
 )
-from smartgym_mcp.inputs import ExerciseSpec, RoutineSpec, SetSpec, routine_entries
+from smartgym_mcp.inputs import (
+    DesiredExercise,
+    DesiredRoutine,
+    ExerciseSpec,
+    RoutineSpec,
+    SetSpec,
+    routine_entries,
+)
 from smartgym_mcp.model import Routine, RoutineExercise, Section, TemplateSet
 from smartgym_mcp.payloads import encode_change
 

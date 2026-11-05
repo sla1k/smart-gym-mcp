@@ -1,10 +1,14 @@
-"""Tool input specs (API-client spec §6), read by the diff, payloads and service."""
+"""Tool input specs (API-client spec §6), read by the diff, payloads and service.
+
+`RoutineSpec` describes a routine to create; `DesiredRoutine` the desired state of an
+existing one (what `diff.diff_routine` compares against).
+"""
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 from .model import Section
 
@@ -78,6 +82,37 @@ class RoutineSpec(BaseModel):
     cooldown: list[ExerciseSpec] = Field(
         default_factory=list, description="Cool-down section, in order (optional)"
     )
+
+
+class DesiredExercise(BaseModel):
+    exercise_id: int | None = None
+    exercise: str | None = None
+    rest_seconds: int | None = Field(default=None, ge=0)
+    note: str | None = None
+    sets: list[SetSpec] | None = None
+
+    @model_validator(mode="after")
+    def _one_reference(self) -> DesiredExercise:
+        if (self.exercise_id is None) == (self.exercise is None):
+            raise ValueError(
+                "Each exercise needs exactly one of exercise_id (existing) or "
+                "exercise (catalog name or id, for a new one)."
+            )
+        return self
+
+
+class DesiredRoutine(BaseModel):
+    name: str | None = None
+    days: Days = None
+    goal: Goal | None = None
+    note: str | None = None
+    warmup: list[DesiredExercise] | None = None
+    main: list[DesiredExercise] | None = None
+    cooldown: list[DesiredExercise] | None = None
+
+    def section_list(self, section: Section) -> list[DesiredExercise] | None:
+        value: list[DesiredExercise] | None = getattr(self, section)
+        return value
 
 
 def routine_entries(spec: RoutineSpec) -> list[tuple[Section, ExerciseSpec]]:

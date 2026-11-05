@@ -134,7 +134,7 @@ catalog. The architecture invariants are in DESIGN.md.
 | `model.py` | `Routine` → `RoutineExercise` → sets, workouts, equipment lists, parsed from server JSON |
 | `matching.py` | `ExerciseCatalog.resolve`: deterministic exercise-name resolution |
 | `catalog.py` | the app bundle's catalog files and installed version |
-| `inputs.py` | tool input specs (`RoutineSpec`, `ExerciseSpec`, `SetSpec`, shared validators) |
+| `inputs.py` | tool input specs: `RoutineSpec` / `ExerciseSpec` (create), `DesiredRoutine` / `DesiredExercise` (edit), `SetSpec`, shared validators |
 | `config.py` | env overrides with defaults; the verified app version |
 | `api/client.py` | HTTP: base URL, multipart, common params, auth headers, error mapping, read retries; never logs header values |
 | `api/auth.py` | the credentials file (§4 S1) |
