@@ -23,7 +23,6 @@ from .api import reads
 from .api.client import ApiCalls, ApiError, WriteOutcomeUnknown
 from .diff import (
     ChangeSet,
-    DesiredRoutine,
     DiffError,
     RoutineView,
     diff_routine,
@@ -31,7 +30,7 @@ from .diff import (
     resolution_warnings,
     view_of,
 )
-from .inputs import DEFAULT_SET, RoutineSpec, routine_entries
+from .inputs import DEFAULT_SET, DesiredRoutine, RoutineSpec, routine_entries
 from .lookups import RoutineNotFound, find_routine, routine_of_exercise
 from .matching import ExerciseCatalog, ExerciseResolution, UnresolvedExercise
 from .model import SECTIONS, ApiPayloadError, Routine, parse_routine

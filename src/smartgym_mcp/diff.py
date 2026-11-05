@@ -20,46 +20,22 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
-from .inputs import DEFAULT_SET, Days, Goal, RoutineSpec, SetSpec, routine_entries
+from .inputs import (
+    DEFAULT_SET,
+    DesiredExercise,
+    DesiredRoutine,
+    RoutineSpec,
+    SetSpec,
+    routine_entries,
+)
 from .matching import ExerciseCatalog, ExerciseResolution, Resolved, UnresolvedExercise
 from .model import SECTIONS, Routine, RoutineExercise, Section, TemplateSet, days_text
 
 
 class DiffError(ValueError):
     """The desired routine was rejected — nothing should be sent."""
-
-
-class DesiredExercise(BaseModel):
-    exercise_id: int | None = None
-    exercise: str | None = None
-    rest_seconds: int | None = Field(default=None, ge=0)
-    note: str | None = None
-    sets: list[SetSpec] | None = None
-
-    @model_validator(mode="after")
-    def _one_reference(self) -> DesiredExercise:
-        if (self.exercise_id is None) == (self.exercise is None):
-            raise ValueError(
-                "Each exercise needs exactly one of exercise_id (existing) or "
-                "exercise (catalog name or id, for a new one)."
-            )
-        return self
-
-
-class DesiredRoutine(BaseModel):
-    name: str | None = None
-    days: Days = None
-    goal: Goal | None = None
-    note: str | None = None
-    warmup: list[DesiredExercise] | None = None
-    main: list[DesiredExercise] | None = None
-    cooldown: list[DesiredExercise] | None = None
-
-    def section_list(self, section: Section) -> list[DesiredExercise] | None:
-        value: list[DesiredExercise] | None = getattr(self, section)
-        return value
 
 
 class FieldChange(BaseModel):
