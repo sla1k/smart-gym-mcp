@@ -53,7 +53,8 @@ def _write(title: str, *, idempotent: bool) -> ToolAnnotations:
     """Every write may overwrite or remove the user's data, so all are destructive.
 
     idempotent=True: repeating the call with the same arguments leaves the same state (set
-    a value, archive an archived routine), so a client may retry it. False: a repeat may
+    a value, move to a place, remove, reorder, archive an archived routine), so a client
+    may retry it. False: a repeat may
     change the account again (add_exercise adds a second copy, create_program a second
     program), or is not guaranteed not to — the conservative default.
     """
@@ -355,7 +356,7 @@ async def smartgym_add_exercise(
     )
 
 
-@mcp.tool(annotations=_write("Move exercise", idempotent=False))
+@mcp.tool(annotations=_write("Move exercise", idempotent=True))
 async def smartgym_move_exercise(
     ctx: Context[AppContext],
     exercise_id: int,
@@ -379,7 +380,7 @@ async def smartgym_move_exercise(
     )
 
 
-@mcp.tool(annotations=_write("Remove exercise", idempotent=False))
+@mcp.tool(annotations=_write("Remove exercise", idempotent=True))
 async def smartgym_remove_exercise(
     ctx: Context[AppContext], exercise_id: int, dry_run: bool = True
 ) -> EditResult:
@@ -392,7 +393,7 @@ async def smartgym_remove_exercise(
     )
 
 
-@mcp.tool(annotations=_write("Reorder routine", idempotent=False))
+@mcp.tool(annotations=_write("Reorder routine", idempotent=True))
 async def smartgym_reorder_routine(
     ctx: Context[AppContext],
     routine: str,
@@ -511,7 +512,10 @@ async def smartgym_unarchive_routine(
 
 def _read_catalog(name: catalog.CatalogName) -> str:
     """MCP SDK 2 hides the message of any non-ResourceError, so a missing or unreadable
-    bundle file surfaces as one (its message names the file and where it was looked for)."""
+    bundle file surfaces as one (its message names the file and where it was looked for).
+
+    The SDK gives static resources no Context, so the config is loaded here rather than
+    taken from the lifespan's AppContext."""
     try:
         return catalog.read_catalog(load_config(), name)
     except (OSError, ValueError) as exc:
