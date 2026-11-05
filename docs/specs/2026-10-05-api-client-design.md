@@ -269,7 +269,8 @@ trust: `sudo security remove-trusted-cert -d <confdir>/mitmproxy-ca-cert.pem`.
 ### 10.3 Change calculation and wire
 
 - `ChangeSet` records a section move as a per-exercise `FieldChange("section", old, new)`.
-  `final_order` is the global order warm-up → main → cool-down. It is sent as
+  `final_order` is the global order warm-up → main → cool-down (`KeptInOrder` by exercise id,
+  `AddedInOrder` by index into `added`). It is sent as
   `exercisesOrder` (kept exercises, final global index) inside the same `routine/update/`,
   with new exercises carrying their `idx` in their JSON, whenever the kept exercises' relative
   order changes, an exercise is added anywhere but after the last kept one, an exercise is

@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .catalog import CatalogExercise
-from .diff import ChangeSet, ExerciseUpdate
+from .diff import ChangeSet, ExerciseUpdate, KeptInOrder
 from .inputs import DEFAULT_SET, RoutineSpec, SetSpec, routine_entries
 from .model import LIST_GROUP_BY_SECTION, Routine, Section, TemplateSet, days_text
 
@@ -229,9 +229,9 @@ def _structure(
         )
     if change.final_order is not None:
         form["exercisesOrder"] = ",".join(
-            f"{key[3:]}:{pos}"
-            for pos, key in enumerate(change.final_order)
-            if key.startswith("id:")
+            f"{entry.exercise_id}:{pos}"
+            for pos, entry in enumerate(change.final_order)
+            if isinstance(entry, KeptInOrder)
         )
     meaningful = (
         change.routine_changes
