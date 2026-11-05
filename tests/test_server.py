@@ -132,7 +132,8 @@ def test_every_write_tool_defaults_to_dry_run() -> None:
 
 
 IDEMPOTENT_WRITES = {
-    "smartgym_update_routine", "smartgym_update_exercise",
+    "smartgym_update_routine", "smartgym_update_exercise", "smartgym_move_exercise",
+    "smartgym_remove_exercise", "smartgym_reorder_routine",
     "smartgym_archive_routines", "smartgym_unarchive_routine",
 }  # fmt: skip
 READ_ONLY = {
