@@ -55,7 +55,7 @@ Modules and their layering: spec §5.
 5. Credentials only via `api/auth.py`; never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`; how: spec §9).
-7. Tool calls run one at a time (`AppContext.run`: async tools take one `anyio.Lock`, then run
+7. Tool calls run one at a time (`runtime.AppContext.run`: async tools take one `anyio.Lock`, then run
    their blocking work on a worker thread): the account cache (`account.AccountCache`,
    lifetime: spec §5), the API client's lifetime and each write's re-read → rewrite assume
    calls don't overlap. A call that can't start in time, is cancelled while waiting, or

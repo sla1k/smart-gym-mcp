@@ -115,21 +115,22 @@ local placeholder ids; the server doesn't need them.
 
 ## 5. Modules
 
-Imports point one way: `server` on top; `service`, `builders` and `views` over `diff`,
-`payloads`, `lookups` and `account`; those over `model`, `matching`, `catalog` and `inputs`;
-`api/` and `config` at the bottom. `api/` imports neither the model nor the catalog. The
-architecture invariants are in DESIGN.md.
+Imports point one way: `server` on top, then `runtime`; `service`, `builders` and `views`
+over `diff`, `payloads`, `lookups` and `account`; those over `model`, `matching`, `catalog`
+and `inputs`; `api/` and `config` at the bottom. `api/` imports neither the model nor the
+catalog. The architecture invariants are in DESIGN.md.
 
 | Module | Holds |
 |---|---|
-| `server.py` | MCPServer app: thin tools and catalog resources; `AppContext` builds the services on first use and runs calls one at a time |
+| `server.py` | MCPServer app: thin tools, catalog resources and the lifespan |
+| `runtime.py` | `Services` (client, account cache, routine service, bundle equipment) and `AppContext`, which builds them on first use and runs calls one at a time |
 | `builders.py` | single-field tool inputs → a `DesiredRoutine` (the same diff path as `apply_routine`) |
 | `service.py` | `RoutineService`: every write (edit, create, archive) — plan, dry run, snapshot, send, re-read, verify |
 | `views.py` | read-tool outputs over the parsed account (pure) |
 | `diff.py` | (current `Routine`, `DesiredRoutine`) → `ChangeSet` — pure, no I/O, no wire format |
 | `payloads.py` | `RoutineSpec` → `routine/add/` JSON; `ChangeSet` → the edit requests; archive forms |
 | `lookups.py` | routine by ref / routine of an exercise id over the parsed account (pure) |
-| `account.py` | `AccountCache`: parsed `history/all` + custom exercises, kept for one tool call — emptied when the call ends (`AppContext._call`) and after every send, so a write's verifying re-read sees the server's answer; `routine/single` is never cached |
+| `account.py` | `AccountCache`: parsed `history/all` + custom exercises, kept for one tool call — emptied when the call ends (`runtime.AppContext._call`) and after every send, so a write's verifying re-read sees the server's answer; `routine/single` is never cached |
 | `model.py` | `Routine` → `RoutineExercise` → sets, workouts, equipment lists, parsed from server JSON |
 | `matching.py` | `ExerciseCatalog.resolve`: deterministic exercise-name resolution |
 | `catalog.py` | the app bundle's catalog files and installed version |
