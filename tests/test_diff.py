@@ -9,9 +9,11 @@ from pydantic import ValidationError
 
 from fakes import TZ, added, by_id, exercise_catalog, kept
 from smartgym_mcp.diff import (
+    AddedInOrder,
     ChangeSet,
     DiffError,
     ExerciseView,
+    KeptInOrder,
     RoutineView,
     diff_routine,
     new_routine_view,
@@ -452,3 +454,21 @@ def test_new_routine_view_is_what_the_create_payload_sends() -> None:
             ),
         ],
     )
+
+
+@pytest.mark.parametrize(
+    "order",
+    [[*kept(10, 10)], [*kept(10), added(1)], [*kept(10), added(0), added(0)]],
+    ids=["kept-twice", "index-past-added", "added-twice"],
+)
+def test_change_set_rejects_an_order_naming_an_exercise_wrongly(
+    order: list[KeptInOrder | AddedInOrder],
+) -> None:
+    change = diff_routine(
+        _routine(),
+        DesiredRoutine(cooldown=[*by_id(14), DesiredExercise(exercise="plank")]),
+        CATALOG,
+    )
+    fields = {name: getattr(change, name) for name in ChangeSet.model_fields}
+    with pytest.raises(ValidationError, match="final_order must list each kept"):
+        ChangeSet(**{**fields, "final_order": order})
