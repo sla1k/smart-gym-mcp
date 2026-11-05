@@ -185,7 +185,7 @@ def routine_exercise(
     return RoutineExercise(
         identifier=identifier,
         catalog_id=catalog_id,
-        name=name or f"Ex {identifier}",
+        name=f"Ex {identifier}" if name is None else name,
         section=section,
         index=index,
         rest_seconds=rest_seconds,

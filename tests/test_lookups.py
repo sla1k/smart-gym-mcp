@@ -33,6 +33,11 @@ def test_routine_of_exercise() -> None:
         routine_of_exercise(DATA, 40000013)  # removed exercise
 
 
-def test_a_ref_of_non_ascii_digits_is_a_name_not_an_id() -> None:
+def test_a_ref_of_digits_int_rejects_is_a_name_not_an_id() -> None:
     with pytest.raises(RoutineNotFound, match="No routine matching '²'"):
         find_routine(DATA, "²")
+
+
+def test_a_ref_of_other_unicode_decimal_digits_is_an_id() -> None:
+    fullwidth = "3000001".translate({ord(d): ord(d) + 0xFEE0 for d in "0123456789"})
+    assert find_routine(DATA, fullwidth).identifier == 3000001

@@ -18,7 +18,7 @@ def find_routine(account: AccountData, ref: str | int) -> Routine:
     (case-insensitive; archived routines included, removed ones not)."""
     live = [r for r in account.routines if not r.removed]
     s = str(ref).strip()
-    if s.isascii() and s.isdigit():  # "²".isdigit() is True, but int() rejects it
+    if s.isdecimal():  # not isdigit(): "²".isdigit() is True, but int() rejects it
         for r in live:
             if r.identifier == int(s):
                 return r
