@@ -31,3 +31,8 @@ def test_routine_of_exercise() -> None:
     assert routine_of_exercise(DATA, 40000012).identifier == 3000001
     with pytest.raises(RoutineNotFound):
         routine_of_exercise(DATA, 40000013)  # removed exercise
+
+
+def test_a_ref_of_non_ascii_digits_is_a_name_not_an_id() -> None:
+    with pytest.raises(RoutineNotFound, match="No routine matching '²'"):
+        find_routine(DATA, "²")
