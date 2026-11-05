@@ -62,8 +62,7 @@ TemplateSets = Annotated[
     list[SetSpec],
     Field(
         min_length=1,
-        description="Template sets [{reps, weight_kg}], in order; omit to keep (edit) or to "
-        "get one default set (new exercise, flagged in the dry run)",
+        description="Template sets [{reps, weight_kg}], in order",
     ),
 ]
 
@@ -74,7 +73,9 @@ class ExerciseSpec(BaseModel):
     )
     rest_seconds: RestSeconds | None = None
     note: str | None = None
-    sets: TemplateSets | None = None
+    sets: TemplateSets | None = Field(
+        default=None, description="Omitted = one default set (flagged in the dry run)"
+    )
 
 
 class RoutineSpec(BaseModel):
@@ -96,7 +97,10 @@ class DesiredExercise(BaseModel):
     exercise: str | None = None
     rest_seconds: RestSeconds | None = None
     note: str | None = None
-    sets: TemplateSets | None = None
+    sets: TemplateSets | None = Field(
+        default=None,
+        description="Omitted = kept (existing exercise) or one default set (new exercise)",
+    )
 
     @model_validator(mode="after")
     def _one_reference(self) -> DesiredExercise:
