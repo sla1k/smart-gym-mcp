@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .inputs import (
     DEFAULT_SET,
@@ -108,10 +108,10 @@ class KeptInOrder(BaseModel):
 
 
 class AddedInOrder(BaseModel):
-    """An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[added]`."""
+    """An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`."""
 
     kind: Literal["added"] = "added"
-    added: int
+    index: int
 
 
 OrderEntry = Annotated[KeptInOrder | AddedInOrder, Field(discriminator="kind")]
@@ -125,6 +125,19 @@ class ChangeSet(BaseModel):
     final_order: list[OrderEntry] | None
     warnings: list[str]
     expected: RoutineView
+
+    @model_validator(mode="after")
+    def _order_names_each_exercise_once(self) -> ChangeSet:
+        if self.final_order is None:
+            return self
+        kept = [o.exercise_id for o in self.final_order if isinstance(o, KeptInOrder)]
+        new = sorted(o.index for o in self.final_order if isinstance(o, AddedInOrder))
+        if len(set(kept)) != len(kept) or new != list(range(len(self.added))):
+            raise ValueError(
+                "final_order must list each kept exercise once and each added one by its "
+                "index in `added`."
+            )
+        return self
 
 
 @dataclass(frozen=True)
@@ -373,16 +386,16 @@ def _final_order(
     """`order` when the server must renumber `idx`, None when every kept exercise keeps it.
 
     Renumber when the kept exercises' relative order changes, or when any of them changes
-    section (`sections` maps a kept exercise_id to its section after the change) while their current idx,
-    taken in final order, are not strictly increasing — a move on a routine whose idx
-    disagree with its sections would otherwise re-read in a different order. An append
+    section (`sections` maps each kept exercise_id to its section after the change) while
+    their current idx, taken in final order, are not strictly increasing — a move on a
+    routine whose idx disagree with its sections would otherwise re-read in a different
+    order. An append
     counts as "no renumbering" only when the kept idx are exactly 0..n-1 and every add
     lands after all kept; otherwise the new exercise's idx would collide with an existing one.
     """
     by_id = {e.identifier: e for e in active}
     kept = [o.exercise_id for o in order if isinstance(o, KeptInOrder)]
-    kept_set = set(kept)
-    if kept != [i for i in by_id if i in kept_set]:
+    if kept != [i for i in by_id if i in sections]:
         return order
     idxs = [by_id[i].index for i in kept]
     moved = any(sections[i] != by_id[i].section for i in kept)
@@ -440,7 +453,7 @@ def diff_routine(
                 sets=sets,
                 exercise=slot.resolution.exercise,
             )
-            order.append(AddedInOrder(added=len(added)))
+            order.append(AddedInOrder(index=len(added)))
             added.append(new)
             expected.append(
                 ExerciseView(

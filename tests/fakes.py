@@ -166,4 +166,4 @@ def kept(*exercise_ids: int) -> list[KeptInOrder]:
 
 def added(index: int) -> AddedInOrder:
     """The `final_order` entry for `ChangeSet.added[index]`."""
-    return AddedInOrder(added=index)
+    return AddedInOrder(index=index)
