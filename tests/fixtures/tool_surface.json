@@ -1,0 +1,5789 @@
+[
+  {
+    "name": "smartgym_health",
+    "description": "Check the credentials file, the SmartGym server, and the installed app version.\n\nok=true means the server answered with your account data. `problem` explains\nwhat to fix otherwise (e.g. create the credentials file). `data_as_of` is the server's\nlast-modified time of the account data, in local time with its UTC offset — older than\nthe last workout on the iPhone means the app hasn't synced yet. `warning` appears when the installed SmartGym version\ndiffers from the one the MCP was verified against.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "title": "smartgym_healthArguments"
+    },
+    "outputSchema": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "routines": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Routines"
+        },
+        "data_as_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Data As Of"
+        },
+        "app_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "App Version"
+        },
+        "verified_app_version": {
+          "title": "Verified App Version",
+          "type": "string"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Warning"
+        },
+        "problem": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Problem"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "routines",
+        "data_as_of",
+        "app_version",
+        "verified_app_version",
+        "warning",
+        "problem",
+        "version"
+      ],
+      "title": "HealthStatus",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Health check",
+      "readOnlyHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_list_routines",
+    "description": "List routines: id, name, days, and exercise counts per section (warm-up/main/cool-down).\n\nArchived routines are listed only with include_archived=true. Use the id (or the\nname) in the other tools.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_archived": {
+          "default": false,
+          "title": "Include Archived",
+          "type": "boolean"
+        }
+      },
+      "title": "smartgym_list_routinesArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "RoutineSummary": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "archived": {
+              "title": "Archived",
+              "type": "boolean"
+            },
+            "warmup": {
+              "title": "Warmup",
+              "type": "integer"
+            },
+            "main": {
+              "title": "Main",
+              "type": "integer"
+            },
+            "cooldown": {
+              "title": "Cooldown",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "days",
+            "archived",
+            "warmup",
+            "main",
+            "cooldown"
+          ],
+          "title": "RoutineSummary",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "routines": {
+          "items": {
+            "$ref": "#/$defs/RoutineSummary"
+          },
+          "title": "Routines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "routines"
+      ],
+      "title": "RoutineListResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "List routines",
+      "readOnlyHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_get_routine",
+    "description": "Get a routine split into warmup, main and cooldown sections.\n\nEach exercise shows its exercise_id (what the edit tools take), rest, note, planned\ntemplate sets, and up to `history_depth` recent sessions (reps + weight_kg) with the\nlatest session's top set and total volume.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "history_depth": {
+          "default": 5,
+          "minimum": 0,
+          "title": "History Depth",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "routine"
+      ],
+      "title": "smartgym_get_routineArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "ExerciseEntry": {
+          "properties": {
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "template_sets": {
+              "items": {
+                "$ref": "#/$defs/SetEntry"
+              },
+              "title": "Template Sets",
+              "type": "array"
+            },
+            "sessions": {
+              "items": {
+                "$ref": "#/$defs/SessionEntry"
+              },
+              "title": "Sessions",
+              "type": "array"
+            },
+            "top_set": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SetEntry"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "total_volume": {
+              "title": "Total Volume",
+              "type": "number"
+            }
+          },
+          "required": [
+            "exercise_id",
+            "name",
+            "rest_seconds",
+            "note",
+            "template_sets",
+            "sessions",
+            "top_set",
+            "total_volume"
+          ],
+          "title": "ExerciseEntry",
+          "type": "object"
+        },
+        "SessionEntry": {
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetEntry"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "date",
+            "sets"
+          ],
+          "title": "SessionEntry",
+          "type": "object"
+        },
+        "SetEntry": {
+          "properties": {
+            "set_no": {
+              "title": "Set No",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "set_no",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "SetEntry",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "identifier": {
+          "title": "Identifier",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Days"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Goal"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "warmup": {
+          "items": {
+            "$ref": "#/$defs/ExerciseEntry"
+          },
+          "title": "Warmup",
+          "type": "array"
+        },
+        "main": {
+          "items": {
+            "$ref": "#/$defs/ExerciseEntry"
+          },
+          "title": "Main",
+          "type": "array"
+        },
+        "cooldown": {
+          "items": {
+            "$ref": "#/$defs/ExerciseEntry"
+          },
+          "title": "Cooldown",
+          "type": "array"
+        }
+      },
+      "required": [
+        "identifier",
+        "name",
+        "days",
+        "goal",
+        "note",
+        "archived",
+        "warmup",
+        "main",
+        "cooldown"
+      ],
+      "title": "RoutineDetail",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Get routine detail",
+      "readOnlyHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_get_workout_history",
+    "description": "List past workouts (newest first) with duration, calories and heart rate.\n\nDefaults to the last 7 days (or 14/30 via `days`); explicit `date_from` / `date_to`\n(inclusive, local time) override it. Optional `routine` filter (name or id).\nPaginated: total, has_more, next_offset.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "default": 7,
+          "enum": [
+            7,
+            14,
+            30
+          ],
+          "title": "Days",
+          "type": "integer"
+        },
+        "date_from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date From"
+        },
+        "date_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date To"
+        },
+        "routine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Routine"
+        },
+        "limit": {
+          "default": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "title": "smartgym_get_workout_historyArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "WorkoutSession": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "routine": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Routine"
+            },
+            "duration_min": {
+              "title": "Duration Min",
+              "type": "integer"
+            },
+            "calories": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Calories"
+            },
+            "avg_hr": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avg Hr"
+            },
+            "max_hr": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Hr"
+            }
+          },
+          "required": [
+            "identifier",
+            "date",
+            "routine",
+            "duration_min",
+            "calories",
+            "avg_hr",
+            "max_hr"
+          ],
+          "title": "WorkoutSession",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "offset": {
+          "title": "Offset",
+          "type": "integer"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/WorkoutSession"
+          },
+          "title": "Sessions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "total",
+        "count",
+        "offset",
+        "has_more",
+        "next_offset",
+        "sessions"
+      ],
+      "title": "WorkoutHistoryResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Get workout history",
+      "readOnlyHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_get_equipment",
+    "description": "List equipment (owned_only=true: only what you selected) plus dumbbell/kettlebell weights.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "owned_only": {
+          "default": true,
+          "title": "Owned Only",
+          "type": "boolean"
+        }
+      },
+      "title": "smartgym_get_equipmentArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "EquipmentItem": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "owned": {
+              "title": "Owned",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "owned"
+          ],
+          "title": "EquipmentItem",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "equipment": {
+          "items": {
+            "$ref": "#/$defs/EquipmentItem"
+          },
+          "title": "Equipment",
+          "type": "array"
+        },
+        "dumbbell_weights": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dumbbell Weights"
+        },
+        "kettlebell_weights": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kettlebell Weights"
+        }
+      },
+      "required": [
+        "count",
+        "equipment",
+        "dumbbell_weights",
+        "kettlebell_weights"
+      ],
+      "title": "EquipmentListResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Get equipment",
+      "readOnlyHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_create_program",
+    "description": "Create one or more routines (a program) on the SmartGym server — all devices get them.\n\nEach routine: name (must not match an active routine), goal (required free text, e.g.\n\"Strength\" — the app can't save a routine without one), optional days/note, and three\nordered sections — `warmup` (optional), `exercises` (= main, required), `cooldown`\n(optional). Each exercise: catalog name or id, optional rest_seconds, note and template\nsets. Validation is all-or-nothing; dry_run=false creates the routines and verifies them\non the server.",
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "ExerciseSpec": {
+          "properties": {
+            "exercise": {
+              "description": "Catalog exercise name (fuzzy-matched) or a numeric catalog id",
+              "title": "Exercise",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "anyOf": [
+                {
+                  "description": "Rest between sets, in seconds",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rest Seconds"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "description": "Template sets [{reps, weight_kg}], in order",
+                  "items": {
+                    "$ref": "#/$defs/SetSpec"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Omitted = one default set (flagged in the dry run)",
+              "title": "Sets"
+            }
+          },
+          "required": [
+            "exercise"
+          ],
+          "title": "ExerciseSpec",
+          "type": "object"
+        },
+        "RoutineSpec": {
+          "properties": {
+            "name": {
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Weekdays, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. [2, 4, 6]); [] clears",
+              "title": "Days"
+            },
+            "goal": {
+              "description": "Free text, e.g. \"Strength\"; must not be blank",
+              "title": "Goal",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "warmup": {
+              "description": "Warm-up section, in order (optional)",
+              "items": {
+                "$ref": "#/$defs/ExerciseSpec"
+              },
+              "title": "Warmup",
+              "type": "array"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseSpec"
+              },
+              "minItems": 1,
+              "title": "Exercises",
+              "type": "array"
+            },
+            "cooldown": {
+              "description": "Cool-down section, in order (optional)",
+              "items": {
+                "$ref": "#/$defs/ExerciseSpec"
+              },
+              "title": "Cooldown",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "goal",
+            "exercises"
+          ],
+          "title": "RoutineSpec",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "routines": {
+          "items": {
+            "$ref": "#/$defs/RoutineSpec"
+          },
+          "minItems": 1,
+          "title": "Routines",
+          "type": "array"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routines"
+      ],
+      "title": "smartgym_create_programArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "CreatePlan": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "resolutions": {
+              "items": {
+                "$ref": "#/$defs/ExerciseResolution"
+              },
+              "title": "Resolutions",
+              "type": "array"
+            },
+            "exercise_count": {
+              "title": "Exercise Count",
+              "type": "integer"
+            },
+            "set_count": {
+              "title": "Set Count",
+              "type": "integer"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "resolutions",
+            "exercise_count",
+            "set_count",
+            "warnings"
+          ],
+          "title": "CreatePlan",
+          "type": "object"
+        },
+        "ExerciseResolution": {
+          "properties": {
+            "input": {
+              "title": "Input",
+              "type": "string"
+            },
+            "resolved_name": {
+              "title": "Resolved Name",
+              "type": "string"
+            },
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "confidence": {
+              "title": "Confidence",
+              "type": "number"
+            },
+            "fuzzy": {
+              "title": "Fuzzy",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "input",
+            "resolved_name",
+            "catalog_id",
+            "confidence",
+            "fuzzy"
+          ],
+          "title": "ExerciseResolution",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "plan": {
+          "items": {
+            "$ref": "#/$defs/CreatePlan"
+          },
+          "title": "Plan",
+          "type": "array"
+        },
+        "created": {
+          "items": {
+            "$ref": "#/$defs/RoutineId"
+          },
+          "title": "Created",
+          "type": "array"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "plan",
+        "created",
+        "notice"
+      ],
+      "title": "CreateResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Create program",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_update_routine",
+    "description": "Edit a routine's name, days, goal or note (only the fields you pass; \"\" or, for\ndays, [] clears).\n\nThe goal can be changed but not cleared (the app can't save a routine without one).\nA new name must not match another active routine. dry_run=false snapshots the\nroutine, sends the edit, and verifies it on the server.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weekdays, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. [2, 4, 6]); [] clears",
+          "title": "Days"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "description": "Free text, e.g. \"Strength\"; must not be blank",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Goal"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routine"
+      ],
+      "title": "smartgym_update_routineArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Update routine",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_add_exercise",
+    "description": "Add a catalog exercise (built-in or custom) to a routine section (warmup / main /\ncooldown).\n\n`position` counts within the section (0 = first; omitted = last). Optional rest,\nnote and template sets.",
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "exercise": {
+          "title": "Exercise",
+          "type": "string"
+        },
+        "section": {
+          "default": "main",
+          "enum": [
+            "warmup",
+            "main",
+            "cooldown"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "rest_seconds": {
+          "anyOf": [
+            {
+              "description": "Rest between sets, in seconds",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rest Seconds"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "sets": {
+          "anyOf": [
+            {
+              "description": "Template sets [{reps, weight_kg}], in order",
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sets"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routine",
+        "exercise"
+      ],
+      "title": "smartgym_add_exerciseArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Add exercise",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_move_exercise",
+    "description": "Move an exercise to another section (or to another position in its section).\n\n`position` counts within the target section (0 = first; omitted = last).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "exercise_id": {
+          "title": "Exercise Id",
+          "type": "integer"
+        },
+        "section": {
+          "enum": [
+            "warmup",
+            "main",
+            "cooldown"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "exercise_id",
+        "section"
+      ],
+      "title": "smartgym_move_exerciseArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Move exercise",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_remove_exercise",
+    "description": "Remove an exercise from its routine (logged history is kept).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "exercise_id": {
+          "title": "Exercise Id",
+          "type": "integer"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "exercise_id"
+      ],
+      "title": "smartgym_remove_exerciseArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Remove exercise",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_reorder_routine",
+    "description": "Reorder exercises inside sections.\n\nEach list you pass must hold exactly that section's current exercise_ids, in the new\norder; omitted sections stay as they are. To change an exercise's section use\nsmartgym_move_exercise.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Warmup"
+        },
+        "main": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main"
+        },
+        "cooldown": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cooldown"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routine"
+      ],
+      "title": "smartgym_reorder_routineArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Reorder routine",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_update_exercise",
+    "description": "Change an exercise's rest time, note (\"\" clears) or template sets.\n\n`sets` is the FULL planned list [{reps, weight_kg}] — sets beyond it are removed,\nextra ones added.",
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "exercise_id": {
+          "title": "Exercise Id",
+          "type": "integer"
+        },
+        "rest_seconds": {
+          "anyOf": [
+            {
+              "description": "Rest between sets, in seconds",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rest Seconds"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "sets": {
+          "anyOf": [
+            {
+              "description": "Template sets [{reps, weight_kg}], in order",
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sets"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "exercise_id"
+      ],
+      "title": "smartgym_update_exerciseArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Update exercise",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_apply_routine",
+    "description": "Rewrite a routine in one go (e.g. \"week 2 of FB-A\").\n\nEach section you pass is the complete ordered list for that section: existing\nexercises by exercise_id (optionally with new rest/note/sets), new ones by catalog\nname (built-in or custom). An existing exercise listed under another section moves\nthere; one you leave out of a passed section is removed. Omitted sections stay as they\nare.",
+    "inputSchema": {
+      "type": "object",
+      "$defs": {
+        "DesiredExercise": {
+          "properties": {
+            "exercise_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Exercise Id"
+            },
+            "exercise": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Exercise"
+            },
+            "rest_seconds": {
+              "anyOf": [
+                {
+                  "description": "Rest between sets, in seconds",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rest Seconds"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "description": "Template sets [{reps, weight_kg}], in order",
+                  "items": {
+                    "$ref": "#/$defs/SetSpec"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Omitted = kept (existing exercise) or one default set (new exercise)",
+              "title": "Sets"
+            }
+          },
+          "title": "DesiredExercise",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weekdays, 1 = Sunday, 2 = Monday … 7 = Saturday (e.g. [2, 4, 6]); [] clears",
+          "title": "Days"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "description": "Free text, e.g. \"Strength\"; must not be blank",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Goal"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DesiredExercise"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Warmup"
+        },
+        "main": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DesiredExercise"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main"
+        },
+        "cooldown": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DesiredExercise"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cooldown"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routine"
+      ],
+      "title": "smartgym_apply_routineArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "AddedExercise": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/SetSpec"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "name",
+            "section",
+            "position",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "AddedExercise",
+          "type": "object"
+        },
+        "AddedInOrder": {
+          "description": "An added exercise's place in `ChangeSet.final_order`: `ChangeSet.added[index]`.",
+          "properties": {
+            "kind": {
+              "const": "added",
+              "default": "added",
+              "title": "Kind",
+              "type": "string"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "title": "AddedInOrder",
+          "type": "object"
+        },
+        "AddedSet": {
+          "properties": {
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "AddedSet",
+          "type": "object"
+        },
+        "ChangeSet": {
+          "properties": {
+            "routine_changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Routine Changes",
+              "type": "array"
+            },
+            "added": {
+              "items": {
+                "$ref": "#/$defs/AddedExercise"
+              },
+              "title": "Added",
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/RemovedExercise"
+              },
+              "title": "Removed",
+              "type": "array"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/ExerciseUpdate"
+              },
+              "title": "Updated",
+              "type": "array"
+            },
+            "final_order": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "added": "#/$defs/AddedInOrder",
+                        "kept": "#/$defs/KeptInOrder"
+                      },
+                      "propertyName": "kind"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/KeptInOrder"
+                      },
+                      {
+                        "$ref": "#/$defs/AddedInOrder"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Final Order"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            },
+            "expected": {
+              "$ref": "#/$defs/RoutineView"
+            }
+          },
+          "required": [
+            "routine_changes",
+            "added",
+            "removed",
+            "updated",
+            "final_order",
+            "warnings",
+            "expected"
+          ],
+          "title": "ChangeSet",
+          "type": "object"
+        },
+        "ExerciseUpdate": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "new_section": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "warmup",
+                    "main",
+                    "cooldown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Section"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/$defs/FieldChange"
+              },
+              "title": "Changes",
+              "type": "array"
+            },
+            "added_sets": {
+              "items": {
+                "$ref": "#/$defs/AddedSet"
+              },
+              "title": "Added Sets",
+              "type": "array"
+            },
+            "updated_sets": {
+              "items": {
+                "$ref": "#/$defs/UpdatedSet"
+              },
+              "title": "Updated Sets",
+              "type": "array"
+            },
+            "removed_set_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Removed Set Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "identifier",
+            "name",
+            "new_section",
+            "changes",
+            "added_sets",
+            "updated_sets",
+            "removed_set_ids"
+          ],
+          "title": "ExerciseUpdate",
+          "type": "object"
+        },
+        "ExerciseView": {
+          "properties": {
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "integer"
+            },
+            "section": {
+              "enum": [
+                "warmup",
+                "main",
+                "cooldown"
+              ],
+              "title": "Section",
+              "type": "string"
+            },
+            "rest_seconds": {
+              "title": "Rest Seconds",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sets": {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "title": "Sets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "catalog_id",
+            "section",
+            "rest_seconds",
+            "note",
+            "sets"
+          ],
+          "title": "ExerciseView",
+          "type": "object"
+        },
+        "FieldChange": {
+          "properties": {
+            "field": {
+              "title": "Field",
+              "type": "string"
+            },
+            "old": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old"
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New"
+            }
+          },
+          "required": [
+            "field",
+            "old",
+            "new"
+          ],
+          "title": "FieldChange",
+          "type": "object"
+        },
+        "KeptInOrder": {
+          "description": "A kept exercise's place in `ChangeSet.final_order`.",
+          "properties": {
+            "kind": {
+              "const": "kept",
+              "default": "kept",
+              "title": "Kind",
+              "type": "string"
+            },
+            "exercise_id": {
+              "title": "Exercise Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "exercise_id"
+          ],
+          "title": "KeptInOrder",
+          "type": "object"
+        },
+        "RemovedExercise": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RemovedExercise",
+          "type": "object"
+        },
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        },
+        "RoutineView": {
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "days": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "exercises": {
+              "items": {
+                "$ref": "#/$defs/ExerciseView"
+              },
+              "title": "Exercises",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "days",
+            "goal",
+            "note",
+            "exercises"
+          ],
+          "title": "RoutineView",
+          "type": "object"
+        },
+        "SetSpec": {
+          "properties": {
+            "reps": {
+              "description": "Target reps for this set; for a timed exercise (e.g. Plank, Dead Hang) the duration in seconds",
+              "exclusiveMinimum": 0,
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "default": 0.0,
+              "description": "Target weight; 0 = bodyweight",
+              "minimum": 0,
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "reps"
+          ],
+          "title": "SetSpec",
+          "type": "object"
+        },
+        "UpdatedSet": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "index": {
+              "title": "Index",
+              "type": "integer"
+            },
+            "reps": {
+              "title": "Reps",
+              "type": "number"
+            },
+            "weight_kg": {
+              "title": "Weight Kg",
+              "type": "number"
+            }
+          },
+          "required": [
+            "identifier",
+            "index",
+            "reps",
+            "weight_kg"
+          ],
+          "title": "UpdatedSet",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "routine": {
+          "$ref": "#/$defs/RoutineId"
+        },
+        "changes": {
+          "$ref": "#/$defs/ChangeSet"
+        },
+        "requests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Snapshot"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "routine",
+        "changes",
+        "requests",
+        "snapshot",
+        "notice"
+      ],
+      "title": "EditResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Apply routine",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_archive_routines",
+    "description": "Archive routines (names or ids) on every device.\n\nReversible with smartgym_unarchive_routine.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "routines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Routines",
+          "type": "array"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routines"
+      ],
+      "title": "smartgym_archive_routinesArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "routines": {
+          "items": {
+            "$ref": "#/$defs/RoutineId"
+          },
+          "title": "Routines",
+          "type": "array"
+        },
+        "skipped": {
+          "items": {
+            "$ref": "#/$defs/RoutineId"
+          },
+          "title": "Skipped",
+          "type": "array"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "archived",
+        "routines",
+        "skipped",
+        "notice"
+      ],
+      "title": "ArchiveResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Archive routines",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "smartgym_unarchive_routine",
+    "description": "Bring an archived routine back to the active list.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "routine": {
+          "title": "Routine",
+          "type": "string"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "routine"
+      ],
+      "title": "smartgym_unarchive_routineArguments"
+    },
+    "outputSchema": {
+      "$defs": {
+        "RoutineId": {
+          "properties": {
+            "identifier": {
+              "title": "Identifier",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "name"
+          ],
+          "title": "RoutineId",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "routines": {
+          "items": {
+            "$ref": "#/$defs/RoutineId"
+          },
+          "title": "Routines",
+          "type": "array"
+        },
+        "skipped": {
+          "items": {
+            "$ref": "#/$defs/RoutineId"
+          },
+          "title": "Skipped",
+          "type": "array"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_run",
+        "archived",
+        "routines",
+        "skipped",
+        "notice"
+      ],
+      "title": "ArchiveResult",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Unarchive routine",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  }
+]
