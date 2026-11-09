@@ -70,9 +70,11 @@ tables `cfurl_cache_response` + `cfurl_cache_blob_data`) keeps each request the 
 `Accept-Language`, and most request URLs carry `authID`. Live check: the newest cached
 request's values matched a mitmproxy capture exactly (916 SmartGym requests cached,
 2026-09-29 → 2026-11-07). The token is not in the app's preferences or `GymModel.sqlite`.
-The `user-agent` is not cached (CFNetwork adds it); it is
-`SmartGym/<CFBundleShortVersionString> CFNetwork/<CFNetwork CFBundleVersion> Darwin/<uname -r>`
-(captured: `SmartGym/8.0.3 CFNetwork/3896.100.1.1.1 Darwin/27.0.0`). `smartgym-mcp auth`
+The `user-agent` is not cached (CFNetwork adds it; captured:
+`SmartGym/8.0.3 CFNetwork/3896.100.1.1.1 Darwin/27.0.0`). The CDN only needs the app's name
+(2026-11-09, one `history/all` read per value, run by the user): the full value,
+`SmartGym/8.0.3` and `SmartGym` → 200, `python-httpx/0.28` → 403. So `auth` sends
+`SmartGym/<CFBundleShortVersionString>`. `smartgym-mcp auth`
 reads a copy of the cache, checks the session with one `history/all` read and saves the
 credentials file; `scripts/capture_credentials.py` (mitmproxy) remains a fallback.
 

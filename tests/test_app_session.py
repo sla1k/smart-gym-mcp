@@ -12,13 +12,12 @@ from fakes import SECRET
 from smartgym_mcp.api.app_session import (
     NoAppSession,
     UnreadableCache,
-    cfnetwork_version,
     read_app_session,
     user_agent,
 )
 
 API = "https://api.smartgymapp.com/v1.1/"
-UA = "SmartGym/8.0.3 CFNetwork/3896.100.1.1.1 Darwin/27.0.0"
+UA = "SmartGym/8.0.3"
 HEADERS = {
     "phrase": "p",
     "Accept": "*/*",
@@ -142,11 +141,8 @@ def test_the_app_cache_is_never_written(tmp_path: Path) -> None:
     assert (sorted(p.name for p in tmp_path.iterdir()), db.read_bytes()) == before
 
 
-def test_user_agent_is_built_like_cfnetworks(tmp_path: Path) -> None:
-    plist = tmp_path / "Info.plist"
-    plist.write_bytes(plistlib.dumps({"CFBundleVersion": "3896.100.1.1.1"}))
-    assert user_agent("8.0.3", cfnetwork_version(plist) or "", "27.0.0") == UA
-    assert cfnetwork_version(tmp_path / "missing.plist") is None
+def test_user_agent_is_the_app_and_its_version() -> None:
+    assert user_agent("8.0.3") == UA
 
 
 def test_the_account_is_the_authid_parameter_not_an_id_in_the_path(tmp_path: Path) -> None:

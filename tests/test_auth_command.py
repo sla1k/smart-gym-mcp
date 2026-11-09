@@ -51,12 +51,9 @@ def _cfg(tmp_path: Path, *, app: bool = True) -> Config:
         (bundle / "Contents" / "Info.plist").write_bytes(
             plistlib.dumps({"CFBundleShortVersionString": "8.0.3"})
         )
-    cfnetwork = tmp_path / "CFNetwork.plist"
-    cfnetwork.write_bytes(plistlib.dumps({"CFBundleVersion": "3896.100.1.1.1"}))
     return replace(
         load_config(),
         app_bundle=bundle,
-        cfnetwork_plist=cfnetwork,
         app_cache=tmp_path / "cache" / "Cache.db",
         credentials_path=tmp_path / "home" / "credentials.json",
     )
@@ -89,7 +86,6 @@ def _run(
         cfg,
         auth_command.Io(say=io.say, ask=io.ask),
         connect=connect,
-        darwin=lambda: "27.0.0",
     )
     return code, seen
 
@@ -199,14 +195,10 @@ def test_server_error_stops_without_saving(tmp_path: Path) -> None:
     assert "unreachable" in io.text and not cfg.credentials_path.exists()
 
 
-def test_missing_app_or_cfnetwork_stops_early(tmp_path: Path) -> None:
+def test_missing_app_stops_early(tmp_path: Path) -> None:
     io = Script()
     assert _run(_cfg(tmp_path, app=False), io)[0] == 1
     assert "isn't installed" in io.text
-    io = Script()
-    cfg = replace(_cfg(tmp_path / "other"), cfnetwork_plist=tmp_path / "missing.plist")
-    assert _run(cfg, io)[0] == 1
-    assert "CFNetwork" in io.text
 
 
 def test_saved_file_matches_what_the_server_reads(tmp_path: Path) -> None:
