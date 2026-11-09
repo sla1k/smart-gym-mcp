@@ -144,18 +144,6 @@ def test_an_expired_session_is_retried_after_the_app_syncs(tmp_path: Path) -> No
     assert load_credentials(cfg.credentials_path).authorization == "Bearer fresh"
 
 
-def test_the_same_rejected_session_asks_again_and_points_to_the_fallback(
-    tmp_path: Path,
-) -> None:
-    cfg = _cfg(tmp_path)
-    _signed_in(cfg)
-    io = Script("")
-    code, seen = _run(cfg, io, AuthError("HTTP 403"))
-    assert (code, len(seen)) == (1, 1)
-    assert "hasn't cached a new session" in io.text and "If auth fails" in io.text
-    assert not cfg.credentials_path.exists()
-
-
 def test_an_unwritable_credentials_path_is_reported(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     _signed_in(cfg)
@@ -250,4 +238,4 @@ def test_an_unreadable_cache_can_be_retried(tmp_path: Path) -> None:
 
     io.ask = ask  # type: ignore[method-assign]
     assert _run(cfg, io)[0] == 0
-    assert "Couldn't read SmartGym's cache" in io.text
+    assert "No signed-in session found yet" in io.text

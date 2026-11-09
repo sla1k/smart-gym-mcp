@@ -3,8 +3,8 @@
 macOS keeps every request the app sends in its URL cache (`Cache.db`, SQLite), headers
 included. The newest SmartGym API request (under `client.BASE_URL`) gives the
 `Authorization` header, the other app headers `api.auth` needs, and the account id (the
-`authID` parameter). The `user-agent` is not stored there
-(CFNetwork adds it); `SmartGym/<app version>` is enough for the server (spec §4 S1).
+`authID` parameter). The `user-agent` is not stored there (CFNetwork adds it);
+`SmartGym/<app version>` is enough for the server (spec §4 S1).
 
 The database is copied (with its -wal) and the copy is read, so the running app is never
 touched. Values are never logged or put in messages.
@@ -28,15 +28,7 @@ from .client import BASE_URL
 
 
 class NoAppSession(Exception):
-    """The app's cache holds no signed-in SmartGym request (yet)."""
-
-
-class UnreadableCache(Exception):
-    """The cache file is not a URL cache this module can read."""
-
-
-def user_agent(app_version: str) -> str:
-    return f"SmartGym/{app_version}"
+    """The app's cache is missing, unreadable, or holds no signed-in request (yet)."""
 
 
 def _headers(obj: Any) -> Mapping[str, Any] | None:
@@ -56,34 +48,18 @@ def _headers(obj: Any) -> Mapping[str, Any] | None:
     return None
 
 
-_SNAPSHOT_TRIES = 3
-
-
 def _snapshot(cache_db: Path, into: Path) -> sqlite3.Connection:
-    """A consistent copy of the live cache: Cache.db plus its -wal (the -shm is rebuilt).
-    The running app can checkpoint between the two copies, which tears the copy; that
-    shows as a DatabaseError, so the copy is taken again."""
+    """A copy of the live cache: Cache.db plus its -wal (SQLite rebuilds the -shm)."""
     copy = into / cache_db.name
-    wal = cache_db.with_name(cache_db.name + "-wal")
-    for attempt in range(_SNAPSHOT_TRIES):
-        for leftover in into.iterdir():
-            leftover.unlink()
-        try:  # not exists(): since 3.13 it hides the PermissionError macOS raises
-            shutil.copyfile(cache_db, copy)
-        except FileNotFoundError:
-            raise NoAppSession from None
-        with contextlib.suppress(FileNotFoundError):  # the app may checkpoint it away
-            shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
-        conn = sqlite3.connect(copy)
-        try:
-            conn.execute("SELECT 1 FROM cfurl_cache_response LIMIT 1").fetchall()
-        except sqlite3.DatabaseError:
-            conn.close()
-            if attempt + 1 == _SNAPSHOT_TRIES:
-                raise UnreadableCache from None
-            continue
-        return conn
-    raise AssertionError("unreachable")
+    try:  # not exists(): since 3.13 it hides the PermissionError macOS raises
+        shutil.copyfile(cache_db, copy)
+    except FileNotFoundError:
+        raise NoAppSession from None
+    with contextlib.suppress(FileNotFoundError):  # the app may checkpoint it away
+        shutil.copyfile(
+            cache_db.with_name(cache_db.name + "-wal"), copy.with_name(copy.name + "-wal")
+        )
+    return sqlite3.connect(copy)
 
 
 def _requests(cache_db: Path) -> Iterator[tuple[str, Mapping[str, Any]]]:
@@ -108,16 +84,16 @@ def _requests(cache_db: Path) -> Iterator[tuple[str, Mapping[str, Any]]]:
                     continue
                 if headers is not None:
                     yield str(url), headers
-        except sqlite3.DatabaseError:
-            raise UnreadableCache from None
+        except sqlite3.DatabaseError:  # not a URL cache, or a copy torn by a checkpoint
+            raise NoAppSession from None
         finally:
             conn.close()
 
 
-def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
+def read_app_session(cache_db: Path, *, app_version: str) -> Credentials:
     """The token of the app's newest cached API request, with the other app headers and
-    the account id (`authID`) taken from requests sent with that same token. The
-    user-agent is the caller's: the cache doesn't keep it. PermissionError propagates:
+    the account id (`authID`) taken from requests sent with that same token, and
+    `SmartGym/<app_version>` as the user-agent. PermissionError propagates:
     macOS guards another app's data, and the caller explains how to allow it."""
     cached = [h for h in REQUIRED_APP_HEADERS if h != "user-agent"]
     auth: str | None = None
@@ -138,6 +114,6 @@ def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
             return Credentials(
                 user_id=account,
                 authorization=auth,
-                app_headers={**app, "user-agent": user_agent},
+                app_headers={**app, "user-agent": f"SmartGym/{app_version}"},
             )
     raise NoAppSession
