@@ -26,7 +26,7 @@ uv sync
 uv run -q python .claude/skills/run-smart-gym-mcp/driver.py smoke
 ```
 
-`smoke` prints: the 15 tools with read / write / write idempotent, the 3 resources, then
+`smoke` prints: every tool with read / write / write idempotent, the resources, then
 `smartgym_health` (`ok: true`, 1 routine), `smartgym_list_routines`, `smartgym_get_routine`,
 a catalog read, a dry-run rename and the same rename with `dry_run: false`.
 
@@ -52,7 +52,8 @@ EOF
 
 Output: `>>> step`, then the tool's structured result as JSON, prefixed `ERROR` when the call
 returned `isError`. After a step that POSTs, a `POST <path> (recorded, not sent) {form}`
-line shows the form the write built.
+line shows the form the write built. A step that fails outside a tool (bad JSON, an unknown
+resource) prints `STEP FAILED <error>` and the session goes on.
 
 What the fake account holds: one active routine `ZZ-FB — Test` (id 3000001; warmup
 Shoulder Circling, main Cable Chest Press, cooldown Cross Arm Stretch), an archived
@@ -60,9 +61,11 @@ Shoulder Circling, main Cable Chest Press, cooldown Cross Arm Stretch), an archi
 `Dead Hang`. Bundle exercises: the routine's four plus `Plank`, `Barbell Squat`,
 `Dumbbell Row`.
 
-Sandbox: `/tmp/smartgym-driver` (override with `SMARTGYM_DRIVER_DIR`), wiped at the start
-of every run: `server.log` (the server's stderr), `posts.jsonl` (every recorded POST),
-`backups/` (the snapshots writes save), `SmartGym.app/` (the generated bundle).
+Sandbox: a new temp dir per run, `/tmp/smartgym-driver-XXXX`, printed as the last line:
+`server.log` (the server's stderr), `posts.jsonl` (every recorded POST), `backups/` (the
+snapshots writes save), `SmartGym.app/` (the generated bundle). Parallel runs never share
+one. `SMARTGYM_DRIVER_DIR=<dir>` reuses a fixed dir instead; the driver wipes it first, so
+it refuses a non-empty dir that lacks its `.smartgym-driver` marker.
 
 ### --real: the unpatched entry point
 
@@ -78,7 +81,8 @@ That is what a client sees before setup, and it checks the real `main()` wiring.
 ### MCP Inspector CLI: schema portability and exit codes
 
 The official Inspector (Node 22, `npx`) can drive the same offline server, because
-`driver.py serve` builds the sandbox and sets the server's env itself:
+`driver.py serve` builds its own sandbox (one per Inspector call; its path is the first line
+on stderr) and sets the server's env itself:
 
 ```bash
 I="npx -y @modelcontextprotocol/inspector@2.14.0 --cli uv run -q python .claude/skills/run-smart-gym-mcp/driver.py serve"
@@ -109,7 +113,7 @@ uv run ruff format --check src tests scripts/smoke_stdio.py
 uv run mypy
 ```
 
-354 tests pass in about 4 s. Most PRs touch services/diff/payloads: the tests for those
+The suite runs in a few seconds. Most PRs touch services/diff/payloads: the tests for those
 call the code directly with `tests/fakes.FakeClient` (`tests/test_service.py`,
 `tests/test_payloads.py`); `tests/test_server.py` drives `server.mcp` in-process with
 `mcp.Client(server.mcp)`. Use the driver for what the tests can't show: the server as a
@@ -130,6 +134,12 @@ real subprocess, and a tool's full JSON answer.
   `partial(runtime.AppContext, factory=…)` before `server.main()`. Patching
   `runtime.build_services` does nothing — it is bound as the dataclass field's default when
   `runtime` is imported. `lifespan()` looks `AppContext` up in `server`'s globals at start.
+  If a refactor breaks that, the real services start on the sandbox's missing credentials
+  file, so account tools fail on credentials and nothing reaches the account. The fake is
+  `tests/fakes.FakeClient` on the synthetic account; `routine/single` answers come from the
+  same account (the captured `routine_single_synthetic.json` holds other exercises).
+- Type-check the driver with `MYPYPATH=tests uv run mypy --strict <driver>` (it imports
+  `tests/fakes.py`); CI doesn't check it.
 - **Piping raw JSON-RPC into `smartgym-mcp` drops tool answers.** With
   `printf '…initialize…' '…tools/call…' | uv run smartgym-mcp`, only `initialize` is
   answered: stdin hits EOF and the server exits while the tool call is still on its worker
@@ -159,4 +169,4 @@ real subprocess, and a tool's full JSON answer.
   container's environment, harmless; `-q` hides it.
 - `smartgym-mcp not on PATH` (driver exit) — `--real` needs the project's
   venv on PATH; start the driver through `uv run`, not a bare `python`.
-- A step hangs or the server dies: read `/tmp/smartgym-driver/server.log`.
+- A step hangs or the server dies: read `server.log` in the sandbox the run printed.
