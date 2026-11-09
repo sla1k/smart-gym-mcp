@@ -148,13 +148,15 @@ def test_an_expired_session_is_retried_after_the_app_syncs(tmp_path: Path) -> No
     assert load_credentials(cfg.credentials_path).authorization == "Bearer fresh"
 
 
-def test_the_same_rejected_session_stops_and_points_to_the_fallback(tmp_path: Path) -> None:
+def test_the_same_rejected_session_asks_again_and_points_to_the_fallback(
+    tmp_path: Path,
+) -> None:
     cfg = _cfg(tmp_path)
     _signed_in(cfg)
     io = Script("")
     code, seen = _run(cfg, io, AuthError("HTTP 403"))
     assert (code, len(seen)) == (1, 1)
-    assert "user-agent" in io.text and "capture_credentials.py" in io.text
+    assert "hasn't cached a new session" in io.text and "If auth fails" in io.text
     assert not cfg.credentials_path.exists()
 
 
@@ -229,3 +231,31 @@ def test_main_runs_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as done:
         server.main()
     assert (done.value.code, len(calls)) == (0, 1)
+
+
+def test_auth_with_extra_or_unknown_arguments_prints_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from smartgym_mcp import server
+
+    for argv in (["auth", "--help"], ["auht"]):
+        monkeypatch.setattr("sys.argv", ["smartgym-mcp", *argv])
+        with pytest.raises(SystemExit, match="usage: smartgym-mcp"):
+            server.main()
+
+
+def test_an_unreadable_cache_can_be_retried(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    cfg.app_cache.parent.mkdir()
+    cfg.app_cache.write_bytes(b"not sqlite")
+    io = Script()
+
+    def ask(prompt: str) -> str:
+        io.lines.append(prompt)
+        cfg.app_cache.unlink()
+        _signed_in(cfg)
+        return ""
+
+    io.ask = ask  # type: ignore[method-assign]
+    assert _run(cfg, io)[0] == 0
+    assert "Couldn't read SmartGym's cache" in io.text

@@ -33,10 +33,10 @@ PRIVACY = (
 )
 
 
-STILL_REJECTED = (
-    "SmartGym still rejects the app's session, and the app hasn't sent a new one. If SmartGym "
-    "itself works, the server may not accept the user-agent rebuilt for this Mac; capture "
-    "the session with mitmproxy instead (scripts/capture_credentials.py in the repository)."
+SAME_SESSION = (
+    "SmartGym hasn't cached a new session yet. Use the app for a moment (or sign out and in "
+    "again) so it syncs. If SmartGym itself works and this keeps failing, the server may not "
+    "accept the user-agent rebuilt for this Mac: see 'If auth fails' in the README."
 )
 
 
@@ -93,14 +93,22 @@ def run(
                     continue
                 return 1
             except UnreadableCache:
-                io.say(f"  {cfg.app_cache} isn't a cache this command can read.")
+                if _retry(
+                    io, f"Couldn't read SmartGym's cache at {cfg.app_cache}. {OPEN_APP}"
+                ):
+                    continue
                 return 1
             except PermissionError:
                 if _retry(io, PRIVACY):
                     continue
                 return 1
+            except OSError as exc:
+                if _retry(io, f"Couldn't read {cfg.app_cache}: {exc.strerror or exc}."):
+                    continue
+                return 1
             if creds.authorization == rejected:
-                io.say(f"  {STILL_REJECTED}")
+                if _retry(io, SAME_SESSION):
+                    continue
                 return 1
             io.say("  Found it.")
             io.say("Step 2/3: Checking it with SmartGym's server...")
@@ -115,7 +123,8 @@ def run(
                     continue
                 return 1
             except ApiError as exc:
-                io.say(f"  {exc}")
+                if _retry(io, str(exc)):
+                    continue
                 return 1
             finally:
                 client.close()
