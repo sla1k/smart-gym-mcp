@@ -79,8 +79,8 @@ Modules and their layering: spec §5.
 - **Credentials = a 0600 file the user creates with `smartgym-mcp auth`**
   (`~/.smartgym-mcp/credentials.json`; 2026-11-09, user choice). The command reads the app's
   session from its URL cache once, checks it and saves it; the server only reads the file, so
-  the MCP client never needs access to the app's data. mitmproxy capture
-  (`scripts/capture_credentials.py`) stays as a fallback. What the file holds and sends:
+  the MCP client never needs access to the app's data. mitmproxy is only for capturing the
+  app's traffic (spec §9), not for credentials. What the file holds and sends:
   spec §4 S1. An `AuthError` drops the client, so a re-captured
   session takes effect on the next call without restarting the server.
 - **Sections are three lists** (warm-up / main / cool-down; user choice "A", spec §10.2).

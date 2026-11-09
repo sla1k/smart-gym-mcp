@@ -76,7 +76,7 @@ The `user-agent` is not cached (CFNetwork adds it; captured:
 `SmartGym/8.0.3` and `SmartGym` → 200, `python-httpx/0.28` → 403. So `auth` sends
 `SmartGym/<CFBundleShortVersionString>`. `smartgym-mcp auth`
 reads a copy of the cache, checks the session with one `history/all` read and saves the
-credentials file; `scripts/capture_credentials.py` (mitmproxy) remains a fallback.
+credentials file. mitmproxy is used only to capture the app's traffic (§9).
 
 **S2 edit wire format.** Every in-app Save sends ONE request; routine-level calls carry only
 the changed fields plus `routineID`, `days`, `goal` (always re-sent). Exercise ids in these
