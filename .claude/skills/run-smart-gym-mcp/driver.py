@@ -152,6 +152,7 @@ def serve(sandbox: Path) -> None:
 
     # lifespan() looks AppContext up in server's globals on each start.
     server.AppContext = partial(runtime.AppContext, factory=factory)  # type: ignore[attr-defined,assignment]
+    sys.argv[1:] = []  # main() reads argv: `serve` would read as an unknown subcommand
     server.main()
 
 
