@@ -138,3 +138,25 @@ def test_user_agent_is_built_like_cfnetworks(tmp_path: Path) -> None:
     plist.write_bytes(plistlib.dumps({"CFBundleVersion": "3896.100.1.1.1"}))
     assert user_agent("8.0.3", cfnetwork_version(plist) or "", "27.0.0") == UA
     assert cfnetwork_version(tmp_path / "missing.plist") is None
+
+
+def test_an_authid_parameter_wins_over_a_user_info_url(tmp_path: Path) -> None:
+    db = _cache(
+        tmp_path,
+        ("2026-11-01 10:00:00", f"{API}goal/all/?authID=42", _request("x", HEADERS)),
+        ("2026-11-02 10:00:00", f"{API}user/info/99", _request("x", HEADERS)),
+    )
+    assert read_app_session(db, user_agent=UA).user_id == "42"
+
+
+def test_a_malformed_xml_plist_row_is_skipped(tmp_path: Path) -> None:
+    db = _cache(
+        tmp_path,
+        ("2026-11-01 10:00:00", f"{API}user/info/42", _request("x", HEADERS)),
+        (
+            "2026-11-02 10:00:00",
+            f"{API}history/all/42/",
+            b"<?xml version='1.0'?><plist><dict>",
+        ),
+    )
+    assert read_app_session(db, user_agent=UA).user_id == "42"

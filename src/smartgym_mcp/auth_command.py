@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from . import catalog
 from .api import reads
@@ -31,13 +32,24 @@ PRIVACY = (
 )
 
 
+STILL_REJECTED = (
+    "SmartGym still rejects the app's session, and the app hasn't sent a new one. If SmartGym "
+    "itself works, the server may not accept the user-agent rebuilt for this Mac; capture "
+    "the session with mitmproxy instead (scripts/capture_credentials.py in the repository)."
+)
+
+
+class Checker(ApiCalls, Protocol):
+    def close(self) -> None: ...
+
+
 @dataclass
 class Io:
     say: Callable[[str], None] = print
     ask: Callable[[str], str] = input
 
 
-def _client(creds: Credentials, app_version: str) -> ApiCalls:
+def _client(creds: Credentials, app_version: str) -> Checker:
     return ApiClient(creds, app_version=app_version)
 
 
@@ -55,7 +67,7 @@ def run(
     cfg: Config,
     io: Io | None = None,
     *,
-    connect: Callable[[Credentials, str], ApiCalls] = _client,
+    connect: Callable[[Credentials, str], Checker] = _client,
     cfnetwork: Callable[[], str | None] = cfnetwork_version,
     darwin: Callable[[], str] = darwin_release,
 ) -> int:
@@ -70,6 +82,7 @@ def run(
         io.say("Can't read this Mac's CFNetwork version, which SmartGym's user-agent needs.")
         return 1
     agent = user_agent(app_version, cf, darwin())
+    rejected: str | None = None
     try:
         while True:
             io.say("Step 1/3: Looking for SmartGym's session on this Mac...")
@@ -83,28 +96,36 @@ def run(
                 if _retry(io, PRIVACY):
                     continue
                 return 1
+            if creds.authorization == rejected:
+                io.say(f"  {STILL_REJECTED}")
+                return 1
             io.say("  Found it.")
             io.say("Step 2/3: Checking it with SmartGym's server...")
             client = connect(creds, app_version)
             try:
                 reads.history_all(client)
             except AuthError:
-                if _retry(io, f"SmartGym rejected that session as expired. {OPEN_APP}"):
+                rejected = creds.authorization
+                if _retry(
+                    io, f"SmartGym rejected that session; it may have expired. {OPEN_APP}"
+                ):
                     continue
                 return 1
             except ApiError as exc:
                 io.say(f"  {exc}")
                 return 1
             finally:
-                close = getattr(client, "close", None)
-                if close is not None:
-                    close()
+                client.close()
             io.say("  Your account answered.")
             break
     except KeyboardInterrupt:
         io.say("")
         return 1
-    save_credentials(cfg.credentials_path, creds)
+    try:
+        save_credentials(cfg.credentials_path, creds)
+    except OSError as exc:
+        io.say(f"Can't write {cfg.credentials_path}: {exc.strerror or exc}.")
+        return 1
     io.say(f"Step 3/3: Saved to {cfg.credentials_path} (only you can read it).")
     io.say("Done. Ask your assistant to call smartgym_health to check the connection.")
     return 0

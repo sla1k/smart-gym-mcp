@@ -543,11 +543,8 @@ def catalog_categories() -> str:
 
 def main() -> None:
     """`smartgym-mcp` serves MCP over stdio; `smartgym-mcp auth` connects the account."""
-    args = sys.argv[1:]
-    if args == ["auth"]:
+    if sys.argv[1:] == ["auth"]:
         sys.exit(auth_command.run(load_config()))
-    if args:
-        sys.exit("usage: smartgym-mcp [auth]")
     logging.basicConfig(
         level=logging.INFO,
         stream=sys.stderr,  # stdout is the stdio protocol channel — never log there

@@ -15,7 +15,7 @@ import pytest
 from fakes import SECRET, FakeClient
 from smartgym_mcp import auth_command
 from smartgym_mcp.api.auth import Credentials, load_credentials
-from smartgym_mcp.api.client import ApiCalls, ApiError, AuthError
+from smartgym_mcp.api.client import ApiError, AuthError
 from smartgym_mcp.config import Config, load_config
 from test_app_session import API, HEADERS, UA, _cache, _request
 
@@ -73,7 +73,7 @@ def _run(
     seen: list[tuple[Credentials, str]] = []
     queue = list(bodies) or [OK]
 
-    def connect(creds: Credentials, version: str) -> ApiCalls:
+    def connect(creds: Credentials, version: str) -> FakeClient:
         seen.append((creds, version))
         body = queue.pop(0) if len(queue) > 1 else queue[0]
         return FakeClient({"history/all/42/": body}, user_id=creds.user_id)
@@ -120,10 +120,45 @@ def test_waits_for_the_app_to_sign_in_then_continues(tmp_path: Path) -> None:
 def test_an_expired_session_is_retried_after_the_app_syncs(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     _signed_in(cfg)
-    io = Script("")
+    io = Script()
+
+    def ask(prompt: str) -> str:  # the app syncs and caches a new token
+        io.lines.append(prompt)
+        cfg.app_cache.unlink()
+        _cache(
+            cfg.app_cache.parent,
+            (
+                "2026-11-09 10:00:00",
+                f"{API}user/info/42",
+                _request("x", {**HEADERS, "Authorization": "Bearer fresh"}),
+            ),
+        )
+        return ""
+
+    io.ask = ask  # type: ignore[method-assign]
     code, seen = _run(cfg, io, AuthError("expired"), OK)
     assert (code, len(seen)) == (0, 2)
-    assert "expired" in io.text
+    assert "may have expired" in io.text
+    assert load_credentials(cfg.credentials_path).authorization == "Bearer fresh"
+
+
+def test_the_same_rejected_session_stops_and_points_to_the_fallback(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _signed_in(cfg)
+    io = Script("")
+    code, seen = _run(cfg, io, AuthError("HTTP 403"))
+    assert (code, len(seen)) == (1, 1)
+    assert "user-agent" in io.text and "capture_credentials.py" in io.text
+    assert not cfg.credentials_path.exists()
+
+
+def test_an_unwritable_credentials_path_is_reported(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _signed_in(cfg)
+    cfg.credentials_path.parent.write_text("a file, not a folder")
+    io = Script()
+    code, _ = _run(cfg, io)
+    assert code == 1 and "Can't write" in io.text
 
 
 def test_stopping_saves_nothing(tmp_path: Path) -> None:
@@ -175,7 +210,7 @@ def test_saved_file_matches_what_the_server_reads(tmp_path: Path) -> None:
     assert set(raw) == {"authorization", "authID", "app_headers"}
 
 
-def test_main_runs_auth_and_rejects_other_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_runs_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     from smartgym_mcp import server
 
     calls: list[Config] = []
@@ -189,6 +224,3 @@ def test_main_runs_auth_and_rejects_other_arguments(monkeypatch: pytest.MonkeyPa
     with pytest.raises(SystemExit) as done:
         server.main()
     assert (done.value.code, len(calls)) == (0, 1)
-    monkeypatch.setattr("sys.argv", ["smartgym-mcp", "login"])
-    with pytest.raises(SystemExit, match="usage: smartgym-mcp"):
-        server.main()
