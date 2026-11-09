@@ -173,3 +173,20 @@ def test_a_malformed_xml_plist_row_is_skipped(tmp_path: Path) -> None:
         ),
     )
     assert read_app_session(db, user_agent=UA).user_id == "42"
+
+
+def test_the_newest_token_wins_even_without_the_other_headers(tmp_path: Path) -> None:
+    fresh = {"Authorization": "Bearer fresh"}
+    db = _cache(
+        tmp_path,
+        ("2026-11-01 10:00:00", f"{API}goal/all/?authID=42", _request("x", HEADERS)),
+        (
+            "2026-11-02 10:00:00",
+            f"{API}history/all/42/?authID=42",
+            _request("x", {**HEADERS, **fresh}),
+        ),
+        ("2026-11-03 10:00:00", f"{API}routine/update/", _request("x", fresh)),
+    )
+    creds = read_app_session(db, user_agent=UA)
+    assert (creds.authorization, creds.user_id) == ("Bearer fresh", "42")
+    assert creds.app_headers["accept-language"] == "en-GB"

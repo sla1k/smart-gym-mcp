@@ -52,7 +52,8 @@ Modules and their layering: spec §5.
 3. Every edit of an existing routine goes through `diff_routine`, one `ChangeSet` per call;
    single-field tools are `builders.py` wrappers.
 4. Only template sets are changed; logged history is never touched.
-5. Credentials only via `api/auth.py`; never logged or returned.
+5. Credentials only via `api/auth.py` (the file) and `api/app_session.py` (the app's session,
+   read only by `smartgym-mcp auth`); never logged or returned.
 6. Before trusting a new kind of server write, capture the app doing it and add a golden
    fixture (`tests/fixtures/api/`; how: spec §9).
 7. Tool calls run one at a time (`runtime.AppContext.run`: async tools take one `anyio.Lock`, then run

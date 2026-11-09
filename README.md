@@ -49,6 +49,14 @@ It finds the app's session, checks it with SmartGym's server and saves it to
 your terminal may access data from other apps, allow it. Run it again if tools report an
 authentication error.
 
+**If auth fails** although SmartGym itself works, capture the session with mitmproxy
+instead (needs a clone of this repository):
+
+1. `brew install --cask mitmproxy`, then trust its CA certificate.
+2. `mitmdump --mode local:SmartGym -s scripts/capture_credentials.py --set confdir=<CA dir>`
+3. Open SmartGym; stop mitmdump when it prints "credentials saved".
+4. Remove the CA certificate trust again.
+
 ## Quick start
 
 Requirements: macOS with SmartGym and [`uv`](https://docs.astral.sh/uv/).

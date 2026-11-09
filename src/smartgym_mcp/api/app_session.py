@@ -7,8 +7,8 @@ included. The newest SmartGym API request (under `client.BASE_URL`) gives the
 (CFNetwork adds it), so it is rebuilt the way CFNetwork builds it:
 `SmartGym/<app version> CFNetwork/<CFNetwork version> Darwin/<kernel release>`.
 
-The database is copied (with its -wal / -shm) and the copy is read, so the running app is
-never touched. Values are never logged or put in messages.
+The database is copied (with its -wal) and the copy is read, so the running app is never
+touched. Values are never logged or put in messages.
 """
 
 from __future__ import annotations
@@ -68,22 +68,41 @@ def _headers(obj: Any) -> Mapping[str, Any] | None:
     return None
 
 
-def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
-    """(url, archived request) of SmartGym API requests, newest first, from a copy."""
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / cache_db.name
+_SNAPSHOT_TRIES = 3
+
+
+def _snapshot(cache_db: Path, into: Path) -> sqlite3.Connection:
+    """A consistent copy of the live cache: Cache.db plus its -wal (the -shm is rebuilt).
+    The running app can checkpoint between the two copies, which tears the copy; that
+    shows as a DatabaseError, so the copy is taken again."""
+    copy = into / cache_db.name
+    wal = cache_db.with_name(cache_db.name + "-wal")
+    for attempt in range(_SNAPSHOT_TRIES):
+        for leftover in into.iterdir():
+            leftover.unlink()
         try:  # not exists(): since 3.13 it hides the PermissionError macOS raises
             shutil.copyfile(cache_db, copy)
         except FileNotFoundError:
             raise NoAppSession from None
-        for suffix in ("-wal", "-shm"):
-            # the running app may checkpoint them away at any moment
-            with contextlib.suppress(FileNotFoundError):
-                shutil.copyfile(
-                    cache_db.with_name(cache_db.name + suffix),
-                    copy.with_name(copy.name + suffix),
-                )
+        with contextlib.suppress(FileNotFoundError):  # the app may checkpoint it away
+            shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
         conn = sqlite3.connect(copy)
+        try:
+            conn.execute("SELECT 1 FROM cfurl_cache_response LIMIT 1").fetchall()
+        except sqlite3.DatabaseError:
+            conn.close()
+            if attempt + 1 == _SNAPSHOT_TRIES:
+                raise UnreadableCache from None
+            continue
+        return conn
+    raise AssertionError("unreachable")
+
+
+def _requests(cache_db: Path) -> Iterator[tuple[str, Mapping[str, Any]]]:
+    """(url, header dict) of cached SmartGym API requests that carry `Authorization`,
+    newest first, read lazily from a snapshot. Rows that don't parse are skipped."""
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = _snapshot(cache_db, Path(tmp))
         try:
             rows = conn.execute(
                 "SELECT r.request_key, b.request_object"
@@ -91,49 +110,49 @@ def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
                 " JOIN cfurl_cache_blob_data b ON b.entry_ID = r.entry_ID"
                 " WHERE r.request_key LIKE ? ORDER BY r.time_stamp DESC, r.entry_ID DESC",
                 (BASE_URL + "%",),
-            ).fetchall()
+            )
+            for url, blob in rows:
+                if blob is None:
+                    continue
+                try:
+                    headers = _headers(plistlib.loads(bytes(blob)))
+                except (plistlib.InvalidFileException, ValueError, ExpatError):
+                    continue
+                if headers is not None:
+                    yield str(url), headers
         except sqlite3.DatabaseError:
             raise UnreadableCache from None
         finally:
             conn.close()
-    return [(str(url), bytes(blob)) for url, blob in rows if blob is not None]
 
 
 def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
-    """The session of the app's newest cached API request, with the account id (`authID`)
-    the app sent alongside that token. The user-agent is the caller's: the cache doesn't
-    keep it. PermissionError propagates: macOS guards another app's data, and the caller
-    explains how to allow it."""
+    """The token of the app's newest cached API request, with the other app headers and
+    the account id (`authID`) taken from requests sent with that same token. The
+    user-agent is the caller's: the cache doesn't keep it. PermissionError propagates:
+    macOS guards another app's data, and the caller explains how to allow it."""
     cached = [h for h in REQUIRED_APP_HEADERS if h != "user-agent"]
     auth: str | None = None
     app: dict[str, str] = {}
     account: str | None = None
-    for url, blob in _requests(cache_db):
-        try:
-            headers = _headers(plistlib.loads(blob))
-        except (plistlib.InvalidFileException, ValueError, ExpatError):
-            continue
-        if headers is None:
-            continue
+    for url, headers in _requests(cache_db):
         lower = {str(k).lower(): str(v) for k, v in headers.items()}
-        if auth is None:
-            app = {h: lower[h] for h in cached if lower.get(h)}
-            if len(app) != len(cached):
-                continue
-            auth = lower["authorization"]
+        auth = auth or lower["authorization"]
         if lower["authorization"] != auth:
             continue
+        for h in cached:
+            if h not in app and lower.get(h):
+                app[h] = lower[h]
         ids = parse_qs(urlsplit(url).query).get("authID")
-        if ids and ids[0].isdecimal():
+        if account is None and ids and ids[0].isdecimal():
             account = ids[0]
-            break
-    if auth is None or account is None:
-        raise NoAppSession
-    return Credentials(
-        user_id=account,
-        authorization=auth,
-        app_headers={**app, "user-agent": user_agent},
-    )
+        if account is not None and len(app) == len(cached):
+            return Credentials(
+                user_id=account,
+                authorization=auth,
+                app_headers={**app, "user-agent": user_agent},
+            )
+    raise NoAppSession
 
 
 def darwin_release() -> str:
