@@ -13,12 +13,7 @@ from typing import Protocol
 
 from . import catalog
 from .api import reads
-from .api.app_session import (
-    NoAppSession,
-    UnreadableCache,
-    read_app_session,
-    user_agent,
-)
+from .api.app_session import NoAppSession, read_app_session
 from .api.auth import Credentials, save_credentials
 from .api.client import ApiCalls, ApiClient, ApiError, AuthError
 from .config import Config
@@ -28,13 +23,6 @@ PRIVACY = (
     "macOS blocked access to SmartGym's data. If a dialog asks whether your terminal may "
     "access data from other apps, choose Allow. Otherwise turn your terminal on in System "
     "Settings > Privacy & Security > App Management (or Full Disk Access)."
-)
-
-
-SAME_SESSION = (
-    "SmartGym hasn't cached a new session yet. Use the app for a moment (or sign out and in "
-    "again) so it syncs. If SmartGym itself works and this keeps failing, the server may not "
-    "accept the user-agent rebuilt for this Mac: see 'If auth fails' in the README."
 )
 
 
@@ -74,21 +62,13 @@ def run(
     if app_version is None:
         io.say(f"SmartGym isn't installed at {cfg.app_bundle}. Install it from the App Store.")
         return 1
-    agent = user_agent(app_version)
-    rejected: str | None = None
     try:
         while True:
             io.say("Step 1/3: Looking for SmartGym's session on this Mac...")
             try:
-                creds = read_app_session(cfg.app_cache, user_agent=agent)
+                creds = read_app_session(cfg.app_cache, app_version=app_version)
             except NoAppSession:
                 if _retry(io, f"No signed-in session found yet. {OPEN_APP}"):
-                    continue
-                return 1
-            except UnreadableCache:
-                if _retry(
-                    io, f"Couldn't read SmartGym's cache at {cfg.app_cache}. {OPEN_APP}"
-                ):
                     continue
                 return 1
             except PermissionError:
@@ -99,17 +79,12 @@ def run(
                 if _retry(io, f"Couldn't read {cfg.app_cache}: {exc.strerror or exc}."):
                     continue
                 return 1
-            if creds.authorization == rejected:
-                if _retry(io, SAME_SESSION):
-                    continue
-                return 1
             io.say("  Found it.")
             io.say("Step 2/3: Checking it with SmartGym's server...")
             client = connect(creds, app_version)
             try:
                 reads.history_all(client)
             except AuthError:
-                rejected = creds.authorization
                 if _retry(
                     io, f"SmartGym rejected that session; it may have expired. {OPEN_APP}"
                 ):

@@ -11,9 +11,7 @@ import pytest
 from fakes import SECRET
 from smartgym_mcp.api.app_session import (
     NoAppSession,
-    UnreadableCache,
     read_app_session,
-    user_agent,
 )
 
 API = "https://api.smartgymapp.com/v1.1/"
@@ -65,7 +63,7 @@ def test_newest_signed_in_request_gives_the_session(tmp_path: Path) -> None:
         ),
         ("2026-11-08 09:00:00", "http://smartgymprod.smartgymapp.com.s3/x.jpg", b"img"),
     )
-    creds = read_app_session(db, user_agent=UA)
+    creds = read_app_session(db, app_version="8.0.3")
     assert creds.authorization == "Bearer newer"
     assert creds.user_id == "42"
     assert dict(creds.app_headers) == {
@@ -86,7 +84,7 @@ def test_account_id_comes_from_an_older_request_with_the_same_token(tmp_path: Pa
         ),
         ("2026-11-02 10:00:00", f"{API}routine/update/", _request("x", HEADERS)),
     )
-    assert read_app_session(db, user_agent=UA).user_id == "7"
+    assert read_app_session(db, app_version="8.0.3").user_id == "7"
 
 
 def test_requests_without_headers_are_skipped(tmp_path: Path) -> None:
@@ -100,7 +98,7 @@ def test_requests_without_headers_are_skipped(tmp_path: Path) -> None:
         ("2026-11-02 10:00:00", f"{API}options.json", _request("x", None)),
         ("2026-11-03 10:00:00", f"{API}quote/todaysQuote/", b"not a plist"),
     )
-    assert read_app_session(db, user_agent=UA).authorization == SECRET
+    assert read_app_session(db, app_version="8.0.3").authorization == SECRET
 
 
 @pytest.mark.parametrize(
@@ -116,15 +114,15 @@ def test_no_signed_in_request_is_no_session(
 ) -> None:
     db = _cache(tmp_path, *rows)
     with pytest.raises(NoAppSession):
-        read_app_session(db, user_agent=UA)
+        read_app_session(db, app_version="8.0.3")
 
 
 def test_missing_or_foreign_cache_is_a_session_error(tmp_path: Path) -> None:
     with pytest.raises(NoAppSession):
-        read_app_session(tmp_path / "Cache.db", user_agent=UA)
+        read_app_session(tmp_path / "Cache.db", app_version="8.0.3")
     (tmp_path / "Cache.db").write_bytes(b"not sqlite")
-    with pytest.raises(UnreadableCache):
-        read_app_session(tmp_path / "Cache.db", user_agent=UA)
+    with pytest.raises(NoAppSession):
+        read_app_session(tmp_path / "Cache.db", app_version="8.0.3")
 
 
 def test_the_app_cache_is_never_written(tmp_path: Path) -> None:
@@ -137,12 +135,8 @@ def test_the_app_cache_is_never_written(tmp_path: Path) -> None:
         ),
     )
     before = sorted(p.name for p in tmp_path.iterdir()), db.read_bytes()
-    read_app_session(db, user_agent=UA)
+    read_app_session(db, app_version="8.0.3")
     assert (sorted(p.name for p in tmp_path.iterdir()), db.read_bytes()) == before
-
-
-def test_user_agent_is_the_app_and_its_version() -> None:
-    assert user_agent("8.0.3") == UA
 
 
 def test_the_account_is_the_authid_parameter_not_an_id_in_the_path(tmp_path: Path) -> None:
@@ -151,7 +145,7 @@ def test_the_account_is_the_authid_parameter_not_an_id_in_the_path(tmp_path: Pat
         ("2026-11-01 10:00:00", f"{API}goal/all/?authID=42", _request("x", HEADERS)),
         ("2026-11-02 10:00:00", f"{API}user/info/99", _request("x", HEADERS)),
     )
-    assert read_app_session(db, user_agent=UA).user_id == "42"
+    assert read_app_session(db, app_version="8.0.3").user_id == "42"
 
 
 def test_a_malformed_xml_plist_row_is_skipped(tmp_path: Path) -> None:
@@ -168,7 +162,7 @@ def test_a_malformed_xml_plist_row_is_skipped(tmp_path: Path) -> None:
             b"<?xml version='1.0'?><plist><dict>",
         ),
     )
-    assert read_app_session(db, user_agent=UA).user_id == "42"
+    assert read_app_session(db, app_version="8.0.3").user_id == "42"
 
 
 def test_the_newest_token_wins_even_without_the_other_headers(tmp_path: Path) -> None:
@@ -183,6 +177,6 @@ def test_the_newest_token_wins_even_without_the_other_headers(tmp_path: Path) ->
         ),
         ("2026-11-03 10:00:00", f"{API}routine/update/", _request("x", fresh)),
     )
-    creds = read_app_session(db, user_agent=UA)
+    creds = read_app_session(db, app_version="8.0.3")
     assert (creds.authorization, creds.user_id) == ("Bearer fresh", "42")
     assert creds.app_headers["accept-language"] == "en-GB"
