@@ -4,8 +4,7 @@ macOS keeps every request the app sends in its URL cache (`Cache.db`, SQLite), h
 included. The newest SmartGym API request (under `client.BASE_URL`) gives the
 `Authorization` header, the other app headers `api.auth` needs, and the account id (the
 `authID` parameter). The `user-agent` is not stored there
-(CFNetwork adds it), so it is rebuilt the way CFNetwork builds it:
-`SmartGym/<app version> CFNetwork/<CFNetwork version> Darwin/<kernel release>`.
+(CFNetwork adds it); `SmartGym/<app version>` is enough for the server (spec §4 S1).
 
 The database is copied (with its -wal) and the copy is read, so the running app is never
 touched. Values are never logged or put in messages.
@@ -14,7 +13,6 @@ touched. Values are never logged or put in messages.
 from __future__ import annotations
 
 import contextlib
-import os
 import plistlib
 import shutil
 import sqlite3
@@ -37,18 +35,8 @@ class UnreadableCache(Exception):
     """The cache file is not a URL cache this module can read."""
 
 
-def user_agent(app_version: str, cfnetwork_version: str, darwin_release: str) -> str:
-    return f"SmartGym/{app_version} CFNetwork/{cfnetwork_version} Darwin/{darwin_release}"
-
-
-def cfnetwork_version(plist: Path) -> str | None:
-    """CFNetwork's CFBundleVersion, the middle part of the app's user-agent."""
-    try:
-        with plist.open("rb") as f:
-            value = plistlib.load(f).get("CFBundleVersion")
-    except (OSError, plistlib.InvalidFileException):
-        return None
-    return str(value) if value else None
+def user_agent(app_version: str) -> str:
+    return f"SmartGym/{app_version}"
 
 
 def _headers(obj: Any) -> Mapping[str, Any] | None:
@@ -153,7 +141,3 @@ def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
                 app_headers={**app, "user-agent": user_agent},
             )
     raise NoAppSession
-
-
-def darwin_release() -> str:
-    return os.uname().release

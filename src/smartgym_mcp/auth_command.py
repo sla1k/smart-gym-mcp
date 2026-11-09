@@ -16,8 +16,6 @@ from .api import reads
 from .api.app_session import (
     NoAppSession,
     UnreadableCache,
-    cfnetwork_version,
-    darwin_release,
     read_app_session,
     user_agent,
 )
@@ -69,7 +67,6 @@ def run(
     io: Io | None = None,
     *,
     connect: Callable[[Credentials, str], Checker] = _client,
-    darwin: Callable[[], str] = darwin_release,
 ) -> int:
     """The exit status: 0 when the credentials file was saved."""
     io = io or Io()
@@ -77,11 +74,7 @@ def run(
     if app_version is None:
         io.say(f"SmartGym isn't installed at {cfg.app_bundle}. Install it from the App Store.")
         return 1
-    cf = cfnetwork_version(cfg.cfnetwork_plist)
-    if cf is None:
-        io.say("Can't read this Mac's CFNetwork version, which SmartGym's user-agent needs.")
-        return 1
-    agent = user_agent(app_version, cf, darwin())
+    agent = user_agent(app_version)
     rejected: str | None = None
     try:
         while True:
