@@ -1,6 +1,6 @@
 ---
 name: run-smart-gym-mcp
-description: Run, start, smoke-test and drive the smartgym-mcp stdio MCP server offline — list its tools, call any tool (dry-run or applied writes) against a fake SmartGym account, read the catalog resources, and see the exact POST a write would send. Use when asked to run the server, try a tool, check a change works end to end over stdio, or run the tests.
+description: Run, start, smoke-test, inspect and drive the smartgym-mcp stdio MCP server offline — list its tools, call any tool (dry-run or applied writes) against a fake SmartGym account, read the catalog resources, and see the exact POST a write would send. Use when asked to run the server, try a tool, check a change works end to end over stdio, or run the tests.
 ---
 
 `smartgym-mcp` is a local stdio MCP server (Python, `uv`). An agent drives it with
@@ -75,6 +75,23 @@ Runs the installed `smartgym-mcp` script with no credentials file: health answer
 account tool fails with that message, the catalog resources work off the generated bundle.
 That is what a client sees before setup, and it checks the real `main()` wiring.
 
+### MCP Inspector CLI: schema portability and exit codes
+
+The official Inspector (Node 22, `npx`) can drive the same offline server, because
+`driver.py serve` builds the sandbox and sets the server's env itself:
+
+```bash
+I="npx -y @modelcontextprotocol/inspector@2.14.0 --cli uv run -q python .claude/skills/run-smart-gym-mcp/driver.py serve"
+$I --method tools/list --strict > /dev/null; echo "exit $?"   # 0 = no schema-portability errors
+$I --method tools/call --tool-name smartgym_update_routine --tool-arg routine=ZZ-FB --tool-arg name=X
+$I --method tools/call --tool-name smartgym_get_routine --tool-arg routine=nope; echo "exit $?"   # 5 = isError
+$I --method resources/read --uri smartgym://catalog/equipment
+```
+
+Run `tools/list --strict` after any change to a tool's signature, `Field` constraints or
+return model: it reports schema constructs some clients can't handle and exits 6 on an
+error-severity one. Exit codes: 0 ok, 5 the tool returned `isError`, 6 a strict finding.
+
 ## Run (human path)
 
 `uv run smartgym-mcp` starts the stdio server and waits on stdin; it is meant to be
@@ -127,6 +144,12 @@ real subprocess, and a tool's full JSON answer.
   version warning.
 - `smartgym_list_routines` shows 1 routine though the fixture has 3: `ZZ-Old` is archived,
   `ZZ-Gone` removed. `smartgym_get_routine` shows 3 exercises of the 4 (one is removed).
+- **Inspector `--tool-arg` JSON-parses values:** `routine=3000001` is sent as the number
+  3000001 and fails input validation (`Input should be a valid string`). Quote it as JSON:
+  `--tool-arg 'routine="3000001"'`.
+- **The Inspector doesn't forward your shell's env to the server**, only a default set; a
+  `SMARTGYM_*` export is ignored (health then names `~/.smartgym-mcp/credentials.json`).
+  Pass `-e KEY=VALUE`, or use `driver.py serve`, which needs none.
 - The fake account's time zone is fixed to `Europe/Madrid`, as in the tests.
 
 ## Troubleshooting

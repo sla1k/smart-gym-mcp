@@ -10,7 +10,8 @@ Commands (each one starts a fresh server subprocess over stdio and stops it at t
   read URI                 read a resource, e.g. read smartgym://catalog/equipment
   session                  read steps from stdin, one per line, against ONE server:
                              TOOL {json}   |   read URI   |   # comment
-  serve                    (internal) the patched server the other commands spawn
+  serve                    the patched stdio server itself; the commands above spawn it,
+                           and any MCP client can too (e.g. the Inspector CLI)
 
 Default mode: the real server module, with `server.AppContext` patched so its services run
 on an offline fake account — the synthetic fixture tests/fixtures/api/history_all_synthetic.json
@@ -125,6 +126,11 @@ class OfflineClient:
 
 
 def serve(sandbox: Path) -> None:
+    """Also runs standalone, e.g. under the Inspector CLI: builds the sandbox if missing and
+    points the server's env at it, so it needs no -e flags."""
+    if not (sandbox / "posts.jsonl").exists():
+        build_sandbox(sandbox)
+    os.environ.update(server_env(sandbox))
     from smartgym_mcp import catalog, runtime, server
     from smartgym_mcp.account import AccountCache
     from smartgym_mcp.config import Config
