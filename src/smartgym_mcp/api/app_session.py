@@ -12,6 +12,7 @@ never touched. Values are never logged or put in messages.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import plistlib
 import re
@@ -21,13 +22,18 @@ import tempfile
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
+from xml.parsers.expat import ExpatError
 
 from .auth import Credentials
 
 API_HOST = "https://api.smartgymapp.com/"
 CACHED_APP_HEADERS = ("accept", "accept-language")  # user-agent is not cached
 CFNETWORK_PLIST = Path("/System/Library/Frameworks/CFNetwork.framework/Resources/Info.plist")
-_ACCOUNT_IN_URL = (re.compile(r"[?&]authID=(\d+)"), re.compile(r"/user/info/(\d+)"))
+_AUTH_ID = re.compile(r"[?&]authID=(\d+)")
+_USER_INFO = re.compile(r"/user/info/(\d+)")  # fallback: may name another account
+_NO_SESSION = (
+    "SmartGym's cache holds no signed-in request yet. Open SmartGym, sign in and let it sync."
+)
 
 
 class AppSessionError(RuntimeError):
@@ -64,23 +70,21 @@ def _headers(obj: Any) -> Mapping[str, Any] | None:
     return None
 
 
-def _account(url: str) -> str | None:
-    for pattern in _ACCOUNT_IN_URL:
-        m = pattern.search(url)
-        if m:
-            return m.group(1)
-    return None
-
-
 def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
     """(url, archived request) of SmartGym API requests, newest first, from a copy."""
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / cache_db.name
-        shutil.copyfile(cache_db, copy)
+        try:  # not exists(): since 3.13 it hides the PermissionError macOS raises
+            shutil.copyfile(cache_db, copy)
+        except FileNotFoundError:
+            raise AppSessionError(_NO_SESSION) from None
         for suffix in ("-wal", "-shm"):
-            side = cache_db.with_name(cache_db.name + suffix)
-            if side.exists():
-                shutil.copyfile(side, copy.with_name(copy.name + suffix))
+            # the running app may checkpoint them away at any moment
+            with contextlib.suppress(FileNotFoundError):
+                shutil.copyfile(
+                    cache_db.with_name(cache_db.name + suffix),
+                    copy.with_name(copy.name + suffix),
+                )
         conn = sqlite3.connect(copy)
         try:
             rows = conn.execute(
@@ -100,20 +104,17 @@ def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
 
 
 def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
-    """The session of the app's newest cached API request. PermissionError propagates:
-    macOS guards another app's data, and the caller explains how to allow it."""
-    if not cache_db.exists():
-        raise AppSessionError(
-            "SmartGym has no cached session on this Mac yet. Open SmartGym, sign in and let "
-            "it sync."
-        )
+    """The session of the app's newest cached API request; the account id from an
+    `authID` parameter sent with that token, else a `user/info/<id>` URL. PermissionError
+    propagates: macOS guards another app's data, and the caller explains how to allow it."""
     auth: str | None = None
     app: dict[str, str] = {}
     account: str | None = None
+    fallback: str | None = None
     for url, blob in _requests(cache_db):
         try:
             headers = _headers(plistlib.loads(blob))
-        except (plistlib.InvalidFileException, ValueError):
+        except (plistlib.InvalidFileException, ValueError, ExpatError):
             continue
         if headers is None:
             continue
@@ -123,15 +124,16 @@ def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
             if len(app) != len(CACHED_APP_HEADERS):
                 continue
             auth = lower["authorization"]
-        if lower["authorization"] == auth:
-            account = _account(url)
-            if account:
-                break
+        if lower["authorization"] != auth:
+            continue
+        if m := _AUTH_ID.search(url):
+            account = m.group(1)
+            break
+        if fallback is None and (m := _USER_INFO.search(url)):
+            fallback = m.group(1)
+    account = account or fallback
     if auth is None or account is None:
-        raise AppSessionError(
-            "SmartGym's cache holds no signed-in request yet. Open SmartGym, sign in and let "
-            "it sync."
-        )
+        raise AppSessionError(_NO_SESSION)
     return Credentials(
         user_id=account,
         authorization=auth,

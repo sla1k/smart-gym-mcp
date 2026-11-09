@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,15 +71,18 @@ def save_credentials(path: Path, creds: Credentials) -> None:
     """Write the credentials file atomically, mode 0600, in the shape `load_credentials`
     reads."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "authorization": creds.authorization,
-                "authID": creds.user_id,
-                "app_headers": dict(creds.app_headers),
-            },
-            f,
-        )
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # new file, 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "authorization": creds.authorization,
+                    "authID": creds.user_id,
+                    "app_headers": dict(creds.app_headers),
+                },
+                f,
+            )
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
