@@ -173,3 +173,22 @@ def test_saved_file_matches_what_the_server_reads(tmp_path: Path) -> None:
     _run(cfg, Script())
     raw = json.loads(cfg.credentials_path.read_text(encoding="utf-8"))
     assert set(raw) == {"authorization", "authID", "app_headers"}
+
+
+def test_main_runs_auth_and_rejects_other_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    from smartgym_mcp import server
+
+    calls: list[Config] = []
+
+    def run(cfg: Config) -> int:
+        calls.append(cfg)
+        return 0
+
+    monkeypatch.setattr(auth_command, "run", run)
+    monkeypatch.setattr("sys.argv", ["smartgym-mcp", "auth"])
+    with pytest.raises(SystemExit) as done:
+        server.main()
+    assert (done.value.code, len(calls)) == (0, 1)
+    monkeypatch.setattr("sys.argv", ["smartgym-mcp", "login"])
+    with pytest.raises(SystemExit, match="usage: smartgym-mcp"):
+        server.main()

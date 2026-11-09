@@ -61,8 +61,20 @@ Throwaway `ZZ-` routines, mitmproxy capture (§9), iPhone checks by the user. Fi
 every `requestDate`, but **the server does not check it**: garbage, stale or absent `phrase`
 all returned SUCCESS on reads and writes, so it is never sent. Requests **must carry the app's
 `user-agent` / `accept` / `accept-language`** — without them the CDN answers a non-JSON HTTP
-403 before the API. On expiry the tools raise `AuthError` → re-run
-`scripts/capture_credentials.py`.
+403 before the API. On expiry the tools raise `AuthError` → run `smartgym-mcp auth` again.
+
+**Session source (2026-11-09).** The Mac app's URL cache
+(`~/Library/Containers/com.smartgymapp.smartgym/Data/Library/Caches/com.smartgymapp.smartgym/Cache.db`,
+tables `cfurl_cache_response` + `cfurl_cache_blob_data`) keeps each request the app sends; its
+`request_object` (binary plist) holds the header dict with `Authorization`, `Accept` and
+`Accept-Language`, and most request URLs carry `authID`. Live check: the newest cached
+request's values matched a mitmproxy capture exactly (916 SmartGym requests cached,
+2026-09-29 → 2026-11-07). The token is not in the app's preferences or `GymModel.sqlite`.
+The `user-agent` is not cached (CFNetwork adds it); it is
+`SmartGym/<CFBundleShortVersionString> CFNetwork/<CFNetwork CFBundleVersion> Darwin/<uname -r>`
+(captured: `SmartGym/8.0.3 CFNetwork/3896.100.1.1.1 Darwin/27.0.0`). `smartgym-mcp auth`
+reads a copy of the cache, checks the session with one `history/all` read and saves the
+credentials file; `scripts/capture_credentials.py` (mitmproxy) remains a fallback.
 
 **S2 edit wire format.** Every in-app Save sends ONE request; routine-level calls carry only
 the changed fields plus `routineID`, `days`, `goal` (always re-sent). Exercise ids in these
@@ -119,7 +131,7 @@ local placeholder ids; the server doesn't need them.
 
 ## 5. Modules
 
-Imports point one way: `server` on top, then `runtime`; `service` over `writes/`; `writes/`,
+Imports point one way: `server` on top, then `runtime` and `auth_command`; `service` over `writes/`; `writes/`,
 `builders` and `views` over `diff`, `payloads`, `lookups` and `account`; those over `model`,
 `matching`, `catalog` and `inputs`; `api/` and `config` at the bottom. `api/` imports
 neither the model nor the catalog. The architecture invariants are in DESIGN.md.
@@ -145,7 +157,9 @@ neither the model nor the catalog. The architecture invariants are in DESIGN.md.
 | `inputs.py` | tool input specs: `RoutineSpec` / `ExerciseSpec` (create), `DesiredRoutine` / `DesiredExercise` (edit), `SetSpec`, shared validators |
 | `config.py` | env overrides with defaults; the verified app version |
 | `api/client.py` | HTTP: base URL, multipart, common params, auth headers, error mapping, read retries; never logs header values |
-| `api/auth.py` | the credentials file (§4 S1) |
+| `api/auth.py` | the credentials file (§4 S1): load and save |
+| `api/app_session.py` | the app's session from its URL cache, the rebuilt user-agent (§4 S1) |
+| `auth_command.py` | `smartgym-mcp auth`: find the session, check it, save the credentials file |
 | `api/reads.py` | read endpoints → raw JSON |
 
 An edit is one `ChangeSet` per call, sent as at most two requests in this order:
