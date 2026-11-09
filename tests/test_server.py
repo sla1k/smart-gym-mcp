@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import inspect
 import json
+import os
 import plistlib
 import threading
 from collections.abc import AsyncIterator, Callable
@@ -156,7 +158,7 @@ def test_annotations_tell_reads_from_retry_safe_and_unsafe_writes() -> None:
 
 def test_server_sends_its_instructions_and_identity_at_initialize() -> None:
     async def connect() -> Any:
-        async with Client(server.mcp) as client:
+        async with Client(server.mcp, raise_exceptions=True) as client:
             return client.instructions, client.server_info
 
     instructions, info = asyncio.run(connect())
@@ -333,7 +335,7 @@ def test_missing_credentials_reach_an_mcp_client(
     monkeypatch.setenv("SMARTGYM_CREDENTIALS", str(cfg.credentials_path))
 
     async def call() -> Any:
-        async with Client(server.mcp) as client:
+        async with Client(server.mcp, raise_exceptions=True) as client:
             return await client.call_tool("smartgym_list_routines", {})
 
     result = asyncio.run(call())
@@ -827,7 +829,7 @@ def test_catalog_resource_serves_the_bundle_file(
     monkeypatch.setenv("SMARTGYM_CREDENTIALS", str(tmp_path / "credentials.json"))
 
     async def read() -> Any:
-        async with Client(server.mcp) as client:
+        async with Client(server.mcp, raise_exceptions=True) as client:
             listed = {str(r.uri): r for r in (await client.list_resources()).resources}
             return listed, await client.read_resource(uri)
 
@@ -860,3 +862,141 @@ def test_undecodable_catalog_resource_keeps_its_message(
         asyncio.run(server.mcp.read_resource("smartgym://catalog/exercises"))
     assert not isinstance(exc.value, UnexpectedResourceError)
     assert "not valid UTF-8" in str(exc.value)
+
+
+# ------------------------------------------------------------ over the protocol
+# The SDK's own testing pattern (mcp 2.3, docs/get-started/testing.md): the in-memory
+# Client, raise_exceptions=True so a crash outside a tool shows its real message, and
+# assertions on the CallToolResult a host gets. The client also checks each
+# structured_content against the tool's outputSchema.
+PROTOCOL_CALLS: dict[str, tuple[str, dict[str, Any]]] = {
+    "health": ("smartgym_health", {}),
+    "list_routines": ("smartgym_list_routines", {"include_archived": True}),
+    "get_routine": ("smartgym_get_routine", {"routine": "3000001"}),
+    "workout_history": ("smartgym_get_workout_history", {"date_from": "2026-01-01"}),
+    "equipment": ("smartgym_get_equipment", {"owned_only": False}),
+    "create_program": (
+        "smartgym_create_program",
+        {"routines": [{"name": "ZZ-New", "goal": "G", "exercises": [{"exercise": "Plank"}]}]},
+    ),
+    "update_routine": ("smartgym_update_routine", {"routine": "ZZ-FB", "days": [2, 4]}),
+    "add_exercise": (
+        "smartgym_add_exercise",
+        {"routine": "ZZ-FB", "exercise": "Plank", "sets": [{"reps": 1, "weight_kg": 0}]},
+    ),
+    "move_exercise": (
+        "smartgym_move_exercise",
+        {"exercise_id": 40000012, "section": "warmup"},
+    ),
+    "remove_exercise": ("smartgym_remove_exercise", {"exercise_id": 40000012}),
+    "reorder_routine": ("smartgym_reorder_routine", {"routine": "ZZ-FB", "main": [40000012]}),
+    "update_exercise": ("smartgym_update_exercise", {"exercise_id": 40000012, "note": "n"}),
+    "apply_routine": (
+        "smartgym_apply_routine",
+        {"routine": "ZZ-FB", "main": [{"exercise_id": 40000012}, {"exercise": "Plank"}]},
+    ),
+    "archive_routines": ("smartgym_archive_routines", {"routines": ["ZZ-FB"]}),
+    "unarchive_routine": ("smartgym_unarchive_routine", {"routine": "ZZ-Old"}),
+}
+
+
+@asynccontextmanager
+async def _connected(
+    monkeypatch: pytest.MonkeyPatch, app: runtime.AppContext
+) -> AsyncIterator[Client]:
+    """An in-memory MCP client on `server.mcp`, whose lifespan serves `app`."""
+    monkeypatch.setattr(server, "AppContext", lambda **_: app)
+    async with Client(server.mcp, raise_exceptions=True) as client:
+        yield client
+
+
+def test_protocol_calls_cover_every_tool() -> None:
+    assert {tool for tool, _ in PROTOCOL_CALLS.values()} == EXPECTED_TOOLS
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "arguments"), PROTOCOL_CALLS.values(), ids=PROTOCOL_CALLS.keys()
+)
+async def test_every_tool_answers_a_client_with_structured_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any]
+) -> None:
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
+    async with _connected(monkeypatch, _fake_app(tmp_path, client)) as mcp_client:
+        result = await mcp_client.call_tool(tool, arguments)
+    assert not result.is_error, result.content
+    assert result.structured_content is not None
+    # hosts without structured output read the same answer as text
+    (text,) = result.content
+    assert json.loads(text.text) == result.structured_content  # type: ignore[union-attr]
+    assert result.structured_content.get("dry_run", True) is True
+    assert client.sent == []
+
+
+@pytest.mark.anyio
+async def test_a_wrong_argument_type_is_a_tool_error_the_model_can_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = account_client({HISTORY: ACCOUNT, SINGLE: _single()})
+    async with _connected(monkeypatch, _fake_app(tmp_path, client)) as mcp_client:
+        result = await mcp_client.call_tool("smartgym_get_routine", {"routine": 3000001})
+    assert result.is_error and result.structured_content is None
+    text = result.content[0].text  # type: ignore[union-attr]
+    assert "routine" in text and "valid string" in text
+    assert client.get_calls == []  # rejected against the input schema, before the tool ran
+
+
+@pytest.mark.anyio
+async def test_an_applied_write_answers_a_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archived = copy.deepcopy(ACCOUNT)
+    archived["routines"][0]["dateArchived"] = "2026-10-06 10:00:00"
+    client = account_client({HISTORY: [ACCOUNT, archived]})
+    async with _connected(monkeypatch, _fake_app(tmp_path, client)) as mcp_client:
+        result = await mcp_client.call_tool(
+            "smartgym_archive_routines", {"routines": ["ZZ-FB"], "dry_run": False}
+        )
+    assert not result.is_error, result.content
+    assert result.structured_content is not None
+    assert result.structured_content["dry_run"] is False
+    assert [path for path, _ in client.sent] == ["routine/archive/"]
+
+
+# What the model sees of each tool. A change here changes every host's prompt, so review
+# the diff, then rewrite the file: UPDATE_TOOL_SURFACE=1 uv run pytest -k tool_surface
+TOOL_SURFACE = Path(__file__).parent / "fixtures" / "tool_surface.json"
+
+
+def _cleandoc(node: Any) -> Any:
+    """Python 3.13+ strips docstring indentation at compile time; 3.12 doesn't. Descriptions
+    are compared without it, so one snapshot holds for every Python in the CI matrix."""
+    if isinstance(node, dict):
+        return {
+            k: inspect.cleandoc(v)
+            if k == "description" and isinstance(v, str)
+            else _cleandoc(v)
+            for k, v in node.items()
+        }
+    if isinstance(node, list):
+        return [_cleandoc(v) for v in node]
+    return node
+
+
+def test_tool_surface_matches_the_reviewed_snapshot() -> None:
+    async def listed() -> list[dict[str, Any]]:
+        async with Client(server.mcp, raise_exceptions=True) as client:
+            tools = (await client.list_tools()).tools
+        return [
+            _cleandoc(
+                t.model_dump(mode="json", by_alias=True, exclude_none=True, exclude={"meta"})
+            )
+            for t in tools
+        ]
+
+    surface = json.dumps(asyncio.run(listed()), ensure_ascii=False, indent=2) + "\n"
+    if os.environ.get("UPDATE_TOOL_SURFACE") == "1":
+        TOOL_SURFACE.write_text(surface, encoding="utf-8")
+    assert surface == TOOL_SURFACE.read_text(encoding="utf-8"), (
+        "the tool surface changed; review it, then UPDATE_TOOL_SURFACE=1 to accept"
+    )

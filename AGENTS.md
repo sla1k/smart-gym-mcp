@@ -17,6 +17,11 @@ Project knowledge lives in shared docs — read them, don't rediscover:
 - Before trusting a NEW kind of server write, capture the app doing it first (golden fixture in
   `tests/fixtures/api/`) instead of assuming the wire shape.
 - Tests never touch the network or the account — use the fixtures and `tests/fakes.FakeClient`.
+- Test tools the way a host calls them: the in-memory `mcp.Client(server.mcp,
+  raise_exceptions=True)`, asserting on the `CallToolResult` (`is_error`, `structured_content`).
+- `tests/fixtures/tool_surface.json` is what every host's model sees of the tools. A change to a
+  tool's signature, docstring or return model fails `test_tool_surface…`: review the diff, then
+  `UPDATE_TOOL_SURFACE=1 uv run pytest -k tool_surface`.
 - `main` takes no direct pushes: every change lands through a PR that is up to date with `main`
   and has a green `ci` check, merged by rebase (linear history, no merge commits).
 
