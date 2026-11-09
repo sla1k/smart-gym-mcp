@@ -37,15 +37,17 @@ verifies it. The SmartGym app keeps running and is never written to.
 
 ## Connecting to your account
 
-The MCP talks to SmartGym's own server with your account's session. One-time setup:
+The MCP talks to SmartGym's own server with the session of the SmartGym app on your Mac.
+After installing (see Quick start), open SmartGym once so it syncs, then run:
 
-1. Install mitmproxy: `brew install --cask mitmproxy`, and trust its certificate.
-2. Run `mitmdump --mode local:SmartGym -s scripts/capture_credentials.py --set confdir=<CA dir>`.
-3. Open SmartGym; stop mitmdump when it prints "credentials saved".
-4. Remove the mitmproxy certificate trust again.
+```sh
+smartgym-mcp auth
+```
 
-The file `~/.smartgym-mcp/credentials.json` (mode 600) holds the session — never share it.
-Re-run the capture if tools report an authentication error.
+It finds the app's session, checks it with SmartGym's server and saves it to
+`~/.smartgym-mcp/credentials.json` (mode 600) — never share that file. If macOS asks whether
+your terminal may access data from other apps, allow it. Run it again if tools report an
+authentication error.
 
 ## Quick start
 
@@ -89,6 +91,7 @@ Works out of the box with a standard SmartGym install. Env vars if you need them
 | `SMARTGYM_CREDENTIALS` | `~/.smartgym-mcp/credentials.json` | account session (see above) |
 | `SMARTGYM_BACKUP_DIR` | `~/.smartgym-mcp/backups` | routine snapshots taken before each write |
 | `SMARTGYM_APP_BUNDLE` | `/Applications/SmartGym.app` | exercise catalog and version check |
+| `SMARTGYM_APP_CACHE` | SmartGym's `Cache.db` in its container | where `smartgym-mcp auth` finds the session |
 
 ## Contributing
 

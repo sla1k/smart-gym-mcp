@@ -75,9 +75,12 @@ Modules and their layering: spec §5.
   Import-from-Text (non-deterministic LLM parsing), a crafted `.gym` share file (only ever the
   DB path's fallback). The ToS risk (unofficial API, reuse of the account session) is
   explicitly accepted by the user.
-- **Credentials = user-captured 0600 file** (`~/.smartgym-mcp/credentials.json`, written by
-  `scripts/capture_credentials.py`, run by the user), not read from the app's storage; what
-  it holds and sends follows spec §4 S1. An `AuthError` drops the client, so a re-captured
+- **Credentials = a 0600 file the user creates with `smartgym-mcp auth`**
+  (`~/.smartgym-mcp/credentials.json`; 2026-11-09, user choice). The command reads the app's
+  session from its URL cache once, checks it and saves it; the server only reads the file, so
+  the MCP client never needs access to the app's data. mitmproxy capture
+  (`scripts/capture_credentials.py`) stays as a fallback. What the file holds and sends:
+  spec §4 S1. An `AuthError` drops the client, so a re-captured
   session takes effect on the next call without restarting the server.
 - **Sections are three lists** (warm-up / main / cool-down; user choice "A", spec §10.2).
 - **Archive, never delete (2026-10-05, formerly backlog F7):** archive / unarchive send
