@@ -10,7 +10,8 @@ import pytest
 
 from fakes import SECRET
 from smartgym_mcp.api.app_session import (
-    AppSessionError,
+    NoAppSession,
+    UnreadableCache,
     cfnetwork_version,
     read_app_session,
     user_agent,
@@ -60,7 +61,7 @@ def test_newest_signed_in_request_gives_the_session(tmp_path: Path) -> None:
         ("2026-11-01 10:00:00", f"{API}history/all/42/?authID=42", _request("x", HEADERS)),
         (
             "2026-11-07 16:00:00",
-            f"{API}user/info/42",
+            f"{API}user/info/42?appVersion=8.0.3&authID=42",
             _request("x", {**HEADERS, "Authorization": "Bearer newer"}),
         ),
         ("2026-11-08 09:00:00", "http://smartgymprod.smartgymapp.com.s3/x.jpg", b"img"),
@@ -92,7 +93,11 @@ def test_account_id_comes_from_an_older_request_with_the_same_token(tmp_path: Pa
 def test_requests_without_headers_are_skipped(tmp_path: Path) -> None:
     db = _cache(
         tmp_path,
-        ("2026-11-01 10:00:00", f"{API}user/info/42", _request("x", HEADERS)),
+        (
+            "2026-11-01 10:00:00",
+            f"{API}user/info/42?appVersion=8.0.3&authID=42",
+            _request("x", HEADERS),
+        ),
         ("2026-11-02 10:00:00", f"{API}options.json", _request("x", None)),
         ("2026-11-03 10:00:00", f"{API}quote/todaysQuote/", b"not a plist"),
     )
@@ -107,26 +112,30 @@ def test_requests_without_headers_are_skipped(tmp_path: Path) -> None:
         [("2026-11-01 10:00:00", f"{API}routine/update/", _request("x", HEADERS))],
     ],
 )
-def test_no_signed_in_request_asks_to_open_the_app(
+def test_no_signed_in_request_is_no_session(
     tmp_path: Path, rows: list[tuple[str, str, bytes]]
 ) -> None:
     db = _cache(tmp_path, *rows)
-    with pytest.raises(AppSessionError, match="Open SmartGym") as exc:
+    with pytest.raises(NoAppSession):
         read_app_session(db, user_agent=UA)
-    assert SECRET not in str(exc.value)
 
 
 def test_missing_or_foreign_cache_is_a_session_error(tmp_path: Path) -> None:
-    with pytest.raises(AppSessionError, match="Open SmartGym"):
+    with pytest.raises(NoAppSession):
         read_app_session(tmp_path / "Cache.db", user_agent=UA)
     (tmp_path / "Cache.db").write_bytes(b"not sqlite")
-    with pytest.raises(AppSessionError, match="not a readable SmartGym cache"):
+    with pytest.raises(UnreadableCache):
         read_app_session(tmp_path / "Cache.db", user_agent=UA)
 
 
 def test_the_app_cache_is_never_written(tmp_path: Path) -> None:
     db = _cache(
-        tmp_path, ("2026-11-01 10:00:00", f"{API}user/info/42", _request("x", HEADERS))
+        tmp_path,
+        (
+            "2026-11-01 10:00:00",
+            f"{API}user/info/42?appVersion=8.0.3&authID=42",
+            _request("x", HEADERS),
+        ),
     )
     before = sorted(p.name for p in tmp_path.iterdir()), db.read_bytes()
     read_app_session(db, user_agent=UA)
@@ -140,7 +149,7 @@ def test_user_agent_is_built_like_cfnetworks(tmp_path: Path) -> None:
     assert cfnetwork_version(tmp_path / "missing.plist") is None
 
 
-def test_an_authid_parameter_wins_over_a_user_info_url(tmp_path: Path) -> None:
+def test_the_account_is_the_authid_parameter_not_an_id_in_the_path(tmp_path: Path) -> None:
     db = _cache(
         tmp_path,
         ("2026-11-01 10:00:00", f"{API}goal/all/?authID=42", _request("x", HEADERS)),
@@ -152,7 +161,11 @@ def test_an_authid_parameter_wins_over_a_user_info_url(tmp_path: Path) -> None:
 def test_a_malformed_xml_plist_row_is_skipped(tmp_path: Path) -> None:
     db = _cache(
         tmp_path,
-        ("2026-11-01 10:00:00", f"{API}user/info/42", _request("x", HEADERS)),
+        (
+            "2026-11-01 10:00:00",
+            f"{API}user/info/42?appVersion=8.0.3&authID=42",
+            _request("x", HEADERS),
+        ),
         (
             "2026-11-02 10:00:00",
             f"{API}history/all/42/",

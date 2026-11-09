@@ -1,8 +1,9 @@
 """The SmartGym app's own session, read from its HTTP cache (spec §4 S1).
 
 macOS keeps every request the app sends in its URL cache (`Cache.db`, SQLite), headers
-included. The newest SmartGym API request gives the `Authorization`, `accept` and
-`accept-language` values and the account id (`authID`). The `user-agent` is not stored there
+included. The newest SmartGym API request (under `client.BASE_URL`) gives the
+`Authorization` header, the other app headers `api.auth` needs, and the account id (the
+`authID` parameter). The `user-agent` is not stored there
 (CFNetwork adds it), so it is rebuilt the way CFNetwork builds it:
 `SmartGym/<app version> CFNetwork/<CFNetwork version> Darwin/<kernel release>`.
 
@@ -15,36 +16,33 @@ from __future__ import annotations
 import contextlib
 import os
 import plistlib
-import re
 import shutil
 import sqlite3
 import tempfile
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 from xml.parsers.expat import ExpatError
 
-from .auth import Credentials
-
-API_HOST = "https://api.smartgymapp.com/"
-CACHED_APP_HEADERS = ("accept", "accept-language")  # user-agent is not cached
-CFNETWORK_PLIST = Path("/System/Library/Frameworks/CFNetwork.framework/Resources/Info.plist")
-_AUTH_ID = re.compile(r"[?&]authID=(\d+)")
-_USER_INFO = re.compile(r"/user/info/(\d+)")  # fallback: may name another account
-_NO_SESSION = (
-    "SmartGym's cache holds no signed-in request yet. Open SmartGym, sign in and let it sync."
-)
+from .auth import REQUIRED_APP_HEADERS, Credentials
+from .client import BASE_URL
 
 
-class AppSessionError(RuntimeError):
-    """No usable session in the app's cache; the message says what to do."""
+class NoAppSession(Exception):
+    """The app's cache holds no signed-in SmartGym request (yet)."""
+
+
+class UnreadableCache(Exception):
+    """The cache file is not a URL cache this module can read."""
 
 
 def user_agent(app_version: str, cfnetwork_version: str, darwin_release: str) -> str:
     return f"SmartGym/{app_version} CFNetwork/{cfnetwork_version} Darwin/{darwin_release}"
 
 
-def cfnetwork_version(plist: Path = CFNETWORK_PLIST) -> str | None:
+def cfnetwork_version(plist: Path) -> str | None:
+    """CFNetwork's CFBundleVersion, the middle part of the app's user-agent."""
     try:
         with plist.open("rb") as f:
             value = plistlib.load(f).get("CFBundleVersion")
@@ -77,7 +75,7 @@ def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
         try:  # not exists(): since 3.13 it hides the PermissionError macOS raises
             shutil.copyfile(cache_db, copy)
         except FileNotFoundError:
-            raise AppSessionError(_NO_SESSION) from None
+            raise NoAppSession from None
         for suffix in ("-wal", "-shm"):
             # the running app may checkpoint them away at any moment
             with contextlib.suppress(FileNotFoundError):
@@ -92,25 +90,24 @@ def _requests(cache_db: Path) -> list[tuple[str, bytes]]:
                 " FROM cfurl_cache_response r"
                 " JOIN cfurl_cache_blob_data b ON b.entry_ID = r.entry_ID"
                 " WHERE r.request_key LIKE ? ORDER BY r.time_stamp DESC, r.entry_ID DESC",
-                (API_HOST + "%",),
+                (BASE_URL + "%",),
             ).fetchall()
         except sqlite3.DatabaseError:
-            raise AppSessionError(
-                f"{cache_db} is not a readable SmartGym cache. Open SmartGym and let it sync."
-            ) from None
+            raise UnreadableCache from None
         finally:
             conn.close()
     return [(str(url), bytes(blob)) for url, blob in rows if blob is not None]
 
 
 def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
-    """The session of the app's newest cached API request; the account id from an
-    `authID` parameter sent with that token, else a `user/info/<id>` URL. PermissionError
-    propagates: macOS guards another app's data, and the caller explains how to allow it."""
+    """The session of the app's newest cached API request, with the account id (`authID`)
+    the app sent alongside that token. The user-agent is the caller's: the cache doesn't
+    keep it. PermissionError propagates: macOS guards another app's data, and the caller
+    explains how to allow it."""
+    cached = [h for h in REQUIRED_APP_HEADERS if h != "user-agent"]
     auth: str | None = None
     app: dict[str, str] = {}
     account: str | None = None
-    fallback: str | None = None
     for url, blob in _requests(cache_db):
         try:
             headers = _headers(plistlib.loads(blob))
@@ -120,20 +117,18 @@ def read_app_session(cache_db: Path, *, user_agent: str) -> Credentials:
             continue
         lower = {str(k).lower(): str(v) for k, v in headers.items()}
         if auth is None:
-            app = {h: lower[h] for h in CACHED_APP_HEADERS if lower.get(h)}
-            if len(app) != len(CACHED_APP_HEADERS):
+            app = {h: lower[h] for h in cached if lower.get(h)}
+            if len(app) != len(cached):
                 continue
             auth = lower["authorization"]
         if lower["authorization"] != auth:
             continue
-        if m := _AUTH_ID.search(url):
-            account = m.group(1)
+        ids = parse_qs(urlsplit(url).query).get("authID")
+        if ids and ids[0].isdecimal():
+            account = ids[0]
             break
-        if fallback is None and (m := _USER_INFO.search(url)):
-            fallback = m.group(1)
-    account = account or fallback
     if auth is None or account is None:
-        raise AppSessionError(_NO_SESSION)
+        raise NoAppSession
     return Credentials(
         user_id=account,
         authorization=auth,

@@ -51,9 +51,12 @@ def _cfg(tmp_path: Path, *, app: bool = True) -> Config:
         (bundle / "Contents" / "Info.plist").write_bytes(
             plistlib.dumps({"CFBundleShortVersionString": "8.0.3"})
         )
+    cfnetwork = tmp_path / "CFNetwork.plist"
+    cfnetwork.write_bytes(plistlib.dumps({"CFBundleVersion": "3896.100.1.1.1"}))
     return replace(
         load_config(),
         app_bundle=bundle,
+        cfnetwork_plist=cfnetwork,
         app_cache=tmp_path / "cache" / "Cache.db",
         credentials_path=tmp_path / "home" / "credentials.json",
     )
@@ -63,7 +66,11 @@ def _signed_in(cfg: Config) -> None:
     cfg.app_cache.parent.mkdir(exist_ok=True)
     _cache(
         cfg.app_cache.parent,
-        ("2026-11-07 16:00:00", f"{API}user/info/42", _request("x", HEADERS)),
+        (
+            "2026-11-07 16:00:00",
+            f"{API}user/info/42?appVersion=8.0.3&authID=42",
+            _request("x", HEADERS),
+        ),
     )
 
 
@@ -82,7 +89,6 @@ def _run(
         cfg,
         auth_command.Io(say=io.say, ask=io.ask),
         connect=connect,
-        cfnetwork=lambda: "3896.100.1.1.1",
         darwin=lambda: "27.0.0",
     )
     return code, seen
@@ -129,7 +135,7 @@ def test_an_expired_session_is_retried_after_the_app_syncs(tmp_path: Path) -> No
             cfg.app_cache.parent,
             (
                 "2026-11-09 10:00:00",
-                f"{API}user/info/42",
+                f"{API}user/info/42?appVersion=8.0.3&authID=42",
                 _request("x", {**HEADERS, "Authorization": "Bearer fresh"}),
             ),
         )
@@ -196,10 +202,9 @@ def test_missing_app_or_cfnetwork_stops_early(tmp_path: Path) -> None:
     assert _run(_cfg(tmp_path, app=False), io)[0] == 1
     assert "isn't installed" in io.text
     io = Script()
-    code = auth_command.run(
-        _cfg(tmp_path), auth_command.Io(say=io.say, ask=io.ask), cfnetwork=lambda: None
-    )
-    assert code == 1 and "CFNetwork" in io.text
+    cfg = replace(_cfg(tmp_path / "other"), cfnetwork_plist=tmp_path / "missing.plist")
+    assert _run(cfg, io)[0] == 1
+    assert "CFNetwork" in io.text
 
 
 def test_saved_file_matches_what_the_server_reads(tmp_path: Path) -> None:

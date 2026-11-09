@@ -14,7 +14,8 @@ from typing import Protocol
 from . import catalog
 from .api import reads
 from .api.app_session import (
-    AppSessionError,
+    NoAppSession,
+    UnreadableCache,
     cfnetwork_version,
     darwin_release,
     read_app_session,
@@ -68,7 +69,6 @@ def run(
     io: Io | None = None,
     *,
     connect: Callable[[Credentials, str], Checker] = _client,
-    cfnetwork: Callable[[], str | None] = cfnetwork_version,
     darwin: Callable[[], str] = darwin_release,
 ) -> int:
     """The exit status: 0 when the credentials file was saved."""
@@ -77,7 +77,7 @@ def run(
     if app_version is None:
         io.say(f"SmartGym isn't installed at {cfg.app_bundle}. Install it from the App Store.")
         return 1
-    cf = cfnetwork()
+    cf = cfnetwork_version(cfg.cfnetwork_plist)
     if cf is None:
         io.say("Can't read this Mac's CFNetwork version, which SmartGym's user-agent needs.")
         return 1
@@ -88,9 +88,12 @@ def run(
             io.say("Step 1/3: Looking for SmartGym's session on this Mac...")
             try:
                 creds = read_app_session(cfg.app_cache, user_agent=agent)
-            except AppSessionError as exc:
-                if _retry(io, str(exc)):
+            except NoAppSession:
+                if _retry(io, f"No signed-in session found yet. {OPEN_APP}"):
                     continue
+                return 1
+            except UnreadableCache:
+                io.say(f"  {cfg.app_cache} isn't a cache this command can read.")
                 return 1
             except PermissionError:
                 if _retry(io, PRIVACY):
