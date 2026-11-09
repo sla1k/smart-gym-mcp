@@ -18,11 +18,16 @@ DEFAULT_APP_CACHE = (
 VERIFIED_APP_VERSION = "8.0.3"
 
 
+# CFNetwork's Info.plist: its version is part of the app's user-agent (spec §4 S1).
+DEFAULT_CFNETWORK_PLIST = "/System/Library/Frameworks/CFNetwork.framework/Resources/Info.plist"
+
+
 @dataclass(frozen=True)
 class Config:
     app_bundle: Path
     app_cache: Path
     backup_dir: Path
+    cfnetwork_plist: Path
     credentials_path: Path
 
 
@@ -35,5 +40,6 @@ def load_config() -> Config:
         app_bundle=_resolve(os.environ.get("SMARTGYM_APP_BUNDLE", DEFAULT_APP_BUNDLE)),
         app_cache=_resolve(os.environ.get("SMARTGYM_APP_CACHE", DEFAULT_APP_CACHE)),
         backup_dir=_resolve(os.environ.get("SMARTGYM_BACKUP_DIR", DEFAULT_BACKUP_DIR)),
+        cfnetwork_plist=Path(DEFAULT_CFNETWORK_PLIST),
         credentials_path=_resolve(os.environ.get("SMARTGYM_CREDENTIALS", DEFAULT_CREDENTIALS)),
     )
