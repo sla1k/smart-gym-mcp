@@ -929,7 +929,9 @@ async def test_every_tool_answers_a_client_with_structured_content(
     # hosts without structured output read the same answer as text
     (text,) = result.content
     assert json.loads(text.text) == result.structured_content  # type: ignore[union-attr]
-    assert result.structured_content.get("dry_run", True) is True
+    if tool not in READ_ONLY:
+        assert result.structured_content["dry_run"] is True
+    assert client.get_calls  # the fake account answered, not a real one
     assert client.sent == []
 
 
@@ -960,7 +962,7 @@ async def test_an_applied_write_answers_a_client(
     assert not result.is_error, result.content
     assert result.structured_content is not None
     assert result.structured_content["dry_run"] is False
-    assert [path for path, _ in client.sent] == ["routine/archive/"]
+    assert client.get_calls and [path for path, _ in client.sent] == ["routine/archive/"]
 
 
 # What the model sees of each tool. A change here changes every host's prompt, so review
@@ -968,35 +970,29 @@ async def test_an_applied_write_answers_a_client(
 TOOL_SURFACE = Path(__file__).parent / "fixtures" / "tool_surface.json"
 
 
-def _cleandoc(node: Any) -> Any:
-    """Python 3.13+ strips docstring indentation at compile time; 3.12 doesn't. Descriptions
-    are compared without it, so one snapshot holds for every Python in the CI matrix."""
-    if isinstance(node, dict):
-        return {
-            k: inspect.cleandoc(v)
-            if k == "description" and isinstance(v, str)
-            else _cleandoc(v)
-            for k, v in node.items()
-        }
-    if isinstance(node, list):
-        return [_cleandoc(v) for v in node]
-    return node
+def _surface_entry(tool: Any) -> dict[str, Any]:
+    """One tool as a host lists it. Python 3.13+ strips docstring indentation at compile time
+    and 3.12 doesn't, so the tool's docstring description is compared without it; schema
+    descriptions are compared as they are (pydantic already cleans model docstrings)."""
+    entry: dict[str, Any] = tool.model_dump(
+        mode="json", by_alias=True, exclude_none=True, exclude={"meta"}
+    )
+    if "description" in entry:
+        entry["description"] = inspect.cleandoc(entry["description"])
+    return entry
 
 
 def test_tool_surface_matches_the_reviewed_snapshot() -> None:
     async def listed() -> list[dict[str, Any]]:
         async with Client(server.mcp, raise_exceptions=True) as client:
             tools = (await client.list_tools()).tools
-        return [
-            _cleandoc(
-                t.model_dump(mode="json", by_alias=True, exclude_none=True, exclude={"meta"})
-            )
-            for t in tools
-        ]
+        return [_surface_entry(t) for t in tools]
 
     surface = json.dumps(asyncio.run(listed()), ensure_ascii=False, indent=2) + "\n"
     if os.environ.get("UPDATE_TOOL_SURFACE") == "1":
+        assert not os.environ.get("CI"), "UPDATE_TOOL_SURFACE is for a reviewed local change"
         TOOL_SURFACE.write_text(surface, encoding="utf-8")
+        pytest.skip(f"rewrote {TOOL_SURFACE.name}; review its diff")  # never a silent pass
     assert surface == TOOL_SURFACE.read_text(encoding="utf-8"), (
         "the tool surface changed; review it, then UPDATE_TOOL_SURFACE=1 to accept"
     )

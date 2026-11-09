@@ -221,7 +221,10 @@ Never touch the network or the account (`tests/fakes.FakeClient`, `httpx.MockTra
 within a section / add into a section); payload golden tests against the scrubbed captures in
 `tests/fixtures/api/`; model parsing from recorded responses; client tests (auth errors,
 server codes, no write re-send, no credential leakage); service and server tests on the fake
-client.
+client. Every tool is also called through the in-memory MCP client
+(`Client(server.mcp, raise_exceptions=True)`), which checks its `structured_content` against
+the tool's `outputSchema`; `tests/fixtures/tool_surface.json` snapshots what hosts' models see
+of the tools (names, descriptions, schemas, annotations).
 
 ## 9. Live checks and captures
 
