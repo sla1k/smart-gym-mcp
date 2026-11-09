@@ -181,9 +181,9 @@ def test_server_wide_rules_live_in_the_instructions_not_in_each_tool() -> None:
 @pytest.mark.parametrize(
     ("content", "mode", "fix"),
     [
-        (None, 0o600, "capture_credentials.py"),
+        (None, 0o600, "smartgym-mcp auth"),
         ({"authorization": SECRET, "authID": "42", "app_headers": APP}, 0o644, "chmod 600"),
-        ({"authID": "42", "app_headers": APP}, 0o600, "capture_credentials.py"),
+        ({"authID": "42", "app_headers": APP}, 0o600, "smartgym-mcp auth"),
     ],
     ids=["missing", "world-readable", "incomplete"],
 )
@@ -206,7 +206,7 @@ async def test_health_reports_credentials_problem(
 async def test_tools_answer_with_credentials_path_and_fix(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     app = runtime.AppContext(cfg=cfg)
-    with pytest.raises(ToolError, match=r"capture_credentials\.py") as exc:
+    with pytest.raises(ToolError, match=r"smartgym-mcp auth") as exc:
         await server.smartgym_list_routines(_ctx(app))
     assert isinstance(exc.value.__cause__, CredentialsError)
     assert str(cfg.credentials_path) in str(exc.value)
@@ -339,7 +339,7 @@ def test_missing_credentials_reach_an_mcp_client(
     result = asyncio.run(call())
     assert result.is_error
     text = result.content[0].text
-    assert "capture_credentials.py" in text and str(cfg.credentials_path) in text
+    assert "smartgym-mcp auth" in text and str(cfg.credentials_path) in text
 
 
 def test_build_services_wires_bundle_and_credentials_offline(tmp_path: Path) -> None:

@@ -9,6 +9,11 @@ from pathlib import Path
 DEFAULT_APP_BUNDLE = "/Applications/SmartGym.app"
 DEFAULT_BACKUP_DIR = "~/.smartgym-mcp/backups"
 DEFAULT_CREDENTIALS = "~/.smartgym-mcp/credentials.json"
+# The app's URL cache, where `smartgym-mcp auth` finds its session (spec §4 S1).
+DEFAULT_APP_CACHE = (
+    "~/Library/Containers/com.smartgymapp.smartgym/Data/Library/Caches/"
+    "com.smartgymapp.smartgym/Cache.db"
+)
 # SmartGym version whose wire format the API client was verified against (spec §4).
 VERIFIED_APP_VERSION = "8.0.3"
 
@@ -16,6 +21,7 @@ VERIFIED_APP_VERSION = "8.0.3"
 @dataclass(frozen=True)
 class Config:
     app_bundle: Path
+    app_cache: Path
     backup_dir: Path
     credentials_path: Path
 
@@ -27,6 +33,7 @@ def _resolve(value: str) -> Path:
 def load_config() -> Config:
     return Config(
         app_bundle=_resolve(os.environ.get("SMARTGYM_APP_BUNDLE", DEFAULT_APP_BUNDLE)),
+        app_cache=_resolve(os.environ.get("SMARTGYM_APP_CACHE", DEFAULT_APP_CACHE)),
         backup_dir=_resolve(os.environ.get("SMARTGYM_BACKUP_DIR", DEFAULT_BACKUP_DIR)),
         credentials_path=_resolve(os.environ.get("SMARTGYM_CREDENTIALS", DEFAULT_CREDENTIALS)),
     )

@@ -3,20 +3,21 @@
 The server authenticates with the static `Authorization` header; the CDN in
 front of it rejects requests without the app's own `user-agent` / `accept` /
 `accept-language`. `phrase` is not checked and is never sent. Values come from
-a 0600 JSON file the user creates with scripts/capture_credentials.py and are
-never logged, printed, or put in exception messages.
+a 0600 JSON file that `smartgym-mcp auth` writes from the app's own session
+(`api.app_session`) and are never logged, printed, or put in exception messages.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REQUIRED_APP_HEADERS = ("user-agent", "accept", "accept-language")
-_HINT = "Create it with scripts/capture_credentials.py (README: 'Connecting to your account')."
+_HINT = "Run `smartgym-mcp auth` in a terminal (README: 'Connecting to your account')."
 
 
 class CredentialsError(RuntimeError):
@@ -63,3 +64,21 @@ def load_credentials(path: Path) -> Credentials:
         authorization=str(raw["authorization"]),
         app_headers={h: str(app[h]) for h in REQUIRED_APP_HEADERS},
     )
+
+
+def save_credentials(path: Path, creds: Credentials) -> None:
+    """Write the credentials file atomically, mode 0600, in the shape `load_credentials`
+    reads."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "authorization": creds.authorization,
+                "authID": creds.user_id,
+                "app_headers": dict(creds.app_headers),
+            },
+            f,
+        )
+    os.replace(tmp, path)
