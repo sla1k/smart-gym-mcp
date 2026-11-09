@@ -71,7 +71,7 @@ uv run -q python .claude/skills/run-smart-gym-mcp/driver.py --real call smartgym
 ```
 
 Runs the installed `smartgym-mcp` script with no credentials file: health answers
-`ok: false` with the "credentials not found … scripts/capture_credentials.py" problem, every
+`ok: false` with the "credentials not found … Run `smartgym-mcp auth`" problem, every
 account tool fails with that message, the catalog resources work off the generated bundle.
 That is what a client sees before setup, and it checks the real `main()` wiring.
 
@@ -96,9 +96,8 @@ error-severity one. Exit codes: 0 ok, 5 the tool returned `isError`, 6 a strict 
 
 `uv run smartgym-mcp` starts the stdio server and waits on stdin; it is meant to be
 spawned by an MCP client (Claude Desktop config in `README.md`). Real use needs
-`~/.smartgym-mcp/credentials.json` (from `scripts/capture_credentials.py`, a mitmproxy
-capture of the iPhone app) and `/Applications/SmartGym.app` — neither exists in a
-container. Do not point the driver or any tool at the live account; AGENTS.md allows live
+`~/.smartgym-mcp/credentials.json` (written by `smartgym-mcp auth` from the Mac app's
+session) and `/Applications/SmartGym.app`; neither exists in a container. Do not point the driver or any tool at the live account; AGENTS.md allows live
 checks only on `ZZ-` routines with Vlad confirming on the iPhone.
 
 ## Test
@@ -110,7 +109,7 @@ uv run ruff format --check src tests scripts/smoke_stdio.py
 uv run mypy
 ```
 
-333 tests pass in about 4 s. Most PRs touch services/diff/payloads: the tests for those
+354 tests pass in about 4 s. Most PRs touch services/diff/payloads: the tests for those
 call the code directly with `tests/fakes.FakeClient` (`tests/test_service.py`,
 `tests/test_payloads.py`); `tests/test_server.py` drives `server.mcp` in-process with
 `mcp.Client(server.mcp)`. Use the driver for what the tests can't show: the server as a
