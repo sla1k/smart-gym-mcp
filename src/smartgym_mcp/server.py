@@ -21,7 +21,7 @@ from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from . import __version__, builders, catalog, views
+from . import __version__, auth_command, builders, catalog, views
 from .api.auth import CredentialsError
 from .api.client import ApiError
 from .config import VERIFIED_APP_VERSION, load_config
@@ -542,6 +542,12 @@ def catalog_categories() -> str:
 
 
 def main() -> None:
+    """`smartgym-mcp` serves MCP over stdio; `smartgym-mcp auth` connects the account."""
+    args = sys.argv[1:]
+    if args == ["auth"]:
+        sys.exit(auth_command.run(load_config()))
+    if args:
+        sys.exit("usage: smartgym-mcp [auth]")
     logging.basicConfig(
         level=logging.INFO,
         stream=sys.stderr,  # stdout is the stdio protocol channel — never log there
