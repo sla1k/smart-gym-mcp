@@ -174,7 +174,7 @@ class ApiClient:
             raise AuthError(
                 f"SmartGym rejected the credentials (HTTP {resp.status_code}"
                 f"{', ' + code if code else ''}) on {shown}. "
-                "Re-run scripts/capture_credentials.py and retry."
+                "Open SmartGym, let it sync, run `smartgym-mcp auth` and retry."
             )
         if not 200 <= resp.status_code < 300:
             code = cls._server_code(resp)

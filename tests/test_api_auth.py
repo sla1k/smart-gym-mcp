@@ -37,8 +37,8 @@ def test_headers_carry_authorization_and_app_headers_without_phrase(tmp_path: Pa
     assert creds.user_id == "42"
 
 
-def test_missing_file_names_path_and_capture_script(tmp_path: Path) -> None:
-    with pytest.raises(CredentialsError, match=r"capture_credentials\.py") as exc:
+def test_missing_file_names_path_and_auth_command(tmp_path: Path) -> None:
+    with pytest.raises(CredentialsError, match=r"smartgym-mcp auth") as exc:
         load_credentials(tmp_path / "nope.json")
     assert "nope.json" in str(exc.value)
 
