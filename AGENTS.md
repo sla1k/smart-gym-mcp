@@ -4,14 +4,19 @@
 - Read `DESIGN.md`. Don't re-derive or re-litigate its decisions or the verified facts in the
   [API-client spec](docs/specs/2026-10-05-api-client-design.md) (§3, §4, §10, §11).
 - Put new code in the module the spec assigns it (§5).
-- Record work you don't build in `FEATURES.md`.
 
 ## Code
 - Keep tools in `server.py` thin: no HTTP or payload code in tool bodies.
 - Send every write through `service.RoutineService`.
 - Change an existing routine only through `diff_routine`.
-- Before relying on a new kind of server write, capture the app doing it and save a golden
-  fixture in `tests/fixtures/api/` (how: spec §9). Don't guess the wire shape.
+- Before relying on a new kind of server write, see how the app sends it; don't guess the
+  wire shape:
+  1. Ask the user to make the edit in the Mac app while running
+     `mitmdump --mode local:SmartGym -s scripts/spike/capture.py` (setup: spec §9). The user
+     runs it; credentials never reach you.
+  2. Find the POST in `scripts/spike/spike-flows.jsonl` and save it as a fixture:
+     `uv run python scripts/spike/scrub.py <record-index> <name>`.
+  3. Build and test against `tests/fixtures/api/<name>.json`.
 
 ## Live account
 - Never touch the user's live SmartGym account unless asked. Live checks use only `ZZ-`prefixed
@@ -37,13 +42,9 @@ uv build
 ```
 
 ## Git and PRs
-- Never push to `main`. One task per branch and PR.
 - Name the branch `type/short-description` before the first push; type is `feat`, `fix`,
   `docs`, `ci`, `refactor`, `test` or `chore`. Never rename it once the PR is open.
-- Add no AI attribution to commits or PRs: no `Co-Authored-By`, footer or session link.
 - Write in the PR description what changed, why, and how you verified it.
-- Get a separate code review of each PR before merging it.
-- Merge only with a green `ci` check and the branch up to date with `main`, by rebase merge.
 
 ## Releases
 - Never edit the version by hand; it comes from the git tag.
