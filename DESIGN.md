@@ -102,7 +102,7 @@ Modules and their layering: spec §5.
 - **Releases are tags + GitHub Releases, no signed binary (2026-10-19):** the PyInstaller
   binary was signed only to keep the macOS TCC grant for the app's container DB, which nothing
   reads any more; a `uv tool install` from a tag needs no signing. How to release and install:
-  AGENTS.md "Releases".
+  AGENTS.md "Releases" and the README.
 - **Only stable tags become Releases:** releases are immutable (they can't be replaced, only
   added), so a dev release per merge would flood the page; dev builds of `main` stay
   unpublished.
