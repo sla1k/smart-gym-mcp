@@ -1,60 +1,51 @@
 # AGENTS.md
 
-Project knowledge lives in shared docs — read them, don't rediscover:
-- [`DESIGN.md`](DESIGN.md) — **start here**: status table, architecture invariants, decisions,
-  and where the verified facts live (settled — do not re-derive or re-litigate them)
-- [`docs/specs/2026-10-05-api-client-design.md`](docs/specs/2026-10-05-api-client-design.md)
-  — source of truth for the API client (verified facts §3/§4, module layering §5, tool
-  surface §6, sections §10, custom exercises §11)
-- [`FEATURES.md`](FEATURES.md) — backlog
+## Before you start
+- Read `DESIGN.md`. Don't re-derive or re-litigate its decisions or the verified facts in the
+  [API-client spec](docs/specs/2026-10-05-api-client-design.md) (§3, §4, §10, §11).
+- Put new code in the module the spec assigns it (§5).
 
-## Working rules for this repo
-- Follow the architecture invariants in DESIGN.md exactly — especially: thin tools, every write
-  through `service.RoutineService`, every edit of an existing routine through `diff_routine`.
-- The SmartGym account is the user's **live personal training data**. Live checks only on
-  `ZZ-`prefixed throwaway routines, with the user confirming on the iPhone. Snapshots land in
-  `~/.smartgym-mcp/backups/<ts>/`.
-- Before trusting a NEW kind of server write, capture the app doing it first (golden fixture in
-  `tests/fixtures/api/`) instead of assuming the wire shape.
-- Tests never touch the network or the account — use the fixtures and `tests/fakes.FakeClient`.
-- A new tool, or a change to what a tool accepts or answers, gets a test the way a host calls
-  it: the in-memory `mcp.Client(server.mcp, raise_exceptions=True)`, asserting on the
-  `CallToolResult` (`is_error`, `structured_content`). Direct calls with a fake `ctx` stay fine
-  for wiring and call-lock tests that need to hold or time a call.
-- `tests/fixtures/tool_surface.json` is what every host's model sees of the tools. A change to a
-  tool's signature, docstring or return model fails `test_tool_surface…`: review the diff, then
+## Code
+- Keep tools in `server.py` thin: no HTTP or payload code in tool bodies.
+- Send every write through `service.RoutineService`.
+- Change an existing routine only through `diff_routine`.
+- Before relying on a new kind of server write, see how the app sends it; don't guess the
+  wire shape:
+  1. Ask the user to make the edit in the Mac app while running
+     `mitmdump --mode local:SmartGym -s scripts/spike/capture.py` (setup: spec §9). The user
+     runs it; credentials never reach you.
+  2. Find the POST in `scripts/spike/spike-flows.jsonl` and save it as a fixture:
+     `uv run python scripts/spike/scrub.py <record-index> <name>`.
+  3. Build and test against `tests/fixtures/api/<name>.json`.
+
+## Live account
+- Never touch the user's live SmartGym account unless asked. Live checks use only `ZZ-`prefixed
+  throwaway routines, with the user confirming on the iPhone (spec §9).
+
+## Tests
+- Never hit the network or the account in tests: use `tests/fixtures/api/` and
+  `tests/fakes.FakeClient`.
+- Test a new or changed tool through `mcp.Client(server.mcp, raise_exceptions=True)` and assert
+  on `is_error` and `structured_content`.
+- After changing a tool's signature, docstring or return model, review the diff and run
   `UPDATE_TOOL_SURFACE=1 uv run pytest -k tool_surface`.
-- `main` takes no direct pushes: every change lands through a PR that is up to date with `main`
-  and has a green `ci` check, merged by rebase (linear history, no merge commits).
+- Try a change end to end offline with the `run-smart-gym-mcp` skill:
+  `uv run -q python .claude/skills/run-smart-gym-mcp/driver.py smoke`.
 
-## Branches and PRs
-- One task per branch, worktree and PR.
-- Before the first push, name the branch `type/short-description`: type is one of `feat`, `fix`,
-  `docs`, `ci`, `refactor`, `test`, `chore`; lowercase, words joined by hyphens; no agent or tool
-  prefix. CI fails other names.
-- Name the branch before opening the PR; renaming it afterwards, locally or on GitHub, closes or
-  orphans the PR.
-- Before pushing, run `uv run ruff check src tests scripts/smoke_stdio.py`,
-  `uv run ruff format --check src tests scripts/smoke_stdio.py`,
-  `uv run mypy` and `uv run pytest` — the same steps as CI.
-  `scripts/smoke_stdio.py` otherwise runs only in the release build after the merge;
-  `scripts/spike/` holds throwaway capture scripts and stays unchecked.
-- The PR description says what changed, why, and how it was verified.
-- Update the branch from `main` before merging; rebase merge only.
+## Before every push
+```sh
+uv run ruff check src tests scripts/smoke_stdio.py
+uv run ruff format --check src tests scripts/smoke_stdio.py   # drop --check to fix
+uv run mypy
+uv run pytest
+uv build
+```
+
+## Git and PRs
+- Name the branch `type/short-description` before the first push; type is `feat`, `fix`,
+  `docs`, `ci`, `refactor`, `test` or `chore`. Never rename it once the PR is open.
+- Write in the PR description what changed, why, and how you verified it.
 
 ## Releases
-- Every merge to `main` is built and smoke-tested as dev build `X.Y.Z.devN`, but not published
-  (`.github/workflows/release.yml`); install it from `@main` or `@<sha>`.
-- A stable release = push tag `vX.Y.Z` on a `main` commit, then approve the `release`
-  environment. The version comes from the tag (hatch-vcs); never edit it by hand.
-- Release notes are grouped by the PR label the branch type sets (`.github/labeler.yml`).
-
-## Commands
-```sh
-uv run pytest
-uv run ruff check src tests scripts/smoke_stdio.py && uv run ruff format src tests scripts/smoke_stdio.py
-uv run mypy                    # src, tests and scripts/smoke_stdio.py
-uv run smartgym-mcp            # stdio server
-uv tool install git+https://github.com/sla1k/smart-gym-mcp@<tag>   # install a release
-npx @modelcontextprotocol/inspector uv run smartgym-mcp   # MCP Inspector
-```
+- Never edit the version by hand; it comes from the git tag.
+- To release, push tag `vX.Y.Z` on a `main` commit, then approve the `release` environment.
